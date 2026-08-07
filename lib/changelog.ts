@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.2";
+export const APP_VERSION = "1.2.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -17,13 +17,25 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.2.3",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v13：相册/拍照恢复并修复（上一版误删）",
+    highlights: [
+      "恢复相册/拍照功能（📸 tab、卡座拍照按钮、拍立得渲染、保存图片）",
+      "修正根因：上一版「始终无法使用」并非生图 API 未配置，而是 takePhoto 第①步强依赖真实角色 characterId——独自/只有 NPC 在场时必抛错、永远走不到生图",
+      "重写 takePhoto：生图为核心，AI 写配文改为「尽力而为、失败不阻塞」，无角色也能直接拍照",
+      "彻底移除「请去设置配置生图 API」误导提示；改走真实错误文案（聊天拍照同链路已验证宿主生图可用）",
+      "打包 soul-bar-app-13.zip（manifest 1.3.0）",
+    ],
+  },
+  {
     version: "1.2.2",
     date: "2026-08-07",
     title: "黑珍珠灵魂酒吧 v12：UI 修复 + 删相册 + 菜单可点击",
     highlights: [
       "调酒结果显示栏改为不透明实底（#1a1528），解决透明导致看不清字的问题",
       "「给你调一杯」标题后增加「剧本再生成请等待…」提示文案",
-      "删除相册/拍照功能（始终无法使用，生图 API 依赖宿主配置）：移除相册房间、tab按钮、拍照JS、相关CSS",
+      "删除相册/拍照功能（当时误判为「生图 API 未配置」，实为 takePhoto 代码 bug，已于 v1.2.3 恢复并修复）：移除相册房间、tab按钮、拍照JS、相关CSS",
       "调酒台菜单（点单/自调/让TA调）增加 z-index + isolation:isolate，修复游戏层遮挡导致点击无响应",
     ],
   },
