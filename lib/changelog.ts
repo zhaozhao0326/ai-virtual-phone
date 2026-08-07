@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.8";
+export const APP_VERSION = "1.2.9";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,23 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.9",
+    date: "2026-08-07",
+    title: "v18：调酒台→今日菜单重构 + 布局修复 + NPC对话增强",
+    highlights: [
+      "调酒台完整重构为「今日菜单」：每次进店随机生成酒单（酒水/小吃/套餐/特殊服务四类）",
+      "去掉DIY调酒游戏（用户反馈不好），保留「让调酒师根据心情特调」",
+      "特殊服务触发独特剧情走向（点歌/真心话/包厢/请全场/打烊后留下）",
+      "点单效果明显化：toast提示+醉度变化+状态栏更新+角色差异化反应",
+      "修复底部布局混乱（foot工具栏紧凑横排，event-bar按钮加tooltip）",
+      "群像/随机事件功能区分 clarified（群像=旁观不参与 vs 随机事件=你在场参与）",
+      "老板娘/调酒师NPC主动说话概率大幅提高（每轮老板娘几乎必说）",
+      "点单上下文注入AI提示词（角色对用户点了什么有反应）",
+      "标签名：调酒台→菜单",
+      "🔴 修复阻断性bug：Python清理脚本误删了#room-bar闭合标签和.rooms容器闭合，导致整个布局崩塌、进店后角色列表为空（选人全没了）。已重建完整HTML结构并验证。",
+    ]
+  },
   {
     version: "1.2.8",
     date: "2026-08-07",

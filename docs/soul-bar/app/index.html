@@ -22,6 +22,15 @@
       linear-gradient(160deg,var(--bg1),var(--bg0));
   }
   #app{display:flex;flex-direction:column;height:100%;padding:calc(var(--safe-top) + 10px) 0 var(--safe-bot);position:relative;overflow:hidden}
+  /* 底部工具区：紧凑排列，不与聊天输入重叠 */
+  .foot{
+    padding:6px 16px calc(var(--safe-bot) + 8px);
+    display:flex;gap:8px;flex-wrap:wrap;justify-content:center;
+    border-top:1px solid rgba(255,255,255,.06);background:rgba(5,4,12,.6);
+    flex-shrink:0;
+  }
+  .foot .leave-btn{flex:1;min-width:140px;margin-top:0}
+  .foot .btn{margin-top:0!important;padding:8px 12px;font-size:12px;min-width:auto;flex:0 0 auto}
   /* 顶栏 */
   .topbar{
     padding:6px 16px 10px;display:flex;flex-direction:column;gap:8px;
@@ -109,8 +118,25 @@
   .icon-btn{flex:0 0 auto;width:42px;height:42px;border-radius:14px;border:1px solid var(--glass-bd);
     background:var(--glass);color:var(--txt);font-size:18px;cursor:pointer}
   .icon-btn:active{transform:scale(.94)}
-  /* 吧台 */
-  .bartop{overflow-y:auto;flex:1;padding:8px 0;display:flex;flex-direction:column;gap:14px}
+  /* 吧台 → 今日菜单 */
+  .bartop{overflow-y:auto;flex:1;padding:8px 0;display:flex;flex-direction:column;gap:10px}
+  .menu-cat{background:var(--glass);border:1px solid var(--glass-bd);border-radius:14px;padding:12px}
+  .menu-cat h3{margin:0 0 8px;font-size:13px;display:flex;align-items:center;gap:6px}
+  .menu-cat h3 .cat-icon{font-size:16px}
+  .menu-cat h3 .cat-sub{font-size:10px;color:var(--sub);font-weight:400;margin-left:auto}
+  .menu-item{display:flex;justify-content:space-between;align-items:center;padding:9px 11px;
+    border-radius:10px;background:rgba(255,255,255,.03);margin-bottom:6px;cursor:pointer;border:1px solid transparent;transition:.15s}
+  .menu-item:active{background:rgba(255,255,255,.08)}
+  .menu-item .mi-name{font-size:13px;font-weight:500}
+  .menu-item .mi-price{color:var(--gold);font-size:12px;font-weight:600;white-space:nowrap;margin-left:8px}
+  .menu-item .mi-desc{font-size:10.5px;color:var(--sub);margin-top:2px;line-height:1.4}
+  .menu-item .mi-effect{font-size:10px;color:var(--rose);margin-top:2px;display:flex;align-items:center;gap:4px}
+  .menu-item .mi-effect:before{content:"✦";font-size:9px;opacity:.7}
+  .menu-item.special{border-color:rgba(240,166,192,.3);background:rgba(240,166,192,.06)}
+  .menu-item.special .mi-name{color:var(--rose)}
+  .menu-cat .mood-btn{width:100%;margin-top:6px;text-align:center;font-size:12px}
+  .menu-refresh{font-size:10.5px;color:var(--sub);text-align:center;padding:4px 0;cursor:pointer;letter-spacing:.5px}
+  .menu-refresh:active{color:var(--gold)}
   .card{background:var(--glass);border:1px solid var(--glass-bd);border-radius:16px;padding:14px}
   .card h3{margin:0 0 8px;font-size:14px;color:var(--gold);letter-spacing:1px}
   .drink{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;
@@ -147,11 +173,7 @@
   /* 选人遮罩：多选 */
   .role-opt.sel{background:linear-gradient(135deg,var(--gold),var(--rose));color:#2a1d1d;border-color:transparent;font-weight:600}
   .role-opt.sel::after{content:" ✓";opacity:.8}
-  /* 底部离店 */
-  .foot{padding:8px 16px calc(var(--safe-bot) + 10px)}
-  .leave-btn{width:100%;padding:12px;border-radius:14px;border:1px solid rgba(240,166,192,.4);
-    background:rgba(240,166,192,.12);color:var(--rose);font-size:13.5px;cursor:pointer;letter-spacing:1px}
-  .leave-btn:active{transform:scale(.98)}
+  /* 底部工具区已合并到 #app 下方统一布局 */
   /* 遮罩 / 选择角色 */
   .mask{position:absolute;inset:0;background:rgba(5,4,12,.86);backdrop-filter:blur(8px);
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:30;padding:24px}
@@ -181,10 +203,10 @@
   .chip.add .av{background:rgba(231,201,139,.18);color:var(--gold)}
   .chip.npc .av{background:rgba(159,227,224,.18);color:var(--cyan)}
   .npc-badge{font-size:9px;color:var(--cyan);margin-left:5px;border:1px solid rgba(159,227,224,.4);border-radius:6px;padding:0 4px}
-  /* 随机事件按钮 */
-  .event-bar{display:flex;justify-content:center;padding:6px 0 2px}
-  .event-btn{padding:7px 16px;border-radius:14px;border:1px solid rgba(182,156,240,.35);
-    background:rgba(182,156,240,.1);color:var(--violet);font-size:12.5px;cursor:pointer;letter-spacing:1px}
+  /* 随机事件按钮：紧凑横排 */
+  .event-bar{display:flex;justify-content:center;gap:8px;padding:4px 0 2px;flex-shrink:0}
+  .event-btn{padding:6px 14px;border-radius:12px;border:1px solid rgba(182,156,240,.35);
+    background:rgba(182,156,240,.1);color:var(--violet);font-size:11.5px;cursor:pointer;letter-spacing:.5px;white-space:nowrap}
   .event-btn:active{transform:scale(.96)}
   /* 随机事件卡片 */
   .event-card{margin:8px 0;padding:12px 14px;border-radius:14px;background:rgba(182,156,240,.10);
@@ -775,7 +797,7 @@ html, #kissa-game-root{ background: #000; }
 
   <div class="tabs">
     <div class="tab active" data-room="lounge">🛋️ 卡座</div>
-    <div class="tab" data-room="bar">🎮 调酒台</div>
+    <div class="tab" data-room="bar">📋 菜单</div>
   </div>
 
   <div class="rooms">
@@ -783,188 +805,18 @@ html, #kissa-game-root{ background: #000; }
     <div class="room active lounge" id="room-lounge">
       <div class="zonehead"><b>🛋️ 卡座区</b> · 沙发陷下去，灯只亮一半，最适合说废话。</div>
       <div class="feed" id="feed"></div>
-      <div class="event-bar"><button class="event-btn" id="eventBtn">🎲 触发随机事件</button><button class="event-btn" id="cameoBtn">👥 群像</button></div>
+      <div class="event-bar"><button class="event-btn" id="eventBtn" title="你在场时触发的突发事件（停电/告白/划拳等）">🎲 随机事件</button><button class="event-btn" id="cameoBtn" title="旁观模式：角色自己聊，你只看不说">👥 群像</button></div>
       <div class="composer">
         <textarea id="userInput" placeholder="在卡座说点什么…" rows="1"></textarea>
         <button class="send" id="sendBtn">↑</button>
       </div>
     </div>
-    <!-- 调酒台（内联嵌入调酒游戏，同文档运行以复用 AiPhone 桥接） -->
+    <!-- 吧台：今日菜单（每次进店随机生成） -->
     <div class="room bar" id="room-bar">
-      <div class="zonehead"><b>🎮 调酒台</b> · 完整调酒游戏，和在场角色一起共调一杯。</div>
-      <div id="bartop" style="padding:6px 10px 2px;flex:0 0 auto;position:relative;z-index:10;isolation:isolate"></div>
-      <div id="kissa-game-root" style="flex:1;min-height:0;position:relative;display:flex;overflow:hidden">
-
-<div class="phone-container">
-<div class="star-field" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <div id="kg-fullScreenLoader"><div class="loading-spinner" style="width:24px;height:24px;margin-bottom:12px;"></div><span id="kg-loaderText">加载中...</span></div>
-
-    <!-- 轻提示 Toast（sandbox 屏蔽了原生 alert/confirm，一律自绘） -->
-    <div class="toast" id="kg-toastBox"></div>
-    <!-- 第一页：主页面 -->
-    <div id="kg-page-1" class="page hidden">
-        <div class="stamp-page-header">
-            <span class="ph-ghost" aria-hidden="true">酒</span>
-            <div class="title-kicker">
-                <span class="tk-num">№ 01</span>
-                <span class="tk-rule"></span>
-                <span class="tk-jp">喫茶 MIXOLOGY</span>
-            </div>
-            <h1 class="poster-title" id="kg-pageMainTitle"><span class="pt-a"><span class="ch-blue">K</span><span class="ch-yellow">I</span>SSA</span><span class="pt-b">SOUL MIX</span></h1>
-            <p id="kg-pageMainSubtitle">左侧选择心仪宾客，右侧查阅调酒档案</p>
-        </div>
-        <div class="left-wheel-wrapper">
-            <button class="mode-switch-btn" id="kg-modeSwitchBtn" title="切换：让客人为你调酒">⇄</button>
-            <div class="select-badge" id="kg-selectBadge">0/3</div>
-            <div class="left-avatar-wheel" id="kg-avatarWheel"></div>
-        </div>
-        <div class="right-wheel-stage">
-            <div class="stamp-wheel-track" id="kg-stampTrack"></div>
-        </div>
-        <button class="btn-ins" id="kg-dynamicActionBtn">为选定宾客调酒</button>
+      <div class="zonehead"><b>📋 今日菜单</b> · 黑珍珠的酒单每天都不一样</div>
+      <div id="bartop" class="bartop"></div>
     </div>
-    <!-- 第二页：档案详细查看页 -->
-    <div id="kg-page-2" class="page hidden">
-        <div class="stamp-page-header">
-            <span class="ph-ghost" aria-hidden="true">憶</span>
-            <div class="title-kicker">
-                <span class="tk-num">№ 02</span>
-                <span class="tk-rule"></span>
-                <span class="tk-jp">記録 ARCHIVE</span>
-            </div>
-            <h1 class="poster-title"><span class="pt-a"><span class="ch-blue">S</span><span class="ch-yellow">A</span>VED</span><span class="pt-b">ARCHIVE</span></h1>
-            <p>已归档的灵魂调酒记录</p>
-        </div>
-        <div class="guest-info-card">
-            <div class="cocktail-preview-banner" id="kg-infoBannerContainer">
-                <div class="cocktail-art-card">
-                    <div class="cocktail-placeholder-art" id="kg-infoBannerEmoji">🍸</div>
-                    <div class="cocktail-art-liquid" id="kg-infoBannerLiquid"></div>
-                    <div class="cocktail-art-glass"></div>
-                </div>
-            </div>
-            <div class="guest-info-header">
-                <h2 id="kg-infoTitle">档案名称</h2>
-                <div class="sub" id="kg-infoSubtitle">风味子标题</div>
-                <div class="guest-chips" id="kg-infoGuestChips"></div>
-            </div>
-            <div class="info-section"><strong>✦ 配方结构：</strong><span id="kg-infoRecipe"></span></div>
-            <div class="info-section"><strong>✦ 五维属性：</strong><div class="stat-bar-group" id="kg-infoStatsGroup"></div></div>
-            <div class="info-section"><strong>✦ 调制技法：</strong><span id="kg-infoTechnique"></span></div>
-            <div class="info-section"><strong>✦ 风味轮廓：</strong><span id="kg-infoFlavor"></span></div>
-            <div class="info-section">
-                <strong>✦ 回想档案 / 故事（约500字）：</strong>
-                <span id="kg-infoQuote" style="font-style: italic; color: #e5e5e0; line-height: 1.6; display: block; margin-top:4px;"></span>
-                <div class="guest-quotes-group" id="kg-infoGuestQuotes"></div>
-            </div>
-            <div class="info-section"><strong>✦ 路人评价：</strong><div class="reviews-container" id="kg-infoReviews"></div></div>
-            <div class="info-section"><strong>✦ 建议售价：</strong><div class="price-suggestion-box"><span class="price-label">建议零售标价</span><div class="price-value-container"><span class="price-amount" id="kg-infoPrice">¥188</span><span class="price-badge-small" id="kg-infoPriceBadge">夯</span></div></div></div>
-            <div class="archive-del-row"><button class="archive-del-x" id="kg-deleteArchiveBtn" title="删除该档案" aria-label="删除该档案">✕</button></div>
-        </div>
-        <button class="btn-ins" id="kg-backToWheelBtn">返回选择轮盘</button>
-    </div>
-    <!-- 第三页：玩家手动调酒页（随机杯型） -->
-    <div id="kg-page-3" class="page hidden">
-        <div class="bartend-header">
-            <button class="back-btn" id="kg-backToWheelFromBar">← 返回</button>
-            <div class="guest-tag" id="kg-currentGuestTag">开始调酒</div>
-        </div>
-        <div class="bartend-workspace">
-            <div class="pouring-stream" id="kg-pouringStream"></div>
-            <div class="glass-container" id="kg-glassContainer">
-                <div class="glass-cup-body" id="kg-glassCup">
-                    <div class="glass-rim" id="kg-glassRim"></div>
-                    <div id="kg-liquidLayersContainer"></div>
-                </div>
-                <div class="glass-stem-area">
-                    <div class="glass-stem" id="kg-glassStem"></div>
-                    <div class="glass-base"></div>
-                </div>
-            </div>
-            <div class="hint-text" id="kg-hintText">选中材料后「长按」玻璃杯缓缓注入 · 同种材料不合并、各成一层 · 新材料永远叠在最上层 · 双击杯子可倒空</div>
-        </div>
-        <div style="flex-shrink: 0;">
-            <div class="ingredients-bar" id="kg-ingredientsBar"></div>
-            <button class="btn-ins" id="kg-finishBtn" style="margin-top: 10px;">完成特调</button>
-        </div>
-    </div>
-    <!-- 第四页：AI 结果页 -->
-    <div id="kg-page-4" class="page hidden">
-        <div class="stamp-page-header">
-            <span class="ph-ghost" aria-hidden="true">酔</span>
-            <div class="title-kicker">
-                <span class="tk-num">№ 03</span>
-                <span class="tk-rule"></span>
-                <span class="tk-jp">調製 RESULT</span>
-            </div>
-            <h1 class="poster-title"><span class="pt-a"><span class="ch-blue">C</span><span class="ch-yellow">O</span>CKTAIL</span><span class="pt-b">ARCHIVE</span></h1>
-            <p>专属灵魂调酒风味解构</p>
-        </div>
-        <div class="result-card">
-            <div class="cocktail-preview-banner" id="kg-cocktailBanner">
-                <div class="cocktail-art-card">
-                    <div class="cocktail-placeholder-art" id="kg-resBannerEmoji">🍸</div>
-                    <div class="cocktail-art-liquid" id="kg-resBannerLiquid"></div>
-                    <div class="cocktail-art-glass"></div>
-                </div>
-            </div>
-            <div class="result-header">
-                <h2 id="kg-resTitle">落日与灰烬</h2>
-                <div class="cocktail-subtitle" id="kg-resSubtitle">Classic Soul Cocktail Profile</div>
-                <div class="guest-chips" id="kg-resGuestChips"></div>
-            </div>
-            <div class="result-section"><strong>✦ 配方结构：</strong><div class="recipe-tags" id="kg-resTags"></div></div>
-            <div class="result-section"><strong>✦ 属性评估：</strong><div class="stat-bar-group" id="kg-resStatsGroup"></div></div>
-            <div class="result-section"><strong>✦ 调制技法：</strong><span id="kg-resTechnique"></span></div>
-            <div class="result-section"><strong>✦ 风味轮廓：</strong><span id="kg-resFlavor"></span></div>
-            <div class="result-section">
-                <strong>✦ 回想档案 / 故事（约500字）：</strong>
-                <div class="guest-quote-box">
-                    <div class="quote-avatar" id="kg-resAvatarIcon">🎨</div>
-                    <div class="quote-right-content">
-                        <div class="quote-text" id="kg-resQuote"><span class="loading-spinner"></span>等待深度回想生成（约500字）...</div>
-                        <div class="guest-quotes-group" id="kg-resGuestQuotes"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="result-section"><strong>✦ 路人评价：</strong><div class="reviews-container" id="kg-resReviews"><span style="color:#888;">生成中...</span></div></div>
-            <div class="result-section"><strong>✦ 建议售价：</strong><div class="price-suggestion-box"><span class="price-label">建议零售标价</span><div class="price-value-container"><span class="price-amount" id="kg-resPrice">¥188</span><span class="price-badge-small" id="kg-resPriceBadge">夯</span></div></div></div>
-        </div>
-        <button class="btn-ins" id="kg-restartBtn">再次开启</button>
-    </div>
-    <!-- 第五页：顾客为你特调页（不同杯型与颜色） -->
-    <div id="kg-page-5" class="page hidden">
-        <div class="bartend-header">
-            <button class="back-btn" id="kg-backToWheelFromMood">← 返回</button>
-            <div class="guest-tag" id="kg-moodGuestTag">调酒师：</div>
-        </div>
-        <div class="mood-workspace">
-            <div class="mood-glass-container" id="kg-moodGlassContainer">
-                <div class="mood-cup-body" id="kg-moodCupBody">
-                    <div class="mood-cup-rim" id="kg-moodCupRim"></div>
-                    <div class="mood-liquid" id="kg-moodLiquid"></div>
-                </div>
-                <div class="mood-stem-area" id="kg-moodStemArea">
-                    <div class="mood-stem" id="kg-moodStem"></div>
-                    <div class="mood-base" id="kg-moodBase"></div>
-                </div>
-            </div>
-            <div class="mood-input-box">
-                <div class="mood-input-header">
-                    <div class="user-mini-avatar" id="kg-userMiniAvatar">👤</div>
-                    <label>✦ 描述你此刻的近期情绪或心境：</label>
-                </div>
-                <textarea id="kg-moodInput" placeholder="例如：深夜加班有些疲惫，但内心依然在期待明天的一抹晨光..."></textarea>
-            </div>
-        </div>
-        <button class="btn-ins" id="kg-generateMoodDrinkBtn" style="margin-top:10px;">让TA为你调制专属情绪特调</button>
-    </div>
-</div>
-
-
-      </div>
-    </div>
-
+  </div>
 
   <div class="foot">
     <button class="leave-btn" id="leaveBtn">🌙 离开酒吧（结账 · 保存今晚的记忆）</button>
@@ -990,10 +842,10 @@ html, #kissa-game-root{ background: #000; }
     <div class="btn" id="inviteClose">先这样</div>
   </div>
 
-  <!-- 群像：旁观在场角色自己聊 -->
+  <!-- 群像：旁观在场角色自己聊（你只是看客，不参与） -->
   <div class="mask hidden" id="cameoMask">
-    <h2>👥 群像 · 旁观他们的对话</h2>
-    <p>选至少 2 位在场的人，让他们自己聊，你只看不说。<br>含升级成常客/老友的酒吧熟人也能选。</p>
+    <h2>👥 群像 · 旁观模式</h2>
+    <p>选至少 2 位在场的人，<b>他们自己聊，你只看不说</b>。<br>不同于「随机事件」（你在场参与），群像是你躲在旁边偷听/观察。<br>含升级成常客/老友的酒吧熟人也能选。</p>
     <div class="role-grid" id="cameoGrid"></div>
     <div class="btn primary" id="cameoGo">开始群像</div>
     <div class="btn" id="cameoClose">先这样</div>
@@ -1073,11 +925,61 @@ const $ = (s) => document.querySelector(s);
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const PRICE = { "夜色微醺":48, "烈焰红唇":58, "深夜拼盘":38 }; // 特调默认价（AI 未返回时用）
 let pendingBartend = [];   // 聊天中角色同意调酒时暂存，待本轮对话结束再展开
+
+/* ═══ 今日菜单数据池（每次进店随机抽取）═══ */
+const MENU_POOL = {
+  drinks: [
+    { name:"夜色微醺", price:48, drunk:12, desc:"金酒+紫罗兰利口，入口柔、后劲缓", effect:"放松警惕，更容易敞开心扉", tag:"romantic" },
+    { name:"烈焰红唇", price:58, drunk:18, desc:"龙舌兰+辣椒糖浆，一口上头", effect:"情绪高涨，说话更直接冲动", tag:"bold" },
+    { name:"深海之蓝", price:55, drunk:14, desc:"蓝橙力娇+苏打，清凉带感", effect:"思维变慢但感官敏锐，适合深度聊天", tag:"chill" },
+    { name:"玫瑰往事", price:62, drunk:15, desc:"玫瑰露+荔枝利口，甜而不腻", effect:"容易怀旧，想聊过去的事", tag:"nostalgic" },
+    { name:"黑珍珠特调", price:68, drunk:20, desc:"店藏秘方，老板娘每晚亲自配方", effect:"神秘感拉满，可能触发隐藏剧情", tag:"special" },
+    { name:"冰锐炸弹", price:45, drunk:22, desc:"伏特加+能量饮料，烈", effect:"极度亢奋，可能做出平时不敢做的事", tag:"wild" },
+    { name:"月光牛奶", price:38, drunk:6, desc:"温牛奶+蜂蜜，几乎无酒精", effect:"温暖安心，适合收尾或不想喝醉时", tag:"safe" },
+    { name:"苦艾之吻", price:72, drunk:25, desc:"苦艾酒+糖，致幻感强", effect:"现实与幻想模糊，可能看到「不存在」的东西", tag:"trippy" },
+  ],
+  snacks: [
+    { name:"深夜拼盘", price:38, drunk:0, desc:"芝士拼盘+烤坚果+橄榄，下酒必备", effect:"延长停留时间，氛围更轻松", tag:"comfort" },
+    { name:"辣翅三串", price:28, drunk:0, desc:"烤翅微辣，配冰啤酒绝杀", effect:"嘴上火了但停不下来，话题更接地气", tag:"casual" },
+    { name:"黑松露薯条", price:48, drunk:0, desc:"高级货，配特调有面子", effect:"装逼成功，在场角色可能另眼相看", tag:"fancy" },
+  ],
+  combos: [
+    { name:"双人微醺套餐", price:128, drunk:25, desc:"任选两杯特调 + 深夜拼盘", effect:"两人关系升温契机，适合拉近某位角色距离", tag:"bonding" },
+    { name:"三人烂醉套餐", price:198, drunk:55, desc:"三杯烈酒 + 大份拼盘 + 老板娘送果盘", effect:"集体失控边缘，什么话都可能说出来", tag:"chaos" },
+    { name:"清醒观察套餐", price:88, drunk:4, desc:"牛奶×2 + 拼盘 + 无限续水", effect:"全场最清醒的人，看透一切但不拆穿", tag:"observer" },
+  ],
+  specials: [  /* 特殊服务：触发独特剧情走向 */
+    { name:"🎤 点一首歌", price:66, drunk:0, desc:"让老板娘放音乐，改变全场氛围", effect:"角色对这首歌产生回忆/情绪反应，可能引出背景故事", tag:"music", isSpecial:true },
+    { name:"🎲 真心话大冒险", price:88, drunk:8, desc:"摇骰子决定规则，强制参与", effect:"角色被迫暴露秘密或做尴尬事，关系突变契机", tag:"dare", isSpecial:true },
+    { name:"💋 私密包厢（一小时）", price:188, drunk:0, desc:"和指定角色单独去包厢聊", effect:"脱离众人视线，开启私密剧情线（选一位角色触发）", tag:"private", isSpecial:true },
+    { name:"🃏 请全场一轮", price:268, drunk:30, desc:"你请所有人喝一杯", effect:"好感度全线提升，老板娘记住你，可能解锁常客身份", tag:"generous", isSpecial:true },
+    { name:"🌙 打烊后留下", price:120, drunk:10, desc:"等所有人都走了再走，帮老板娘收拾", effect:"触发老板娘/员工的独处剧情，了解酒吧不为人知的一面", tag:"afterhours", isSpecial:true },
+  ]
+};
+
+/* 从菜单池随机抽取今日菜单 */
+function generateTodayMenu(){
+  const pick = (arr, n) => {
+    const a = arr.slice(); const result = [];
+    for(let i=0; i<Math.min(n,a.length); i++){
+      const r = Math.floor(Math.random() * a.length);
+      result.push(a.splice(r,1)[0]);
+    }
+    return result;
+  };
+  return {
+    drinks: pick(MENU_POOL.drinks, 3 + Math.floor(Math.random()*2)),  // 3~4 杯
+    snacks: pick(MENU_POOL.snacks, 2),                           // 2 样小吃
+    combos: pick(MENU_POOL.combos, 1 + Math.floor(Math.random()*2)), // 1~2 套餐
+    specials: pick(MENU_POOL.specials, 2 + Math.floor(Math.random()*2)), // 2~3 特殊服务
+  };
+}
 const state = {
   userName: "你",
   present: [],            // {id,name,avatar,isReal,status}
   staffConfig: null,      // {owner:{type,...}, bartender:{type,...}} 首次进店挑选并持久化
   todaysSpecials: [],     // {name,desc,price}
+  todayMenu: null,        // {drinks[], snacks[], combos[], specials[]} 每次进店随机生成
   currentRoom: "lounge",
   visitId: "v_" + Date.now(),
   busy: false,
@@ -1188,7 +1090,7 @@ async function ensureStaffConfig(){
 async function reconfigStaff(){
   state.present = state.present.filter(p=>!p.fixed);   // 移除当前班底
   await showStaffSetup();                               // 重新挑选并保存
-  await addStaff(); renderPresent(); renderBartop();
+  await addStaff(); renderPresent(); renderTodayMenu();
   toast("🪪 班底已更新");
 }
 // 老K 把酒推过来的极简服务台词
@@ -1567,9 +1469,13 @@ function orderDrink(name, price){
   const who = state.userName;
   state.bill.push({ name, price, who });
   addDrunk(18); advanceTime(10);
-  sysLine(`🍸 你点了「${name}」(¥${price})，端上来冒着细密的气泡。`);
+  const lv = drunkLevel();
+  const labels=["清醒","微醺","上头","烂醉"];
+  sysLine(`🍸 你点了「${name}」(¥${price})，醉酒度 +18。`);
+  toast(`🍷 ${name} → ${labels[lv]}了`, 2200);
+  if(lv >= 2) setTimeout(() => toast(`⚠️ 注意：已${labels[lv]}，角色反应会更放肆`, 2000), 1200);
   staffServe(name);
-  loungeGenerate(`${state.userName}点了一杯「${name}」，举杯示意大家。请自然地接话、碰杯或起哄。`, false);
+  loungeGenerate(`${state.userName}点了一杯「${name}」，举杯示意大家。请自然地接话、碰杯或起哄，对这杯酒要有明显的差异化反应。`, false);
 }
 
 /* ---------- 初始化 ---------- */
@@ -1625,7 +1531,8 @@ function renderRoleGrid(chars, presetId){
 async function enterBar(){
   await ensureStaffConfig();   // 首次进店：从角色列表里挑选老板娘 / 调酒师
   await addStaff();
-  renderPresent(); renderBartop();
+  state.todayMenu = generateTodayMenu();  // 每次进店随机换酒单
+  renderPresent(); renderTodayMenu();
   const guests = state.present.filter(p=>!p.fixed).map(p=>p.name).join("、");
   const boss = state.present.find(p=>p.staff==="owner");
   const barkeep = state.present.find(p=>p.staff==="bartender");
@@ -1657,7 +1564,7 @@ async function genTodaysSpecials(){
       {name:"深夜拼盘", desc:"炸物+腌渍，配酒刚好", price:38},
     ];
   }
-  renderSpecials(); renderBartop();
+  renderSpecials(); renderTodayMenu();
 }
 
 function renderSpecials(){
@@ -1735,8 +1642,14 @@ async function loungeGenerate(userLine, opening, bypassBusy){
     const npcNote = npcList.length ? `\n\n[注意] 以下成员是酒吧员工或客人（非手机角色），不由你代其发言，你只需以在场真实角色身份回应，并可以对他们做出反应：${npcList.map(p=>p.name+"("+p.id+")").join("、")}。` : "";
     // 固定真实员工（老板娘/调酒师）：锚定场景身份，确保真实角色卡按酒吧人设演绎
     const fixedStaff = state.present.filter(p=>p.fixed && p.isReal);
-    const staffScene = fixedStaff.length ? `\n\n[场景] 当前大家都在「黑珍珠」酒吧里：${fixedStaff.map(p=> p.staff==="owner" ? `${p.name}是这家酒吧的老板娘` : (p.staff==="bartender" ? `${p.name}是招牌调酒师（沉默寡言但调酒技术精湛）` : `${p.name}是酒吧员工`)).join("；")}。请以各自在酒吧里的身份自然互动。` : "";
-    const instr = `在场成员：\n${roster}\n用户：${state.userName} (id:user)\n\n请以在场真实角色身份，严格用 [台词@真实角色id] / [沉默@id] / [私信@真实角色id]内容 输出。${npcNote}${staffScene}${extra}${drunkSuffix()}\n\n${userLine}\n\n[调酒约定] 如果有在场角色表示要给用户调一杯酒，请在该角色那句台词之后，另起一行附加 [调酒@该角色自身id]（系统会自动展开 TA 调酒、并逐步说明每个材料的来由）。不要把这句话本身念给玩家听。`;
+    const staffScene = fixedStaff.length ? `\n\n[场景] 当前大家都在「黑珍珠」酒吧里：${fixedStaff.map(p=> p.staff==="owner" ? `${p.name}是这家酒吧的老板娘（她经常主动搭话、观察客人、适时插话或调侃）` : (p.staff==="bartender" ? `${p.name}是招牌调酒师（话少但偶尔会冒一句一针见血的）` : `${p.name}是酒吧员工`)).join("；")}。老板娘和调酒师不只是背景板——他们应该主动参与聊天（老板娘尤其健谈，约每轮都有她的一两句；调酒师偶尔插一句）。` : "";
+    // 点单上下文：让角色对用户点的东西有反应
+    let orderContext = "";
+    if(state.bill.length){
+      const recentOrders = state.bill.slice(-3);
+      orderContext = `\n[点单上下文] 用户最近点了：${recentOrders.map(b=>b.name).join("、")}. 角色们应该对这些选择有反应（评价酒、好奇套餐、对特殊服务表态等）。`;
+    }
+    const instr = `在场成员：\n${roster}\n用户：${state.userName} (id:user)\n\n请以在场真实角色身份，严格用 [台词@真实角色id] / [沉默@id] / [私信@真实角色id]内容 输出。${npcNote}${staffScene}${extra}${orderContext}${drunkSuffix()}\n\n${userLine}\n\n[调酒约定] 如果有在场角色表示要给用户调一杯酒，请在该角色那句台词之后，另起一行附加 [调酒@该角色自身id]（系统会自动展开 TA 调酒、并逐步说明每个材料的来由）。不要把这句话本身念给玩家听。`;
     if(realIds.length){
       const r = await aiGen({ characterIds: realIds, appTags:["bar","lounge"], instruction: instr + wbInject(userLine) });
       parseBarOutput(r.text||"");
@@ -1829,28 +1742,127 @@ $("#userInput").addEventListener("input",e=>{ e.target.style.height="auto"; e.ta
 $("#userInput").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendUser(); } });
 
 /* ---------- 吧台 ---------- */
-function renderBartop(){
+/* ---------- 今日菜单渲染 ---------- */
+function renderTodayMenu(){
   const box=$("#bartop");
-  // 调酒台已被游戏 iframe 取代，#bartop 不再存在：仍确保浮层存在即可
-  if(!box){ ensureBartendPanel(); return; }
-  box.innerHTML = `
-    <div class="card">
-      <h3>🍸 今日特调</h3>
-      <div id="drinkList"></div>
-      <div class="btn" id="selfBartend">我自己调一杯（¥30）</div>
-      <div class="btn" id="moodBartend">让 TA 给我调（说出心情 · ¥52）</div>
-    </div>`;
-  const dl=$("#drinkList");
-  state.todaysSpecials.forEach(s=>{
-    const price = (s.price!=null)? s.price : (PRICE[s.name]||45);
-    const d=document.createElement("div"); d.className="drink";
-    d.innerHTML=`<div><div class="nm">${s.name}<span class="pr">¥${price}</span></div><div class="ds">${s.desc}</div></div><div class="go">点单 ›</div>`;
-    d.onclick=()=>orderDrink(s.name, price); dl.appendChild(d);
+  if(!box) return;
+  // 首次或每次进店：随机生成菜单
+  if(!state.todayMenu) state.todayMenu = generateTodayMenu();
+  const M = state.todayMenu;
+  const catIcon = { drinks:"🍸", snacks:"🍿", combos:"📦", specials:"✨" };
+  const catLabel = { drinks:"酒水", snacks:"小吃", combos:"套餐", specials:"特殊服务" };
+  const catSub = { drinks:`共 ${M.drinks.length} 款`, snacks:`${M.snacks.length} 样`, combos:`${M.combos.length} 套`, specials:`点这些会触发剧情走向 ▸` };
+
+  let html = `<div class="menu-refresh" id="menuRefresh">↻ 换一批（下次进店自动换）</div>`;
+
+  for(const cat of ["drinks","snacks","combos","specials"]){
+    const items = M[cat];
+    if(!items || !items.length) continue;
+    html += `<div class="menu-cat"><h3><span class="cat-icon">${catIcon[cat]}</span> ${catLabel[cat]}<span class="cat-sub">${catSub[cat]}</span></h3>`;
+    items.forEach(it => {
+      const isSp = !!it.isSpecial;
+      html += `<div class="menu-item${isSp?" special":""}" data-cat="${cat}" data-name="${it.name}">
+        <div><div class="mi-name">${it.name}</div>
+        <div class="mi-desc">${it.desc}</div>
+        <div class="mi-effect">${it.effect}</div></div>
+        <div class="mi-price">¥${it.price}</div>
+      </div>`;
+    });
+    // 特殊服务分类末尾加"帮调酒"按钮
+    if(cat==="drinks"){
+      html += `<div class="btn mood-btn" id="moodBartendBtn">🎯 让调酒师根据你此刻心情特调一杯 · ¥52</div>`;
+    }
+    html += `</div>`;
+  }
+
+  box.innerHTML = html;
+
+  // 绑定点单事件
+  box.querySelectorAll(".menu-item").forEach(el => {
+    el.onclick = () => {
+      const name = el.dataset.name;
+      const cat = el.dataset.cat;
+      const item = [...(M.drinks||[]),...(M.snacks||[]),...(M.combos||[]),...(M.specials||[])].find(i=>i.name===name);
+      if(item) orderMenuItem(item, cat);
+    };
   });
-  $("#selfBartend").onclick=()=>selfBartend();
-  $("#moodBartend").onclick=()=>moodBartend();
-  // 调酒面板是全局浮层（只创建一次）：聊天里角色同意调酒时直接展开，不受房间切换/重复渲染影响
-  ensureBartendPanel();
+  $("#menuRefresh").onclick = () => {
+    state.todayMenu = generateTodayMenu();
+    renderTodayMenu();
+    toast("📋 已换新酒单");
+  };
+  $("#moodBartendBtn") && ($("#moodBartendBtn").onclick = () => moodBartend());
+}
+
+/* 点菜单单项：效果明显化 */
+function orderMenuItem(item, cat){
+  if(state.busy) return;
+  const { name, price, drunk, effect, tag, isSpecial } = item;
+  state.bill.push({ name, price, who: state.userName });
+  if(drunk > 0) addDrunk(drunk);
+  advanceTime(isSpecial ? 12 : 8);
+
+  // ===== 效果可见化 =====
+  const drunkLabels = ["清醒","微醺","上头","烂醉"];
+  const lv = drunkLevel();
+  sysLine(`🍸 你点了「${name}」(¥${price})${drunk>0?`，醉酒度 +${drunk}`:""}。`);
+  toast(`${name} → ${effect}`, 2800);
+
+  // 醉度变化明显提示
+  if(drunk >= 15){
+    setTimeout(() => toast(`🍷 ${drunkLabels[lv]}了！状态栏已更新`, 2000), 1000);
+  }
+
+  // 服务员端酒
+  staffServe(name);
+
+  if(isSpecial){
+    // 特殊服务：触发独特剧情指令
+    handleSpecialService(name, item);
+  } else {
+    // 普通点单：带效果说明的聊天
+    loungeGenerate(
+      `${state.userName}点了「${name}」（${effect}）。请自然地接话、碰杯或起哄，角色对这杯酒/这份餐点要有明显的差异化反应。`,
+      false
+    );
+  }
+}
+
+/* 特殊服务处理 */
+function handleSpecialService(name, item){
+  switch(item.tag){
+    case "music":
+      loungeGenerate(`🎵 ${state.userName}点了一首歌，老板娘换上了音乐。全场氛围随音乐改变——角色们可能想起某段回忆、某个重要的人、或某种情绪。请让每个在场角色对这首歌做出独特的反应（有人微笑、有人沉默、有人眼眶红了）。`, false);
+      break;
+    case "dare":
+      loungeGenerate(`🎲 ${state.userName}发起真心话大冒险！摇骰子结果出来了——请生成一个适合当前在场角色的真心话或大冒险题目，并让角色们轮流执行（可能暴露秘密、可能尴尬、可能意外告白）。`, false);
+      break;
+    case "private":
+      // 选角色去包厢
+      openPrivateRoomPicker();
+      break;
+    case "generous":
+      loungeGenerate(`💰 ${state.userName}大手笔请全场喝一轮！老板娘亲自端酒过来，所有角色都举杯致谢。好感度全线提升，老板娘记住你了。请让每位角色说出一句感谢+对用户的新看法。`, false);
+      // 给所有真实角色写记忆
+      state.present.filter(p=>p.isReal).forEach(p=>{
+        try{ A.memory.addTimeline({ characterId:p.id, appLabel:"黑珍珠 灵魂酒吧", detail:"bar_generous", summary:`${state.userName}在黑珍珠请全场喝了一轮` }).catch(()=>{}); }catch(e){}
+      });
+      break;
+    case "afterhours":
+      loungeGenerate(`🌙 客人都走了，${state.userName}主动留下来帮老板娘收拾。店里只剩你们和员工几个人，灯光调暗了，平时听不到的话现在可能说出口……`, false);
+      break;
+    default:
+      loungeGenerate(`✨ ${state.userName}点了「${name}」——${effect}。请围绕这个特殊服务展开一段剧情。`, false);
+  }
+}
+
+/* 选角色去包厢 */
+function openPrivateRoomPicker(){
+  const realChars = state.present.filter(p=>p.isReal);
+  if(!realChars.length){ toast("需要至少一位手机角色在场"); return; }
+  // 简单实现：选第一个真实角色触发私密剧情
+  const target = realChars[Math.floor(Math.random()*realChars.length)];
+  loungeGenerate(`💋 ${state.userName}邀请${target.name}去了包厢。门关上后，外面的嘈杂声被隔绝了。这里只有你们两个人……请展开一段私密、可能改变关系的对话。`, false);
 }
 
 function ensureBartendPanel(){
@@ -2148,8 +2160,7 @@ function switchRoom(r){
   state.currentRoom=r;
   document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active", t.dataset.room===r));
   document.querySelectorAll(".room").forEach(x=>x.classList.toggle("active", x.id==="room-"+r));
-  // 进入调酒台：确保桥接已注入（iframe 已 onload 则直接挂载）
-  if(r==="bar"){ mountGame(); renderBartop(); }
+  if(r==="bar"){ renderTodayMenu(); }
 }
 document.querySelectorAll(".tab").forEach(t=> t.onclick=()=>switchRoom(t.dataset.room));
 
