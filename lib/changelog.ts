@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.3";
+export const APP_VERSION = "1.2.4";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.4",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v14：修复进店入口 + 彻底移除相册拍照",
+    highlights: [
+      "修复 #app 容器缺少 position:relative 导致 mask 遮罩定位异常（进店选人/员工配置等弹层无法正确覆盖主界面）",
+      "修复 staffSetup 角色选择列表过长时「开始营业」按钮被推出可视区域外的问题（setup-grid 加 overflow-y:auto）",
+      "彻底移除相册/拍照功能（用户确认不保留）：删除 📸 相册 tab、相册房间、卡座/相册拍照按钮、takePhoto/sendMoment/renderMoments/downloadPolaroid 全部函数及拍立得 CSS",
+      "打包 soul-bar-app-14.zip",
+    ],
+  },
   {
     version: "1.2.3",
     date: "2026-08-07",
