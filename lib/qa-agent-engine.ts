@@ -215,15 +215,45 @@ function createQaStreamFilter(sink: QaVisibleSink, onHolding?: (holding: boolean
         return indexes.length ? Math.min(...indexes) : -1;
     };
 
+    // 指令收尾：对参数括号做字符串感知的配平扫描。
+    // 不能用「第一个 )]」判断——代码里 arr[fn()] 这类序列会提前骗停；
+    // 也不能设长度上限放弃——放弃后指令尾部会当正文泄漏（见 e2e/test-leak-repro）。
+    const findDirectiveEnd = (text: string, start: number): number | null => {
+        const half = text.indexOf("(", start);
+        const full = text.indexOf("（", start);
+        let i = half === -1 ? full : full === -1 ? half : Math.min(half, full);
+        if (i === -1) return null; // 参数括号还没流到
+        let depth = 0;
+        let inString = false;
+        for (; i < text.length; i++) {
+            const ch = text[i];
+            if (inString) {
+                if (ch === "\\") i++;
+                else if (ch === '"') inString = false;
+                continue;
+            }
+            if (ch === '"') inString = true;
+            else if (ch === "(" || ch === "（" || ch === "{" || ch === "[") depth++;
+            else if (ch === ")" || ch === "）" || ch === "}" || ch === "]") {
+                depth--;
+                if (depth <= 0) {
+                    const rest = text.slice(i + 1);
+                    const closer = /^\s*\]/.exec(rest);
+                    if (closer) return i + 1 + closer[0].length;
+                    if (!rest.trim()) return null; // 收尾的 ] 还没流到
+                    return i + 1; // 括号配平后没跟 ]：按指令结束，避免吞掉后文
+                }
+            }
+        }
+        return null;
+    };
+
     const findEnd = (text: string, start: number): number | null => {
         if (QA_THINK_START.test(text.slice(start, start + 12))) {
             const match = QA_THINK_END.exec(text.slice(start));
             return match ? start + match.index + match[0].length : null;
         }
-        const rest = text.slice(start);
-        const match = /[)）]\s*\]/.exec(rest);
-        if (match) return start + match.index + match[0].length;
-        return rest.length > 4000 ? start + rest.length : null; // 超长放弃等待，整段按指令丢弃
+        return findDirectiveEnd(text, start);
     };
 
     // 尾部可能是尚未流完的指令/标签前缀，暂扣不显示
