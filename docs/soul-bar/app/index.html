@@ -1516,7 +1516,7 @@ function fmtTime(min){
   return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
 }
 function advanceTime(add){
-  state.minutes += add;
+  // 时间已改为跟随真实世界实时流逝（见 startClock），不再人为累加 minutes
   renderStatusBar();
   if(!state.lateNoted && state.minutes >= 23*60){
     state.lateNoted = true;
@@ -1541,6 +1541,24 @@ function renderStatusBar(){
   $("#drunk").textContent = "🍷 " + labels[drunkLevel()];
   $("#soberBar").style.width = state.drunk + "%";
   $("#bill").textContent = "💰 ¥" + billTotal();
+}
+
+/* 实时时钟：让酒吧时间跟随真实世界持续流逝（1 真实秒 = 1 酒吧秒） */
+let clockTimer = null;
+function syncRealClock(){
+  const now = new Date();
+  state.minutes = now.getHours()*60 + now.getMinutes();
+  renderStatusBar();
+  if(!state.lateNoted && state.minutes >= 23*60){
+    state.lateNoted = true;
+    sysLine("🌃 夜深了，酒吧里的人渐渐散去，但你们这桌还醒着。");
+    toast("🌃 快打烊了，记得结账");
+  }
+}
+function startClock(){
+  if(clockTimer) return;          // 只启动一次
+  syncRealClock();                // 立即对齐一次
+  clockTimer = setInterval(syncRealClock, 1000); // 每秒对齐系统真实时间
 }
 // 点单：加账单 + 醉酒 + 流逝时间 + 反应
 function orderDrink(name, price){
@@ -1569,6 +1587,7 @@ async function init(){
     // 用户昵称
     try{ const prof = await A.user.getProfile({}); state.userName = prof?.name || "你"; }catch(e){}
     renderStatusBar();
+    startClock(); // 启动实时时钟：酒吧时间跟随真实世界持续流逝
     // 选人：从邀TA去酒吧入口带 characterId 作为预选，仍可多选更多人
     let presetId = ctx?.characterId || (ctx?.launchContext?.characterId);
     if(!presetId && ctx && ctx.characterId) presetId = ctx.characterId;

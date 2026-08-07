@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.6";
+export const APP_VERSION = "1.2.7";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.7",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v17：酒吧时间跟随真实世界实时流逝",
+    highlights: [
+      "新增实时时钟（startClock）：每秒对齐系统真实时间，酒吧状态栏的时间像真实世界一样持续走表，坐着不动也会流逝",
+      "去掉此前人为累加的分钟数（聊天+4/点单+10/事件+15），避免与真实时间打架导致时钟跳动/漂移",
+      "「夜深了」提示改为由实时时钟在跨过 23:00 时触发，更贴合现实",
+      "打包 soul-bar-app-17.zip",
+    ],
+  },
   {
     version: "1.2.6",
     date: "2026-08-07",
