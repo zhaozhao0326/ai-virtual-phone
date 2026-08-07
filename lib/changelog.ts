@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.2.1";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.1",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v11：群像旁观模式",
+    highlights: [
+      "卡座新增「👥 群像」：选至少 2 位在场的人，让他们自己聊、你只看不说",
+      "复用多角色生成（A.ai.generate characterIds），升级成常客/老友的酒吧熟人也能被选入群像",
+      "与「建群弹窗 NPC 纯群」呼应：NPC 之间的社交圈无需先加好友即可围观",
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-08-07",

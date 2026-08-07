@@ -1,7 +1,7 @@
 import zipfile, os
 
 app = os.path.join(os.path.dirname(__file__), 'app')
-out = os.path.join(os.path.dirname(__file__), 'soul-bar-app-10.zip')
+out = os.path.join(os.path.dirname(__file__), 'soul-bar-app-11.zip')
 files = ['manifest.json', 'index.html', 'icon.png', 'presets.json']
 
 with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:

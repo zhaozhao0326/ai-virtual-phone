@@ -785,7 +785,7 @@ html, #kissa-game-root{ background: #000; }
     <div class="room active lounge" id="room-lounge">
       <div class="zonehead"><b>🛋️ 卡座区</b> · 沙发陷下去，灯只亮一半，最适合说废话。</div>
       <div class="feed" id="feed"></div>
-      <div class="event-bar"><button class="event-btn" id="eventBtn">🎲 触发随机事件</button></div>
+      <div class="event-bar"><button class="event-btn" id="eventBtn">🎲 触发随机事件</button><button class="event-btn" id="cameoBtn">👥 群像</button></div>
       <div class="composer">
         <button class="icon-btn" id="photoBtnL">📸</button>
         <textarea id="userInput" placeholder="在卡座说点什么…" rows="1"></textarea>
@@ -1001,6 +1001,15 @@ html, #kissa-game-root{ background: #000; }
     <div class="btn primary" id="inviteRandom">✨ 偶遇一个陌生人</div>
     <div class="btn hidden" id="inviteRegular">🍷 叫今晚的常客来</div>
     <div class="btn" id="inviteClose">先这样</div>
+  </div>
+
+  <!-- 群像：旁观在场角色自己聊 -->
+  <div class="mask hidden" id="cameoMask">
+    <h2>👥 群像 · 旁观他们的对话</h2>
+    <p>选至少 2 位在场的人，让他们自己聊，你只看不说。<br>含升级成常客/老友的酒吧熟人也能选。</p>
+    <div class="role-grid" id="cameoGrid"></div>
+    <div class="btn primary" id="cameoGo">开始群像</div>
+    <div class="btn" id="cameoClose">先这样</div>
   </div>
 
   <!-- 首次进店：挑选固定班底 -->
@@ -2357,6 +2366,50 @@ function openInvite(){
 }
 $("#inviteClose").onclick=()=>$("#inviteMask").classList.add("hidden");
 $("#inviteRandom").onclick=async()=>{ $("#inviteMask").classList.add("hidden"); await rollRandomNpc("你环顾四周，发现吧台边还有个空位…"); await loungeGenerate("吧台边又多了一个陌生人，大家随意搭话。", false); };
+
+/* ---------- 群像：旁观在场角色自己聊（你只是看客） ---------- */
+function openCameo(){
+  const g=$("#cameoGrid"); g.innerHTML="";
+  const sel=new Set();
+  state.present.forEach(p=>{
+    const tag = p.status==="regular"?"（常客）":p.status==="independent"?"（老友）":p.isReal?"（手机角色）":"";
+    const d=document.createElement("div"); d.className="role-opt"; d.textContent=p.name+tag;
+    d.onclick=()=>{ if(sel.has(p.id)){ sel.delete(p.id); d.classList.remove("sel"); } else { sel.add(p.id); d.classList.add("sel"); } };
+    g.appendChild(d);
+  });
+  $("#cameoGo").onclick=()=>{
+    if(sel.size<2){ toast("至少选 2 位"); return; }
+    const realIds=state.present.filter(p=>sel.has(p.id)&&p.isReal).map(p=>p.id);
+    if(!realIds.length){ toast("至少选 1 位手机角色来表演（含升级成常客/老友的酒吧熟人）"); return; }
+    $("#cameoMask").classList.add("hidden");
+    cameoGenerate([...sel]);
+  };
+  $("#cameoMask").classList.remove("hidden");
+}
+async function cameoGenerate(ids){
+  if(state.busy) return;
+  setBusy(true);
+  try{
+    const sel=state.present.filter(p=>ids.includes(p.id));
+    const names=sel.map(p=>p.name).join("、");
+    sysLine(`🎭 你靠在卡座角落，看 ${names} 聊起来…`);
+    const roster=sel.map(p=>`- ${p.name} (id:${p.id})`).join("\n");
+    const npcList=sel.filter(p=>!p.isReal);
+    const npcNote=npcList.length?`\n\n[注意] 以下成员是酒吧员工或客人（非手机角色），不由你代其发言，你只需以在场真实角色身份回应，并可以对他们做出反应：${npcList.map(p=>p.name+"("+p.id+")").join("、")}。`:"";
+    const fixedStaff=sel.filter(p=>p.fixed&&p.isReal);
+    const staffScene=fixedStaff.length?`\n\n[场景] 当前大家都在「黑珍珠」酒吧里：${fixedStaff.map(p=> p.staff==="owner"?`${p.name}是这家酒吧的老板娘`:(p.staff==="bartender"?`${p.name}是招牌调酒师（沉默寡言但调酒技术精湛）`:`${p.name}是酒吧员工`)).join("；")}。`:"";
+    const instr=`在场成员（他们将自行互动、彼此对话，${state.userName}只在旁边看，不发言）：\n${roster}\n\n请以在场真实角色身份，严格用 [台词@真实角色id] / [沉默@id] 输出。这是一场群像戏，${state.userName}是旁观者，不要等待用户说话，自行推进对话（可互相调侃、回忆、争论、敬酒）。${npcNote}${staffScene}${drunkSuffix()}\n\n请开始一段自然的多人互动。\n\n${wbInject("")}`;
+    const realIds=sel.filter(p=>p.isReal).map(p=>p.id);
+    if(realIds.length){
+      const r=await A.ai.generate({ characterIds: realIds, appTags:["bar","lounge","cameo"], instruction: instr });
+      parseBarOutput(r.text||"");
+    }
+    advanceTime(6);
+  }catch(e){ sysLine("群像生成出错："+e.message); }
+  finally{ setBusy(false); }
+}
+$("#cameoClose").onclick=()=>$("#cameoMask").classList.add("hidden");
+$("#cameoBtn").onclick=openCameo;
 async function inviteReal(c){
   state.present.push(mkPresent(c,true)); renderPresent();
   sysLine(`${c.name} 被你邀到了卡座。`);
