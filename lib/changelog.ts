@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.4";
+export const APP_VERSION = "1.2.5";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.5",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v15：可挂载小手机里已写好的世界书",
+    highlights: [
+      "世界书面板新增「🔗 挂载小手机世界书」区块：自动列出手机「设置 → 世界书」里已建好的世界书（名称 / 描述 / 条目数），勾选即挂载",
+      "挂载后酒吧内所有 AI 对话（卡座聊天、调酒、群像、偶遇、随机事件等 13 处调用）都会自动带上这些世界书，由宿主按各自关键词规则注入",
+      "新增「忽略关键词，整本全量注入」开关，适合想让整本设定常驻的场景",
+      "挂载选择持久化保存；宿主里被删除的世界书会自动从挂载列表清理",
+      "APP 权限新增 world.read；manifest 1.5.0，打包 soul-bar-app-15.zip",
+    ],
+  },
   {
     version: "1.2.4",
     date: "2026-08-07",
