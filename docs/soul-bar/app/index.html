@@ -78,7 +78,6 @@
   #gameFrame{position:absolute;inset:0;width:100%;height:100%;border:none;background:#030304;border-radius:14px;opacity:0;transition:opacity .35s ease}
   #gameFrame.ready{opacity:1}
   .gload{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;gap:8px}
-  .room.active.moments{background:radial-gradient(120% 55% at 50% 0%, rgba(240,166,192,.09), transparent 70%)}
   .zonehead{padding:2px 2px 9px;font-size:12px;color:var(--sub);line-height:1.55}
   .zonehead b{color:var(--txt);font-weight:600}
   /* 卡座聊天 */
@@ -128,6 +127,7 @@
   #bartendPanel{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.96);
     width:min(92%,420px);max-height:80vh;overflow-y:auto;z-index:60;
     box-shadow:0 14px 44px rgba(0,0,0,.55);
+    background:#1a1528;border:1px solid rgba(231,201,139,.25);
     opacity:0;transition:opacity .3s ease,transform .3s ease;pointer-events:none}
   #bartendPanel.show{opacity:1;transform:translate(-50%,-50%) scale(1);pointer-events:auto}
   .mood-input{width:100%;margin-top:8px;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.04);
@@ -147,28 +147,6 @@
   /* 选人遮罩：多选 */
   .role-opt.sel{background:linear-gradient(135deg,var(--gold),var(--rose));color:#2a1d1d;border-color:transparent;font-weight:600}
   .role-opt.sel::after{content:" ✓";opacity:.8}
-  /* 相册 / 朋友圈 */
-  .moments-feed{display:flex;flex-wrap:wrap;gap:10px;padding:4px 0;justify-content:center}
-  .polaroid{background:#fbf7ef;color:#2a2330;border-radius:10px;padding:8px 8px 12px;margin:0;
-    box-shadow:0 4px 14px rgba(0,0,0,.40);transform:rotate(-1.2deg);max-width:220px;width:220px;flex:0 0 auto}
-  .polaroid:nth-child(even){transform:rotate(1.2deg)}
-  .polaroid .ph{font-size:26px;text-align:center;padding:0;background:linear-gradient(135deg,#2a2140,#3a2b52);
-    border-radius:5px;overflow:hidden;min-height:160px;display:flex;align-items:center;justify-content:center}
-  .polaroid .ph-img{width:100%;height:auto;max-height:260px;object-fit:cover;display:block;border-radius:5px}
-  /* 拍立得加载态 */
-  .ph-loading{display:flex;flex-direction:column;align-items:center;gap:8px;color:#c8bfd9;font-size:12px;padding:20px 0}
-  .ph-spinner{width:28px;height:28px;border:3px solid rgba(231,201,139,.25);border-top-color:var(--gold);border-radius:50%;
-    animation:spin .8s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .ph-unavailable,.ph-failed{display:flex;flex-direction:column;align-items:center;gap:6px;color:#a79fc0;font-size:22px;padding:16px 0}
-  .ph-unavailable span,.ph-failed span{font-size:11px;color:#888}
-  .ph-placeholder{font-size:26px;padding:12px 0}
-  .polaroid .cap{font-weight:600;margin-top:6px;font-size:13px;line-height:1.35;word-break:break-word}
-  .polaroid .scene{font-size:10.5px;color:#6a6072;line-height:1.45;margin-top:2px;word-break:break-word}
-  .polaroid .mt{font-size:9.5px;color:#a59cb0;margin-top:4px;text-align:right}
-  .polaroid .dl-btn{display:block;width:100%;margin-top:6px;padding:4px 0;border-radius:6px;
-    border:1px solid #d4c8b8;background:#f0e9dc;color:#5a4f3a;font-size:10.5px;cursor:pointer;text-align:center}
-  .polaroid .dl-btn:active{background:#e2dac9}
   /* 底部离店 */
   .foot{padding:8px 16px calc(var(--safe-bot) + 10px)}
   .leave-btn{width:100%;padding:12px;border-radius:14px;border:1px solid rgba(240,166,192,.4);
@@ -777,7 +755,6 @@ html, #kissa-game-root{ background: #000; }
   <div class="tabs">
     <div class="tab active" data-room="lounge">🛋️ 卡座</div>
     <div class="tab" data-room="bar">🎮 调酒台</div>
-    <div class="tab" data-room="moments">📸 相册</div>
   </div>
 
   <div class="rooms">
@@ -787,7 +764,6 @@ html, #kissa-game-root{ background: #000; }
       <div class="feed" id="feed"></div>
       <div class="event-bar"><button class="event-btn" id="eventBtn">🎲 触发随机事件</button><button class="event-btn" id="cameoBtn">👥 群像</button></div>
       <div class="composer">
-        <button class="icon-btn" id="photoBtnL">📸</button>
         <textarea id="userInput" placeholder="在卡座说点什么…" rows="1"></textarea>
         <button class="send" id="sendBtn">↑</button>
       </div>
@@ -795,7 +771,7 @@ html, #kissa-game-root{ background: #000; }
     <!-- 调酒台（内联嵌入调酒游戏，同文档运行以复用 AiPhone 桥接） -->
     <div class="room bar" id="room-bar">
       <div class="zonehead"><b>🎮 调酒台</b> · 完整调酒游戏，和在场角色一起共调一杯。</div>
-      <div id="bartop" style="padding:6px 10px 2px;flex:0 0 auto"></div>
+      <div id="bartop" style="padding:6px 10px 2px;flex:0 0 auto;position:relative;z-index:10;isolation:isolate"></div>
       <div id="kissa-game-root" style="flex:1;min-height:0;position:relative;display:flex;overflow:hidden">
 
 <div class="phone-container">
@@ -967,17 +943,6 @@ html, #kissa-game-root{ background: #000; }
 
       </div>
     </div>
-    <!-- 相册 / 朋友圈 -->
-    <div class="room moments" id="room-moments">
-      <div class="zonehead"><b>📸 露台相册</b> · 夜风里拍一张今晚，留在这里，也发去朋友圈。</div>
-      <div class="feed moments-feed" id="momentsFeed" style="padding-top:4px"></div>
-      <div class="composer">
-        <button class="icon-btn" id="photoBtn">📸</button>
-        <textarea id="momentInput" placeholder="写给今晚的一句话…" rows="1"></textarea>
-        <button class="send" id="momentSend">↑</button>
-      </div>
-    </div>
-  </div>
 
   <div class="foot">
     <button class="leave-btn" id="leaveBtn">🌙 离开酒吧（结账 · 保存今晚的记忆）</button>
@@ -1094,7 +1059,6 @@ const state = {
   minutes: (new Date().getHours()*60) + new Date().getMinutes(),  // 跟随系统真实时间
   drunk: 0,               // 醉酒度 0-100
   bill: [],               // {name, price, who}
-  moments: [],            // {caption, scene, time}
   lateNoted: false,
 };
 
@@ -1510,7 +1474,7 @@ function renderRoleGrid(chars, presetId){
 async function enterBar(){
   await ensureStaffConfig();   // 首次进店：从角色列表里挑选老板娘 / 调酒师
   await addStaff();
-  renderPresent(); renderBartop(); renderMoments();
+  renderPresent(); renderBartop();
   const guests = state.present.filter(p=>!p.fixed).map(p=>p.name).join("、");
   const boss = state.present.find(p=>p.staff==="owner");
   const barkeep = state.present.find(p=>p.staff==="bartender");
@@ -1912,7 +1876,7 @@ async function bartendForUser(charId, mood){
   if(!c){ toast("TA 这会儿不在场"); return; }
   if(state.busy) return;
   setBusy(true);
-  $("#bartendTitle").textContent = `${c.name} 给你调一杯`;
+  $("#bartendTitle").textContent = `${c.name} 给你调一杯（剧本再生成请等待…）`;
   const body=$("#bartendBody"); body.innerHTML = "";
   $("#bartendPanel").classList.add("show");
   switchRoom("lounge");
@@ -1965,209 +1929,6 @@ async function genEntrance(line, ids, bypassBusy){
     await npcGenerate(line);
   }catch(e){}
   finally{ if(ownBusy) setBusy(false); }
-}
-
-/* ---------- P5：拍照发朋友圈（AI 生图） ---------- */
-async function takePhoto(){
-  if(state.busy) return;
-  const members = state.present.map(p=>p.name).join("、") || "你一个人";
-  const had = state.todaysSpecials.map(s=>s.name).join("、") || "还没点酒";
-  const lv = drunkLevel(); const drunkTag = ["清醒","微醺","上头","烂醉"][lv];
-  const now = fmtTime(state.minutes);
-
-  setBusy(true);
-  try{
-    /* ① 先生成画面描述 + 配文（用于拍立得文字部分） */
-    const instr = `你是 黑珍珠 酒吧的驻场摄影师。根据今晚：在场：${members}；喝过的特调：${had}；用户状态：${drunkTag}；当前消费：¥${billTotal()}；时间：${now}。
-写一张「拍立得」照片：
-1. scene：详细的画面描述（60字内，包含人物动作/位置/表情/酒吧环境光影，适合作为 AI 生图 prompt）
-2. caption：配文（像发朋友圈的文艺短句，18字内）
-3. imagePrompt：英文 AI 生图提示词（详细描述画面构图、人物外观、酒吧氛围、灯光色调，用于生成真实照片风格图片，80词内）
-只返回 JSON {scene, caption, imagePrompt}，不要任何解释。`;
-    const photoRealIds = state.present.filter(p=>p.isReal && p.id).map(p=>p.id);
-    const r = await A.ai.generate({ characterIds: photoRealIds.length ? photoRealIds : undefined, appTags:["bar","photo"], instruction:instr });
-    const m=(r.text||"").match(/\{[\s\S]*\}/); if(!m) throw new Error("生成失败");
-    const d=JSON.parse(m[0]);
-
-    const moment = {
-      scene:d.scene||"今晚的 黑珍珠，灯光很软",
-      caption:d.caption||"微醺夜未央",
-      imagePrompt:d.imagePrompt||"",
-      time:now,
-      dataUrl:"",       // AI 生图结果（base64 data URL）
-      imageStatus:"generating"  // generating | done | failed | unavailable
-    };
-
-    /* ② 把这张拍立得先占位显示（生成中状态） */
-    state.moments.push(moment); renderMoments(); switchRoom("moments");
-
-    /* ③ 调用 AI 生图 */
-    moment.imageStatus = "generating";
-    renderMoments(); // 刷新为加载态
-
-    try{
-      // 构建参与者列表（合照用）
-      const participants = state.present.filter(p=>p.isReal).map(p=>({
-        name: p.name,
-        anchor: p.name,  // 锚定名字
-        action: ""       // 让 AI 自由发挥姿态
-      }));
-
-      const imgResult = await A.ai.generateImage({
-        prompt: moment.imagePrompt || `A warm moody photo inside a stylish dimly-lit bar called "Black Pearl", group of friends gathering around a table, amber lighting, cozy atmosphere, cinematic photography style, shallow depth of field`,
-        participants: participants.length ? participants : undefined,
-        participantAppearance: members,
-        sceneBackground: "dimly lit upscale bar interior, dark wood counter, amber pendant lights, moody atmosphere",
-        sceneLighting: "warm amber and golden lighting, soft shadows, cinematic bokeh",
-        timeoutMs: 60000  // 生图可能较慢
-      });
-
-      if(imgResult && imgResult.dataUrl){
-        moment.dataUrl = imgResult.dataUrl;
-        moment.imageStatus = "done";
-        toast("📸 照片洗出来了！");
-      } else {
-        moment.imageStatus = "failed";
-        toast("📸 生图未返回结果");
-      }
-    } catch(imgErr){
-      console.error("生图失败:", imgErr);
-      moment.imageStatus = /配置|未配置|未启用|not.*config/i.test(imgErr.message||"") ? "unavailable" : "failed";
-      if(moment.imageStatus === "unavailable"){
-        toast("📸 生图功能未配置，请先在手机设置里配置生图 API");
-      } else {
-        toast("📸 照片生成失败："+(imgErr.message||"未知错误"));
-      }
-    }
-
-    renderMoments(); // 刷新显示最终状态
-
-    /* ④ 最佳努力发到真实朋友圈 */
-    let posted=false;
-    try{
-      const text = `${moment.caption}\n📍 黑珍珠 灵魂酒吧\n${moment.scene}`;
-      if(A.social && A.social.postMoment){ await A.social.postMoment({ text }); posted=true; }
-      else if(A.moments && A.moments.create){ await A.moments.create({ text:`${moment.caption} · 黑珍珠`, scene:moment.scene }); posted=true; }
-      else if(A.feed && A.feed.post){ await A.feed.post({ text }); posted=true; }
-    }catch(e){}
-    if(moment.imageStatus==="done") toast(posted ? "📸 已拍照并发朋友圈" : "📸 已存进今晚的相册");
-
-  }catch(e){ sysLine("拍照出错："+e.message); }
-  finally{ setBusy(false); }
-}
-function sendMoment(){
-  const ta=$("#momentInput"); const v=ta.value.trim(); if(!v) return;
-  ta.value="";
-  state.moments.push({ caption:v, scene:"", time:fmtTime(state.minutes) });
-  renderMoments();
-  try{
-    const text = `${v}\n📍 黑珍珠 灵魂酒吧`;
-    if(A.social && A.social.postMoment) A.social.postMoment({ text });
-    else if(A.moments && A.moments.create) A.moments.create({ text:`${v} · 黑珍珠` });
-    else if(A.feed && A.feed.post) A.feed.post({ text });
-  }catch(e){}
-  toast("📸 已存进今晚的相册");
-}
-function renderMoments(){
-  const f=$("#momentsFeed"); if(!f) return; f.innerHTML="";
-  if(!state.moments.length){
-    const e=document.createElement("div"); e.className="sys";
-    e.textContent="今晚还没拍照。点 📸 让驻场摄影师拍一张，或写句话留念。";
-    f.appendChild(e);
-  }
-  state.moments.forEach((m, idx)=>{
-    const c=document.createElement("div"); c.className="polaroid";
-
-    /* 图片区：根据状态显示不同内容 */
-    let phContent = "";
-    if(m.dataUrl){
-      // 已生成图片
-      phContent = `<img src="${m.dataUrl}" alt="${m.caption||'合照'}" class="ph-img" loading="lazy" />`;
-    } else if(m.imageStatus==="generating"){
-      // 生成中：动画加载
-      phContent = `<div class="ph-loading"><div class="ph-spinner"></div><span>正在洗照片…</span></div>`;
-    } else if(m.imageStatus==="unavailable"){
-      // 未配置生图
-      phContent = `<div class="ph-unavailable">📷<span>生图未配置</span></div>`;
-    } else if(m.imageStatus==="failed"){
-      // 生成失败
-      phContent = `<div class="ph-failed">📷<span>生成失败</span></div>`;
-    } else {
-      // 无图片（旧数据/文字留念）
-      phContent = `<div class="ph-placeholder">📷</div>`;
-    }
-
-    c.innerHTML=`<div class="ph">${phContent}</div><div class="cap">${m.caption}</div>${m.scene?`<div class="scene">${m.scene}</div>`:""}<div class="mt">${m.time} · 黑珍珠</div>${m.dataUrl?`<button class="dl-btn" data-idx="${idx}">⬇ 保存图片</button>`:""}`;
-    f.appendChild(c);
-  });
-  f.scrollTop=f.scrollHeight;
-  // 绑定下载按钮（仅已生成图片的）
-  f.querySelectorAll(".dl-btn").forEach(btn=>{
-    btn.onclick=()=>{ const idx=btn.getAttribute("data-idx"); downloadPolaroid(state.moments[Number(idx)]); };
-  });
-}
-$("#photoBtn").onclick=takePhoto;
-$("#photoBtnL").onclick=takePhoto;
-$("#momentSend").onclick=sendMoment;
-$("#momentInput").addEventListener("input",e=>{ e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,96)+"px"; });
-$("#momentInput").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendMoment(); } });
-
-/* ---------- 拍立得下载为图片 ---------- */
-function downloadPolaroid(m){
-  // 如果有 AI 生成的真实图片，直接下载
-  if(m.dataUrl){
-    const link=document.createElement("a");
-    link.download=`黑珍珠_${(m.caption||"photo").slice(0,12).replace(/[\\/:*?"<>|]/g,"_")}.png`;
-    link.href=m.dataUrl; link.click();
-    return;
-  }
-  // 无图片：用 canvas 生成文字版拍立得（兼容旧数据/纯文字留念）
-  const W=400, H=520;
-  const cv=document.createElement("canvas"); cv.width=W; cv.height=H;
-  const ctx=cv.getContext("2d");
-  // 白色拍立得底
-  ctx.fillStyle="#fbf7ef"; ctx.fillRect(0,0,W,H);
-  // 底部留白（拍立得经典宽边）
-  const imgH=300, topY=20;
-  // 图片区：深紫渐变背景 + 酒吧氛围
-  const g=ctx.createLinearGradient(0,topY,0,topY+imgH);
-  g.addColorStop(0,"#2a2140"); g.addColorStop(1,"#3a2b52");
-  ctx.fillStyle=g; ctx.roundRect(16,topY,W-32,imgH,8); ctx.fill();
-  // 相机图标
-  ctx.font="48px serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
-  ctx.fillStyle="#e7c98b"; ctx.fillText("📷",W/2,topY+imgH/2);
-  // 文字区
-  let ty=topY+imgH+22;
-  // caption
-  ctx.font="bold 17px -apple-system,PingFang SC,Microsoft YaHei,sans-serif";
-  ctx.fillStyle="#2a2330"; ctx.textAlign="left"; ctx.textBaseline="top";
-  wrapText(ctx,m.caption||"微醺夜未央",24,ty,W-48,22);
-  ty+=ctx.measureText(m.caption||"").width?50:30;
-  // scene
-  if(m.scene){
-    ctx.font="13.5px -apple-system,PingFang SC,Microsoft YaHei,sans-serif";
-    ctx.fillStyle="#6a6072";
-    wrapText(ctx,m.scene,24,ty,W-48,19); ty+=40;
-  }
-  // 时间 + 定位
-  ctx.font="11.5px -apple-system,PingFang SC,Microsoft YaHei,sans-serif";
-  ctx.fillStyle="#a59cb0"; ctx.textAlign="right";
-  ctx.fillText((m.time||"")+" · 黑珍珠",W-24,H-18);
-  // 触发下载
-  const link=document.createElement("a");
-  link.download=`黑珍珠_${(m.caption||"photo").slice(0,12).replace(/[\\/:*?"<>|]/g,"_")}.png`;
-  link.href=cv.toDataURL("image/png"); link.click();
-}
-function wrapText(ctx,text,x,y,maxW,lineH){
-  if(!text) return;
-  const words=text.split("");
-  let line="", cy=y;
-  for(const ch of words){
-    const test=line+ch;
-    if(ctx.measureText(test).width>maxW&&line){ ctx.fillText(line,x,cy); line=ch; cy+=lineH; }
-    else line=test;
-  }
-  if(line) ctx.fillText(line,x,cy);
 }
 
 /* ---------- 离店：账单 + 记忆回写 ---------- */

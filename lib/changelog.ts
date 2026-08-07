@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.2.2";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.2",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v12：UI 修复 + 删相册 + 菜单可点击",
+    highlights: [
+      "调酒结果显示栏改为不透明实底（#1a1528），解决透明导致看不清字的问题",
+      "「给你调一杯」标题后增加「剧本再生成请等待…」提示文案",
+      "删除相册/拍照功能（始终无法使用，生图 API 依赖宿主配置）：移除相册房间、tab按钮、拍照JS、相关CSS",
+      "调酒台菜单（点单/自调/让TA调）增加 z-index + isolation:isolate，修复游戏层遮挡导致点击无响应",
+    ],
+  },
   {
     version: "1.2.1",
     date: "2026-08-07",
