@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.7";
+export const APP_VERSION = "1.2.8";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.8",
+    date: "2026-08-07",
+    title: "记忆联动可视化：剧情 / 漫卷 / 线上聊天 记忆连贯一目了然",
+    highlights: [
+      "记忆库「共享事件」页此前只显示朋友圈/群聊/访谈，现已把剧情(story)、漫卷(vn)、跑团(map)、线下聊天(chat_offline)、自定义APP(custom_app，如黑珍珠酒吧) 一并纳入，跨 App 记忆联动完整可见",
+      "记忆详情页顶部新增「记忆联动」概览卡：按来源 App 统计各渠道贡献条数（聊天/群聊/朋友圈/剧情/漫卷/酒吧APP…），一眼确认这些线上线下的走剧情功能共享同一份角色记忆、互相连贯",
+      "底层机制确认：剧情/漫卷/线上聊天 共用同一份以 characterId 为主键的记忆库，短期时间线由 loadNativeTimeline 统一聚合，记忆在 App 间原生连贯——此前缺少可见的「更新列表」导致难以确认，现已补齐",
+    ],
+  },
   {
     version: "1.2.7",
     date: "2026-08-07",

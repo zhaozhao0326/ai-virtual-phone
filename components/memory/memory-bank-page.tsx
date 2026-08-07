@@ -151,6 +151,34 @@ function relativeTime(isoStr: string): string {
     return `${Math.floor(days / 30)}个月前`;
 }
 
+/** 把时间线条目的来源 App 映射成友好中文标签（用于「记忆联动」概览） */
+const APP_LABEL_MAP: Record<string, string> = {
+    chat: "聊天",
+    moments: "朋友圈",
+    story: "剧情",
+    vn: "漫卷",
+    map: "冒险",
+    game: "小游戏",
+    xiaohongshu: "小红书",
+    checkphone: "查手机",
+    interview_magazine: "访谈",
+    cocreate: "共创",
+    diary: "日记",
+    custom_app: "APP",
+};
+
+function timelineSourceLabel(e: NativeTimelineEntry): string {
+    if (e.sourceApp === "chat") {
+        if (e.sourceDetail === "group") return "群聊";
+        if (e.sourceDetail === "chat_offline") return "线下聊天";
+        return "私聊";
+    }
+    if (e.sourceApp === "moments") return "朋友圈";
+    if (e.sourceApp === "story" && e.sourceDetail === "black_market_theater") return "小剧场";
+    if (e.sourceApp === "custom_app") return e.customAppLabel || e.customAppName || "APP";
+    return APP_LABEL_MAP[e.sourceApp] || e.sourceApp;
+}
+
 type CharacterMemoryInfo = {
     character: Character;
     longTermCount: number;
@@ -173,6 +201,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
     const [longTermEntries, setLongTermEntries] = useState<MemoryEntry[]>([]);
     const [shortTermEvents, setShortTermEvents] = useState<NativeTimelineEntry[]>([]);
     const [sharedEvents, setSharedEvents] = useState<NativeTimelineEntry[]>([]);
+    const [linkageApps, setLinkageApps] = useState<{ label: string; count: number }[]>([]);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [summarizing, setSummarizing] = useState(false);
@@ -262,16 +291,36 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
         }
         // Native timeline is sync (localStorage) — no await needed.
         // 只取最近一段（全量可能几万条），防止解析+渲染把 iOS Safari 内存顶爆
-        const timeline = loadNativeTimeline(charId).slice(-MEMORY_TIMELINE_ENTRY_CAP);
+        const allEvents = loadNativeTimeline(charId);
+        const timeline = allEvents.slice(-MEMORY_TIMELINE_ENTRY_CAP);
         setShortTermEvents(timeline.filter(e =>
             !(e.sourceApp === "moments" && e.postAuthorType === "user")
             && !(e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue")
         ));
+        // 跨 App 记忆联动：聊天/群聊/朋友圈/剧情/漫卷/线下/酒吧APP 等全部聚合进同一份角色记忆。
+        // 这里把剧情(story)、漫卷(vn)、跑团(map)、线下聊天(chat_offline)、自定义APP(custom_app) 一并纳入，
+        // 让「共享事件」页真正成为跨 App 记忆连贯的可见列表。
         setSharedEvents(timeline.filter(e =>
             (e.sourceApp === "moments" && e.postAuthorType === "user") ||
             (e.sourceApp === "chat" && e.sourceDetail === "group") ||
-            (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue")
+            (e.sourceApp === "interview_magazine" && e.sourceDetail === "interview_shared_issue") ||
+            e.sourceApp === "story" ||
+            e.sourceApp === "vn" ||
+            e.sourceApp === "map" ||
+            (e.sourceApp === "chat" && e.sourceDetail === "chat_offline") ||
+            e.sourceApp === "custom_app"
         ));
+        // 记忆联动概览：统计各 App 贡献条数，让用户一眼确认「剧情/漫卷/聊天 记忆是连贯共享的」
+        const linkCount = new Map<string, number>();
+        for (const e of allEvents) {
+            const label = timelineSourceLabel(e);
+            linkCount.set(label, (linkCount.get(label) || 0) + 1);
+        }
+        setLinkageApps(
+            Array.from(linkCount.entries())
+                .map(([label, count]) => ({ label, count }))
+                .sort((a, b) => b.count - a.count),
+        );
         setLoading(false);
     }, []);
 
@@ -650,6 +699,22 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
             <div className="flex flex-col absolute inset-0 overflow-hidden" style={{ padding: "0 16px" }}>
                 {/* Content */}
                 <div className="memory-detail-scroll flex-1 overflow-y-auto flex flex-col gap-2 min-h-0">
+                    {/* 记忆联动概览：跨 App 共享确认（聊天/剧情/漫卷/酒吧APP 等共享同一份角色记忆） */}
+                    {linkageApps.length > 0 && (
+                        <div style={{ background: "color-mix(in srgb, var(--c-success, #3fae7a) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--c-success, #3fae7a) 32%, transparent)", borderRadius: 12, padding: "10px 12px", marginBottom: 2 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7, flexWrap: "wrap" }}>
+                                <span className="ui-status-tag" data-variant="success">记忆联动</span>
+                                <span style={{ fontSize: 11, color: "var(--text-secondary)", lineHeight: 1.4 }}>以下 App 共享同一份角色记忆，剧情进度互相连贯</span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                {linkageApps.map(a => (
+                                    <span key={a.label} style={{ fontSize: 11, padding: "3px 9px", borderRadius: 999, background: "color-mix(in srgb, var(--c-panel, #fff) 70%, transparent)", border: "1px solid var(--c-panel-border)", color: "var(--text-primary)" }}>
+                                        {a.label}<b style={{ marginLeft: 5, opacity: 0.55, fontWeight: 600 }}>{a.count}</b>
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <MemoryDetailBoundary>
                     {loading ? (
                         <p className="text-center ts-14 mt-10 text-secondary">
@@ -667,7 +732,7 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                         /* ── Shared events: card view ── */
                         sharedEvents.length === 0 ? (
                             <p className="text-center ts-14 mt-10 text-secondary">
-                                暂无共享事件。用户发朋友圈或参与群聊后会自动显示。
+                                暂无共享事件。发朋友圈、参与群聊，或在剧情/漫卷/线下/酒吧 APP 里与该角色互动后，会自动汇总到这里。
                             </p>
                         ) : (
                             <MemoryTimeline
