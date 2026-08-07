@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.5";
+export const APP_VERSION = "1.2.6";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.2.6",
+    date: "2026-08-07",
+    title: "黑珍珠灵魂酒吧 v16：修复选完老板/调酒师后「开始营业」按钮不可见（被挤出屏幕）",
+    highlights: [
+      "修复 staffSetup 弹窗角色列表过长时「开始营业 ▸」按钮被推出可视区域外、无法点击的阻断性 bug",
+      "setup-grid 最大高度从 34vh 缩减至 22vh（两个列表不再撑满屏幕）；setup-card 增加 max-height + overflow-y:auto（整体可滚动）",
+      "添加 -webkit-overflow-scrolling:touch 提升移动端滚动流畅度",
+      "打包 soul-bar-app-16.zip",
+    ],
+  },
   {
     version: "1.2.5",
     date: "2026-08-07",
