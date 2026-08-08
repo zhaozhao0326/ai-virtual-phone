@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.2.9";
+export const APP_VERSION = "1.3.0";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.0",
+    date: "2026-08-08",
+    title: "生图修复：OAI 锁脸+提示词协同 + 角色参考图按世界折叠",
+    highlights: [
+      "生图(OAI)修复：带参考图时模型(edits)会把两张参考图拼回输出、忽略关键词。现改为参考图仅锁定面部特征与身份(锁脸)，场景/动作/构图由文字提示词主导，并显式禁止拼贴参考图、禁止照搬原背景/姿势/衣服",
+      "诊断增强：服务端记录 endpoint(edits/generations)、参考图数量、实际发出的 prompt 预览，方便排查生图异常",
+      "角色参考图设置新增「世界分组折叠」：不同世界为大折叠块、世界内角色为子折叠，默认展开第一个世界，长列表不再一次性铺开",
+    ],
+  },
   {
     version: "1.2.9",
     date: "2026-08-07",
