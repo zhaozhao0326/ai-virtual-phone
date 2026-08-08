@@ -296,7 +296,36 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     const url = `${baseUrl}/ai/generate-image`;
     const sizeStr = input.novelaiSize || "832x1216";
     const [width, height] = NAI_SIZE_MAP[sizeStr] || ([832, 1216] as [number, number]);
-    const finalPrompt = buildNaiPrompt(finalUserPrompt, input);
+    let finalPrompt = buildNaiPrompt(finalUserPrompt, input);
+
+    // ── 参考图锁脸预处理（NAI V4.5 character_reference + 锚点注入）──
+    // NAI 锁脸靠锚点 token {charN}，不是人物名字。必须注入锚点，否则写名字锁不住脸。
+    let naiCharRef: Record<string, unknown> | null = null;
+    if (input.referenceImages?.length) {
+        const dataUrls = (input.referenceImages as string[])
+            .filter((d) => typeof d === "string" && d.startsWith("data:"))
+            .slice(0, 4);
+        if (dataUrls.length) {
+            const charKeys = dataUrls.map((_, i) => `char${i + 1}`);
+            const charCaption: Record<string, string> = {};
+            charKeys.forEach((k) => (charCaption[k] = ""));
+            naiCharRef = {
+                char_caption: charCaption,
+                char_guidance: 1,
+                char_blend: false,
+                use_coords: false,
+                images: dataUrls,
+                strength: 1,
+                fidelity: 0.75,
+            };
+            // 自动把锚点写进提示词，确保锁脸真正生效（用户写场景/名字也能锁）
+            if (!finalPrompt.includes("{char1}")) {
+                const anchors = charKeys.map((k) => `{${k}}`).join(" ");
+                finalPrompt = `${finalPrompt} ${anchors}`.trim();
+            }
+            console.log("[NAI-PROMPT] character_reference 注入数量:", dataUrls.length, "锚点:", charKeys.join(","));
+        }
+    }
 
     const seedValue = (typeof input.novelaiSeed === "string" && input.novelaiSeed ? parseInt(input.novelaiSeed, 10) : 0) || Math.floor(Math.random() * 2 ** 53);
     // ── 完全对齐 7xrk/novelai-api（权威SDK源码）──
@@ -368,18 +397,9 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
       // ⚠️ 不发送ucPreset！SDK只在客户端用它拼接negative_prompt标签，不传给NAI API
     };
 
-    // ── 参考图锁脸（NAI V4.5 character_reference，仅 V4.5 模型生效）──
-    // 把参与者头像作为参考图注入，让 NAI 锁定各自外貌/脸。type="character" 只传外观、保留生图风格。
-    if (input.referenceImages?.length) {
-        const refs = input.referenceImages
-            .map((d) => (d && d.startsWith("data:") ? cleanBase64(d).b64 : null))
-            .filter(Boolean)
-            .slice(0, 4)
-            .map((b64) => ({ image: b64, type: "character", strength: 1, fidelity: 0.75 }));
-        if (refs.length) {
-            (parameters as Record<string, unknown>).character_reference = refs;
-            console.log("[NAI-PROMPT] character_reference 注入数量:", refs.length);
-        }
+    // ── 参考图锁脸（NAI V4.5 对象格式；锚点已在上方注入提示词）──
+    if (naiCharRef) {
+        (parameters as Record<string, unknown>).character_reference = naiCharRef;
     }
     const body = JSON.stringify({
       input: finalPrompt,
