@@ -143,10 +143,15 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background-color: #c2e2f0;
-  background-image:
-    radial-gradient(ellipse 160% 140% at 90% 0%, rgba(60, 130, 210, 0.75) 0%, rgba(90, 160, 225, 0.35) 40%, transparent 80%),
-    radial-gradient(ellipse 160% 140% at 5% 100%, rgba(100, 218, 195, 0.4) 0%, rgba(150, 235, 218, 0.15) 40%, transparent 80%);
+  background-color: #A8B5FF;
+  background-image: linear-gradient(
+    to bottom,
+    #A8B5FF 0%,
+    #C8A8FF 30%,
+    #FFB7C5 50%,
+    #FFD8A8 70%,
+    #FFE4A0 100%
+  );
   background-repeat: no-repeat;
   background-position: center;
   background-size: cover;
@@ -321,332 +326,523 @@
   --slot-size: clamp(56px, calc((100vw - 108px) / 4), 66px);
   --slot-gap-x: 20px;
   --slot-gap-y: var(--home-row-gap-y);
-  --slot-icon-width: min(62px, var(--slot-size));
-  --slot-icon-height: min(62px, var(--slot-size));
-  --slot-row-step: calc(var(--slot-icon-height) + var(--slot-gap-y));
-  --slot-icon-offset-x: calc((var(--slot-size) - var(--slot-icon-width)) / 2);
-  margin-top: 2px;
   display: grid;
   grid-template-columns: repeat(4, var(--slot-size));
-  grid-template-rows: repeat(6, minmax(0, 1fr));
+  grid-template-rows: repeat(6, 1fr);
   column-gap: var(--slot-gap-x);
   row-gap: var(--slot-gap-y);
-  min-height: 0;
   justify-content: center;
-  padding: 0 0 var(--home-grid-bottom-trim);
-}
-
-/* 三种网格模式统一使用 --home-grid-bottom-trim：此前这里硬编码 1px，
-   把变量在首页/组件页架空，导致底部留白只对纯图标翻页生效。 */
-.icon-grid-page1 {
-  padding-bottom: var(--home-grid-bottom-trim);
-}
-
-
-/* Explicit grid mode (used when widgets present) */
-.icon-grid-explicit {
-  padding-bottom: var(--home-grid-bottom-trim);
-}
-
-.icon-grid .widget-glass {
-  justify-self: start;
-  align-self: start;
-  margin-left: var(--slot-icon-offset-x);
-}
-
-.icon-grid .widget-1x2 {
-  width: calc(var(--slot-icon-width) + var(--slot-size) + var(--slot-gap-x));
-  height: var(--slot-icon-height);
-}
-
-.icon-grid .widget-2x2 {
-  width: calc(var(--slot-icon-width) + var(--slot-size) + var(--slot-gap-x));
-  height: calc(var(--slot-icon-height) + var(--slot-row-step));
-}
-
-.icon-grid .widget-1x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: 58px;
-}
-
-.icon-grid .widget-2x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + var(--slot-row-step));
-}
-
-.icon-grid .widget-3x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (2 * var(--slot-row-step)));
-}
-
-/* 扩展的大型网格公式 */
-.icon-grid .widget-1x1 {
-  width: var(--slot-icon-width);
-  height: var(--slot-icon-height);
-}
-
-.icon-grid .widget-2x1 {
-  width: var(--slot-icon-width);
-  height: calc(var(--slot-icon-height) + var(--slot-row-step));
-}
-
-.icon-grid .widget-2x3 {
-  width: calc(var(--slot-icon-width) + (2 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + var(--slot-row-step));
-}
-
-.icon-grid .widget-3x2 {
-  width: calc(var(--slot-icon-width) + var(--slot-size) + var(--slot-gap-x));
-  height: calc(var(--slot-icon-height) + (2 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-3x3 {
-  width: calc(var(--slot-icon-width) + (2 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (2 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-4x2 {
-  width: calc(var(--slot-icon-width) + var(--slot-size) + var(--slot-gap-x));
-  height: calc(var(--slot-icon-height) + (3 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-4x3 {
-  width: calc(var(--slot-icon-width) + (2 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (3 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-4x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (3 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-5x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (4 * var(--slot-row-step)));
-}
-
-.icon-grid .widget-6x4 {
-  width: calc(var(--slot-icon-width) + (3 * (var(--slot-size) + var(--slot-gap-x))));
-  height: calc(var(--slot-icon-height) + (5 * var(--slot-row-step)));
-}
-
-.icon-item,
-.dock-item {
-  border: 0;
-  background: transparent;
-  border-radius: 18px;
-  display: grid;
   align-content: start;
-  justify-items: center;
-  gap: 5px;
-  width: var(--slot-size);
-  min-height: 84px;
-  padding: 0;
-  cursor: pointer;
-  box-shadow: none;
-  /* grid-row/grid-column 不可过渡（让位平滑由 JS FLIP 实现） */
-  transition: transform 0.4s cubic-bezier(0.25, 1.25, 0.3, 1), opacity 0.3s ease;
+  /* grid 容器的 padding：
+     - 水平不给，靠 justify-content居中
+     - 垂直上下撑开，避免拖拽边缘被裁 */
+  padding-top: 2px;
+  padding-bottom: 24px;
 }
 
-.icon-item:active,
-.dock-item:active {
-  transform: scale(0.88);
-  opacity: 0.8;
-  transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.1s ease;
-}
-
-.icon-glyph-box {
-  /* 跟随格子收缩（无 --slot-size 上下文时回退 58px 原值） */
-  width: min(58px, var(--slot-size, 58px));
-  height: min(58px, var(--slot-size, 58px));
-  border-radius: 16px;
-  border: none;
+.icon-grid-slot,
+.dock-slot {
   display: grid;
   place-items: center;
   position: relative;
-  overflow: hidden;
-  background: var(--c-desktop-icon-box, #ffffff);
-  box-shadow: none;
+  /* 基础动画只包括状态切换（比如 active 缩放） */
+  transition: opacity 0.2s;
+  /* 默认可拖拽 */
+  cursor: grab;
+}
+.icon-grid-slot:active,
+.dock-slot:active {
+  cursor: grabbing;
 }
 
-/* Base Effects overrides for icon-glyph-box */
-/* 立体打光整体减淡：斜光层次保留，各层高光强度降约四成，凸面感变弱 */
-.phone-shell[data-icon-effect="glass"] .icon-glyph-box {
-  background:
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.17),
-      color-mix(in srgb, var(--c-desktop-icon-bg, #c7b8ff) 6%, transparent),
-      rgba(255, 255, 255, 0.07)),
-    color-mix(in srgb, var(--c-desktop-icon-box, #ffffff) 38%, transparent);
-  backdrop-filter: blur(22px) saturate(140%);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.28),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.05),
-    0 8px 32px rgb(0 0 0 / calc(0.15 * var(--desktop-shadow-strength, 0))),
-    0 0 18px color-mix(in srgb, var(--c-desktop-icon-bg, #c7b8ff) 8%, transparent);
-  isolation: isolate;
-  transform: translateZ(0);
-  will-change: transform;
-}
-
-.phone-shell[data-icon-effect="glass"] .icon-glyph-box::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 1;
-  background:
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.2) 0%,
-      rgba(255, 255, 255, 0.06) 42%,
-      transparent 72%);
-  mix-blend-mode: screen;
-}
-
-.phone-shell[data-icon-effect="glass"] .icon-glyph-box::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.5px;
-  pointer-events: none;
-  z-index: 3;
-  background:
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.48),
-      rgba(255, 255, 255, 0.14) 40%,
-      rgba(255, 255, 255, 0.12) 62%,
-      rgba(255, 255, 255, 0.18));
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.phone-shell[data-glass-pass="1"][data-icon-effect="glass"] .icon-glyph-box {
-  backdrop-filter: blur(22.01px) saturate(140%);
-  -webkit-backdrop-filter: blur(22.01px) saturate(140%);
-}
-
-.phone-shell[data-icon-effect="transparent"] .icon-glyph-box {
-  /** background-color: transparent !important; */
-  box-shadow: none !important;
-}
-
-.icon-glyph-box-skin {
-  overflow: hidden;
-  border: none;
-}
-
-.icon-skin-layer {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
-}
-
-
-.icon-glyph {
-  width: 28px;
-  height: 28px;
-  color: var(--c-desktop-icon, #2f343b);
+/* 占据多个格子的组件容器 */
+.widget-slot {
+  /* 尺寸由行内样式 gridArea 控制 (如 1/1/3/3 占据 2x2) */
+  display: block;
   position: relative;
-  z-index: 2;
+  cursor: grab;
+  /* 高度自动由 grid-template-rows 拉伸 */
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-2xl);
+  /* 默认使用毛玻璃底色，可在组件内覆盖 */
+  background: var(--c-desktop-icon-box);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.widget-slot:active {
+  cursor: grabbing;
+  transform: scale(0.96);
+  opacity: 0.9;
 }
 
-.icon-glyph-hidden {
+/* Paged dots indicator */
+.phone-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+  flex: 0 0 auto;
+  z-index: 2;
+  margin-bottom: 12px;
+}
+
+.pager-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transition: background 0.3s, transform 0.3s;
+}
+
+.pager-dot.active {
+  background: #ffffff;
+  transform: scale(1.2);
+}
+
+/* ── Dock ── */
+
+.phone-dock {
+  --slot-size: clamp(56px, calc((100vw - 108px) / 4), 66px);
+  --slot-gap-x: 20px;
+  margin-inline: 12px;
+  margin-bottom: 12px;
+  height: clamp(86px, calc(var(--slot-size) + 30px), 96px);
+  border-radius: 30px;
+  background: var(--c-desktop-icon-box);
+  backdrop-filter: blur(var(--dock-blur, 16px));
+  -webkit-backdrop-filter: blur(var(--dock-blur, 16px));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--slot-gap-x);
+  z-index: 2;
+  flex: 0 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.dock-skin-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+/* When in edit mode, make all slots visually distinct and slightly smaller */
+.phone-workspace.edit-mode .icon-grid-slot,
+.phone-workspace.edit-mode .dock-slot,
+.phone-workspace.edit-mode .widget-slot {
+  animation: jiggle 0.3s infinite alternate;
+}
+
+/* Pseudo-element to make drop zones visible during drag */
+.phone-workspace.edit-mode.is-dragging .icon-grid-slot::after,
+.phone-workspace.edit-mode.is-dragging .dock-slot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.phone-workspace.edit-mode.is-dragging .icon-grid-slot.drag-over::after,
+.phone-workspace.edit-mode.is-dragging .dock-slot.drag-over::after {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  transform: scale(1.05);
+}
+
+/* Staggered jiggle animation for empty slots to show they can be interacted with */
+@keyframes jiggle {
+  0% { transform: rotate(-1.5deg) scale(0.98); }
+  100% { transform: rotate(1.5deg) scale(0.98); }
+}
+
+/* Add staggered delays to make it look organic */
+.icon-grid-slot:nth-child(2n) { animation-delay: -0.1s; }
+.icon-grid-slot:nth-child(3n) { animation-delay: -0.2s; }
+.icon-grid-slot:nth-child(5n) { animation-delay: -0.15s; }
+
+/* In edit mode, hide app titles to focus on icons */
+.phone-workspace.edit-mode .app-title {
   opacity: 0;
 }
 
-.desktop-icon-badge {
+/* Add a "done" button somewhere during edit mode, or just tap background.
+   For now, we rely on tapping the pager or an empty area. */
+
+/* ── Active App Container ── */
+
+.active-app-container {
   position: absolute;
-  z-index: 5;
-  top: 4px;
-  right: 4px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 5px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  background: #ef4444;
-  border: 1.5px solid rgba(255, 255, 255, 0.92);
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.22);
-  font-size: calc(9.5px*var(--app-text-scale,1));
-  font-weight: 850;
-  line-height: 1;
+  inset: 0;
+  z-index: 100;
+  background: #ffffff;
+  /* Start hidden & scaled down slightly */
+  opacity: 0;
   pointer-events: none;
-}
-
-.icon-label {
-  font-size: calc(9.9px*var(--app-text-scale,1));
-  font-weight: 500;
-  text-align: center;
-  color: var(--c-home-label);
-  text-shadow: none;
-  letter-spacing: 0.01em;
-  line-height: 1.1;
-  width: 100%;
-  white-space: nowrap;
+  transform: scale(0.92);
+  transition: opacity 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              transform 280ms cubic-bezier(0.25, 1.05, 0.35, 1);
   overflow: hidden;
-  text-overflow: ellipsis;
+  border-radius: var(--phone-screen-radius);
+  isolation: isolate;
 }
 
-/* ── Edit mode (long-press drag) ── */
+.active-app-container.app-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: scale(1);
+}
 
-.edit-mode .icon-item {
-  animation: jiggle 0.22s ease-in-out infinite;
+.active-app-container.app-open.no-transition {
+  transition: none;
 }
-/* FLIP 让位动画进行中暂停抖动——CSS animation 的 transform 会覆盖行内 FLIP 位移 */
-.edit-mode .icon-item[data-flip-active] {
-  animation: none;
+
+/* Home Bar (iOS style) */
+.home-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 134px;
+  height: 5px;
+  border-radius: 4px;
+  background: #000000;
+  z-index: 999;
+  cursor: pointer;
+  opacity: 0.15;
+  transition: opacity 0.2s, background 0.3s;
 }
-.edit-mode .icon-item:nth-child(even) {
-  animation-delay: -0.11s;
-  animation-duration: 0.26s;
+
+/* Allow swiping up on the home bar */
+.home-bar-touch-area {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 30px;
+  z-index: 999;
+  cursor: pointer;
 }
-.edit-mode .widget-glass {
-  animation: jiggle 0.28s ease-in-out infinite;
-  animation-delay: -0.06s;
+
+.app-open .home-bar {
+  opacity: 0.4; /* Slightly more visible inside apps */
 }
-.edit-mode .icon-item.dragging,
-.edit-mode .widget-drag-wrap.dragging .widget-glass {
-  opacity: 0.25;
-  animation: none;
+
+.home-bar:hover {
+  opacity: 0.8;
 }
-/* 编辑态下 DIY code 组件的 iframe 放弃指针事件：否则按在 iframe 上的
-   pointerdown 进不了宿主的拖拽处理，组件拖不动 */
-.edit-mode .widget-glass iframe {
+
+.home-bar:active {
+  opacity: 1;
+  transform: translateX(-50%) scale(0.95);
+}
+
+/* Theme app uses a dark home bar on light themes, etc. 
+   We can let apps override .home-bar color via variables later */
+
+
+/* ── App Icons ── */
+
+.app-icon-hitbox {
+  width: var(--slot-icon-width, 62px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  /* 允许点透，只有内部的图形和文字响应交互 */
   pointer-events: none;
 }
-/* Dock icons jiggle & drag just like grid icons in edit mode. */
-.dock.edit-mode .dock-item {
-  animation: jiggle 0.22s ease-in-out infinite;
-}
-.dock.edit-mode .dock-item[data-flip-active] {
-  animation: none;
-}
-.dock.edit-mode .dock-item:nth-child(even) {
-  animation-delay: -0.11s;
-  animation-duration: 0.26s;
-}
-.dock.edit-mode .dock-item.dragging {
-  opacity: 0.25;
-  animation: none;
-}
-.widget-drag-wrap {
-  display: contents;
-  -webkit-touch-callout: none;
+
+/* 只有非编辑态才允许点击打开 */
+.phone-workspace:not(.edit-mode) .app-icon-hitbox {
+  pointer-events: auto;
+  cursor: pointer;
 }
 
-.icon-grid .widget-glass {
+/* Base shape for desktop icons */
+.app-icon-shape {
+  width: var(--slot-icon-width, 62px);
+  height: var(--slot-icon-height, 62px);
+  border-radius: 14px;
+  background-color: var(--c-desktop-icon-bg);
+  color: var(--c-desktop-icon);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 32px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+  /* 开启 3D 渲染，防止 Safari 下圆角结合 transform overflow-hidden 时的毛边锯齿 */
+  transform: translateZ(0);
+  outline: var(--desktop-outline-width, 0.5px) solid var(--desktop-outline-color, rgba(0, 0, 0, 0.05));
+  outline-offset: calc(var(--desktop-outline-width, 0.5px) * -1);
+}
+
+/* Subtle inner glare / glass effect for default icons */
+.app-icon-shape[data-effect="glass"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0.0) 50%,
+    rgba(0, 0, 0, 0.05) 100%
+  );
+  pointer-events: none;
+}
+
+.app-icon-shape[data-effect="flat"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.02);
+  pointer-events: none;
+}
+
+/* 扁平化图标：完全去掉外发光阴影与内描边，适合极简或像素风 */
+.app-icon-shape[data-effect="flat"] {
+  box-shadow: none;
+  outline: none;
+}
+
+/* 拟物化图标：增强 3D 感、倒角高光与底部投影 */
+.app-icon-shape[data-effect="skeuomorphism"] {
+  box-shadow: 
+    inset 0 2px 2px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.15),
+    0 8px 16px rgba(0, 0, 0, 0.18),
+    0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.app-icon-shape[data-effect="skeuomorphism"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 30% 20%,
+    rgba(255, 255, 255, 0.4) 0%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  pointer-events: none;
+}
+
+/* Specific App Colors */
+.app-icon-shape.bg-chat { background-color: #34C759; }
+.app-icon-shape.bg-theme { background-color: #007AFF; }
+.app-icon-shape.bg-character { background-color: #5856D6; }
+.app-icon-shape.bg-settings { background-color: #8E8E93; }
+.app-icon-shape.bg-music { background-color: #FF2D55; }
+.app-icon-shape.bg-calendar { background-color: #FF9500; }
+.app-icon-shape.bg-qa { background-color: #4A90E2; }
+.app-icon-shape.bg-diary { background-color: #FFCC00; }
+.app-icon-shape.bg-xiaohongshu { background-color: #FF2442; }
+.app-icon-shape.bg-story { background-color: #A2845E; }
+.app-icon-shape.bg-vn { background-color: #9C27B0; }
+.app-icon-shape.bg-reading { background-color: #FF7043; }
+.app-icon-shape.bg-map { background-color: #4CAF50; }
+.app-icon-shape.bg-dwelling { background-color: #795548; }
+.app-icon-shape.bg-resources { background-color: #FFB300; }
+.app-icon-shape.bg-checkphone { background-color: #607D8B; }
+.app-icon-shape.bg-shopping { background-color: #FF5722; }
+.app-icon-shape.bg-game { background-color: #E91E63; }
+.app-icon-shape.bg-interview { background-color: #424242; }
+.app-icon-shape.bg-cocreate { background-color: #00BCD4; }
+.app-icon-shape.bg-appmarket { background-color: #673AB7; }
+.app-icon-shape.bg-custom { background-color: #607D8B; }
+
+.app-title {
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-desktop-icon, #ffffff);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+  /* 允许点击文字也能触发 */
+  pointer-events: auto;
+}
+
+/* 交互反馈 */
+.app-icon-hitbox:active .app-icon-shape,
+.app-icon-hitbox:active .app-title {
+  transform: scale(0.92);
+  opacity: 0.85;
+  transition: transform 0.1s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.1s ease;
+}
+
+.dock-slot .app-title {
+  display: none;
+}
+
+.dock-slot .app-icon-hitbox {
+  gap: 0;
+}
+
+
+/* ── Lock Screen ── */
+.phone-lockscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 80px;
+  color: #ffffff;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.phone-lockscreen.unlocking {
+  opacity: 0;
+  transform: translateY(-20px);
+  pointer-events: none;
+}
+
+.lock-time {
+  font-size: calc(72px*var(--app-text-scale,1));
+  font-weight: 200;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum" 1;
+}
+
+.lock-date {
+  font-size: calc(20px*var(--app-text-scale,1));
+  font-weight: 400;
+  margin-top: 8px;
+  opacity: 0.9;
+}
+
+.swipe-up-hint {
+  position: absolute;
+  bottom: 40px;
+  font-size: calc(14px*var(--app-text-scale,1));
+  opacity: 0.7;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-10px); }
+  60% { transform: translateY(-5px); }
+}
+
+/* ── Edit Mode Badges (Delete/Remove) ── */
+.icon-remove-badge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #E5E5EA; /* 浅灰底 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  pointer-events: auto;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.2s, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.phone-workspace.edit-mode .icon-remove-badge {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.icon-remove-badge::before {
+  content: "";
+  width: 12px;
+  height: 2px;
+  background: #8E8E93; /* 深灰横线 */
+  border-radius: 1px;
+}
+
+.icon-remove-badge:active {
+  background: #D1D1D6;
+  transform: scale(0.9);
+}
+
+/* ── App Badge (Unread Count) ── */
+.app-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 12px;
+  background: #FF3B30;
+  color: white;
+  font-size: calc(13px*var(--app-text-scale,1));
+  font-weight: 600;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(255, 59, 48, 0.4);
+  border: 2px solid rgba(255,255,255,0.8); /* 边缘描边融入背景 */
+  z-index: 5;
+  pointer-events: none;
+  animation: badgePop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.app-badge.dot {
+  min-width: 12px;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  top: -2px;
+  right: -2px;
+}
+
+@keyframes badgePop {
+  0% { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Widget Glass Container ── */
+.widget-glass {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-2xl);
+  background: var(--c-desktop-icon-box);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  /* FLIP 动画需要 transition */
+  /* transform/opacity 仅用于 JS FLIP 与 active 态，
+     不设 top/left/width/height transition 因为它们由 grid 布局跳变，
+     如果加了 all 0.3s 会干扰 JS 的 transform 计算。 */
   /* grid-row/grid-column 不可过渡（让位平滑由 JS FLIP 实现） */
   transition: transform 0.4s cubic-bezier(0.25, 1.25, 0.3, 1), opacity 0.3s ease;
 }
@@ -677,7 +873,7 @@
   border-radius: 14px;
   /* 弱化存在感：去填充、细实线、低透明度 */
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
   pointer-events: none;
   justify-self: center;
   align-self: start;
@@ -698,502 +894,202 @@
   color: #fff;
   font-size: calc(15px*var(--app-text-scale,1));
   line-height: 20px;
-  text-align: center;
-  padding: 0;
-  margin-top: -4px;
-  margin-right: 2px;
   cursor: pointer;
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  pointer-events: auto;
+  transform: translate(6px, -6px);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
-.edit-mode .widget-delete-btn {
+.phone-workspace.edit-mode .widget-delete-btn {
   display: block;
-  animation: none;
 }
 
-.edit-mode-edit,
-.edit-mode-done {
-  position: absolute;
-  top: 60px;
-  z-index: 400;
-  background: rgba(0, 0, 0, 0.45);
+/* ── DIY Widget Content ── */
+
+/* A container for generic DIY content inside the widget slot */
+.diy-widget-content {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: inherit;
+  color: var(--c-text-title, #2C3440);
+}
+
+/* Layout: Stack with gaps */
+.diy-widget-stack {
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* Common text elements */
+.diy-widget-text-title {
+  font-size: calc(var(--font-size-xl)*var(--app-text-scale,1));
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.diy-widget-text-body {
+  font-size: calc(var(--font-size-sm)*var(--app-text-scale,1));
+  opacity: 0.8;
+  line-height: 1.4;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.diy-widget-text-caption {
+  font-size: calc(var(--font-size-xs)*var(--app-text-scale,1));
+  opacity: 0.6;
+  margin: 0;
+  margin-top: auto;
+}
+
+/* Alignment utilities */
+.diy-widget-align-left { align-items: flex-start; text-align: left; }
+.diy-widget-align-center { align-items: center; text-align: center; }
+.diy-widget-align-right { align-items: flex-end; text-align: right; }
+
+/* Interactive elements inside widget */
+.diy-widget-btn {
+  pointer-events: auto;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--c-icon-active, #4A4A4A);
   color: #fff;
-  border: none;
-  border-radius: 18px;
-  padding: 7px 18px;
-  font-size: calc(14px*var(--app-text-scale,1));
+  font-size: calc(var(--font-size-xs)*var(--app-text-scale,1));
   font-weight: 500;
+  border: none;
+  cursor: pointer;
+}
+.diy-widget-btn:active {
+  opacity: 0.8;
+  transform: scale(0.96);
+}
+
+/* Image blocks */
+.diy-widget-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+}
+
+/* Background overlay when text is placed over image */
+.diy-widget-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.6));
+  z-index: -1;
+  border-radius: inherit;
+}
+
+/* Dark mode text adaptation when over images */
+.diy-widget-content.has-bg-image {
+  color: #fff;
+}
+
+/* Row wrapper for horizontal layouts inside the stack */
+.diy-widget-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Avatar / Icon style image */
+.diy-widget-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+/* Fill remaining space */
+.diy-widget-flex-1 {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Small card embedded in widget */
+.diy-widget-inner-card {
+  background: rgba(255,255,255,0.4);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.diy-widget-content.has-bg-image .diy-widget-inner-card {
+  background: rgba(0,0,0,0.3);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  cursor: pointer;
-  letter-spacing: 0.02em;
-}
-.edit-mode-edit { left: 16px; }
-.edit-mode-done { right: 16px; }
-
-/* ── Widget Picker Bottom Sheet ── */
-.widget-picker-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 300;
-  background: rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: flex-end;
-}
-.widget-picker-sheet {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 300;
-  width: 100%;
-  max-height: 65%;
-  background: var(--c-panel);
-  border-radius: 20px 20px 0 0;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.widget-picker-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
 }
 
-.widget-picker-sheet .wm-cat-item .widget-glass {
-  pointer-events: none;
+/* Specific alignments for the container (if you want text at bottom) */
+.diy-widget-stack-bottom {
+  justify-content: flex-end;
 }
-
-/* ── Page controls ── */
-
-.page-controls {
-  margin-top: 6px;
-  display: flex;
+.diy-widget-stack-center {
   justify-content: center;
-  align-items: center;
-  gap: 10px;
 }
 
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 99px;
-  background: rgba(234, 246, 240, 0.48);
-}
-
-.dot.active {
-  width: 8px;
-  height: 8px;
-  background: rgba(245, 253, 249, 0.96);
-  box-shadow: 0 0 0 1px rgba(241, 251, 246, 0.5);
-}
-
-.dot-btn {
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-/* ── Dock ── */
-
-.dock {
-  /* 宽度随图标数量自适应：只有 3 个时 dock 就窄一格，不再留空位。
-     --dock-count 由 JS 按当前 dock 图标数注入（缺省 4，保证首帧/SSR 观感不变）。 */
-  --dock-count: 4;
-  --slot-size: clamp(56px, calc((100vw - 108px) / 4), 66px);
-  --slot-gap-x: 20px;
+/* Data blocks */
+.diy-widget-stat-group {
+  display: flex;
+  gap: 16px;
   margin-top: 8px;
-  margin-bottom: var(--home-dock-lift);
-  margin-inline: auto;
-  width: min(calc((var(--dock-count) * var(--slot-size)) + ((var(--dock-count) - 1) * var(--slot-gap-x)) + 30px), calc(100% - 8px));
-  /* 默认圆角：9999px(全胶囊)显得太圆，收到 32px 圆角矩形；主题仍可用 --dock-radius 覆盖 */
-  border-radius: var(--dock-radius, 32px);
-  border: var(--dock-border, none);
-  background: var(--c-home-glass);
-  /* 底板高度：图标(58px)在此高度内垂直居中，上下留白 = (高度-58)/2。
-     78→92 让上下各约 10px 增至约 17px，不再挤。可由主题 --dock-height 覆盖。 */
-  min-height: var(--dock-height, 92px);
-  /* 上下 0 内边距 + 网格居中：图标在胶囊内几何对称（旧值 10px/5px 造成图标偏下） */
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--dock-count), var(--slot-size));
-  column-gap: var(--slot-gap-x);
-  row-gap: 0;
-  justify-content: center;
-  align-items: center;
-  backdrop-filter: blur(var(--ui-blur-heavy)) saturate(var(--ui-saturate));
-  -webkit-backdrop-filter: blur(var(--ui-blur-heavy)) saturate(var(--ui-saturate));
-  position: relative;
-  overflow: hidden;
-  z-index: 2;
-  transform: translateZ(0);
-  will-change: transform, backdrop-filter;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 2px 8px rgba(0, 0, 0, 0.03);
 }
-
-.phone-shell[data-glass-pass="1"] .dock {
-  backdrop-filter: blur(calc(var(--ui-blur-heavy) + 0.01px)) saturate(var(--ui-saturate));
-  -webkit-backdrop-filter: blur(calc(var(--ui-blur-heavy) + 0.01px)) saturate(var(--ui-saturate));
-}
-
-/* 立体打光整体减淡：与图标同步降约四成 */
-.phone-shell[data-icon-effect="glass"] .dock:not([data-skinned]) {
-  background:
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.14),
-      color-mix(in srgb, var(--c-desktop-icon-bg, #c7b8ff) 5%, transparent),
-      rgba(255, 255, 255, 0.05)),
-    color-mix(in srgb, var(--c-home-glass, rgba(255, 255, 255, 0.3)) 55%, transparent);
-  border: none;
-  backdrop-filter: blur(24px) saturate(140%);
-  -webkit-backdrop-filter: blur(24px) saturate(140%);
-  box-shadow:
-    inset 0 1px 2px rgba(255, 255, 255, 0.26),
-    inset 0 -1px 1px rgba(255, 255, 255, 0.04),
-    0 8px 32px rgb(0 0 0 / calc(0.14 * var(--desktop-shadow-strength, 0))),
-    0 0 22px color-mix(in srgb, var(--c-desktop-icon-bg, #c7b8ff) 8%, transparent);
-  isolation: isolate;
-}
-
-.phone-shell[data-icon-effect="glass"] .dock:not([data-skinned])::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    linear-gradient(90deg,
-      transparent 8%,
-      rgba(255, 255, 255, 0.32) 50%,
-      transparent 92%) top 0 left 8% / 84% 2px no-repeat,
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.14) 0%,
-      rgba(255, 255, 255, 0.05) 42%,
-      transparent 74%);
-  mix-blend-mode: screen;
-}
-
-.phone-shell[data-icon-effect="glass"] .dock:not([data-skinned])::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 1.5px;
-  pointer-events: none;
-  z-index: 1;
-  background:
-    linear-gradient(135deg,
-      rgba(255, 255, 255, 0.45),
-      rgba(255, 255, 255, 0.11) 40%,
-      rgba(255, 255, 255, 0.10) 62%,
-      rgba(255, 255, 255, 0.16));
-  -webkit-mask:
-    linear-gradient(#fff 0 0) content-box,
-    linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-}
-
-.phone-shell[data-glass-pass="1"][data-icon-effect="glass"] .dock:not([data-skinned]) {
-  backdrop-filter: blur(24.01px) saturate(140%);
-  -webkit-backdrop-filter: blur(24.01px) saturate(140%);
-}
-
-.dock[data-skinned] {
-  border: none;
-}
-
-.phone-shell[data-borders="on"] .dock {
-  border: var(--desktop-outline-width, 1.5px) solid var(--desktop-outline-color, var(--user-border-color, #000));
-}
-
-.dock-skin-layer {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background-repeat: no-repeat;
-  background-size: cover;
-  background-position: center;
-  z-index: 0;
-}
-
-.dock .icon-label {
-  display: none;
-}
-
-.dock .dock-item {
-  width: var(--slot-size);
-  min-height: 72px;
-  border-radius: 18px;
-  justify-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  position: relative;
-  z-index: 2;
-}
-
-.dock .dock-glyph-box {
-  width: 58px;
-  height: 58px;
-  border-radius: 14px;
-}
-
-.dock .icon-glyph {
-  width: 28px;
-  height: 28px;
-}
-
-/* ── App pane (placeholder, empty) ── */
-
-.phone-app-pane {
-  margin-top: 4px;
-  flex: 1 1 auto;
-  min-height: 0;
-  position: relative;
-  border: none;
-  border-radius: 0;
-  background: transparent;
+.diy-widget-stat-item {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  box-shadow: none;
+}
+.diy-widget-stat-val {
+  font-size: calc(var(--font-size-lg)*var(--app-text-scale,1));
+  font-weight: 700;
+}
+.diy-widget-stat-lbl {
+  font-size: calc(10px*var(--app-text-scale,1));
+  opacity: 0.7;
+  text-transform: uppercase;
 }
 
-/* ── App open state ── */
+/* ── Generic Widget Fallback Styles ── */
 
-.phone-workspace.app-open {
-  margin-top: 0;
-  flex: 1 1 auto;
+.generic-widget-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  color: var(--c-text-title, #2C3440);
+  background: rgba(255,255,255,0.2);
 }
 
-.phone-workspace.app-open .phone-app-pane {
-  margin-top: 0;
-  flex: 1 1 auto;
-  border-radius: 0;
-  border: none;
-  box-shadow: none;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+.generic-widget-name {
+  font-size: calc(var(--font-size-base)*var(--app-text-scale,1));
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
-.phone-shell.app-open-shell {
-  padding: 0;
-}
-
-.phone-shell.app-open-shell::before {
-  display: none;
-}
-
-.phone-shell.app-open-shell .phone-wallpaper {
-  opacity: 0 !important;
-  transition-duration: 0s !important;
-  /* hide instantly so it doesn't bleed through transparent app during fade-in */
-}
-
-
-/* ── Notice toast ── */
-
-.phone-shell-notice {
-  position: absolute;
-  left: 50%;
-  top: 46px;
-  transform: translateX(-50%);
-  z-index: 8;
-  width: min(92%, 320px);
-  border-radius: 14px;
-  border: 0;
-  background: rgba(255, 255, 255, 0.9);
-  color: rgba(30, 30, 30, 0.92);
-  padding: 10px 12px;
-  font-size: calc(11.7px*var(--app-text-scale,1));
-  line-height: 1.35;
+.generic-widget-desc {
+  font-size: calc(var(--font-size-xs)*var(--app-text-scale,1));
+  opacity: 0.6;
   text-align: center;
-  box-shadow: 0 12px 24px rgba(60, 60, 60, 0.18);
-  pointer-events: none;
-}
-
-/* ── Standalone page (characters etc.) ── */
-
-.page-frame {
-  width: min(980px, 94vw);
-  margin: 0 auto;
-  padding: 20px 0 36px;
-}
-
-/* 更窄视口（≤373px）：按 390px 设计稿整体等比缩放（格 66→16.92vw、
-   距 20→5.13vw、图标 58→14.87vw、dock 354→90.77vw），窄屏呈现与正常
-   手机完全相同的比例观感，无多余留白；网格/dock 同源，天然对齐。
-   ≥374px 不受影响。 */
-@media (max-width: 373px) and (hover: none) and (pointer: coarse) {
-  .icon-grid,
-  .dock {
-    --slot-size: 16.92vw;
-    --slot-gap-x: 5.13vw;
-    --slot-icon-width: 15.9vw;
-    --slot-icon-height: 15.9vw;
-  }
-  .icon-glyph-box {
-    width: 14.87vw;
-    height: 14.87vw;
-  }
-  .dock {
-    /* 同样按数量自适应；count=4 时等于原 90.77vw。 */
-    width: min(calc((var(--dock-count) * var(--slot-size)) + ((var(--dock-count) - 1) * var(--slot-gap-x)) + 30px), calc(100% - 8px));
-  }
-  .dock .dock-glyph-box {
-    width: 14.87vw;
-    height: 14.87vw;
-  }
-}
-
-/* ── Mobile responsive ── */
-
-@media (max-width: 500px) and (hover: none) and (pointer: coarse) {
-
-  :root {
-    --phone-screen-width: 100vw;
-    --phone-screen-height: 100lvh;
-  }
-
-  html,
-  body {
-    overflow: hidden;
-    width: 100%;
-    height: 100lvh;
-    background: var(--c-page-body-bg);
-  }
-
-  .app-root {
-    width: 100vw;
-    height: 100lvh;
-    padding: 0;
-    display: flex;
-    justify-content: flex-start;
-    align-items: flex-start;
-    overflow: hidden;
-    background: var(--c-page-body-bg);
-  }
-
-  .phone-shell-wrap {
-    --phone-case-padding: 0px;
-    --phone-case-border-size: 0px;
-    --phone-frame-size: 0px;
-    --phone-screen-radius: 0px;
-    --phone-frame-radius: 0px;
-    --phone-case-radius: 0px;
-    width: var(--phone-screen-width);
-    margin-inline: 0;
-    gap: 0;
-    transform-origin: top left;
-    /* 状态栏占位上移：部分安卓浏览器不允许网页绘制到真实状态栏，视口从状态栏下方开始；
-       而缩放仍按完整屏高算，844 设计稿被拉成整屏高、却只能从状态栏下方画起，底部被切。
-       用负上边距把整块画面上移 --status-bar-drop 像素：顶部那段（虚拟状态栏区域）超出
-       .app-root 被裁掉，底部栏随之顶回可视区。上移量可在「状态栏」弹窗里按设备调节，
-       让它约等于真实状态栏高度即可铺满。0 = 不上移（iOS 等能全屏的浏览器保持 0）。 */
-    margin-top: calc(-1 * var(--status-bar-drop, 0px));
-    transform: translate3d(0, calc(-1 * var(--mobile-keyboard-lift, 0px)), 0);
-    transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: transform;
-  }
-
-  .phone-shell-wrap .phone-case {
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .phone-shell-wrap .phone-case::before,
-  .phone-shell-wrap .phone-case::after {
-    display: none;
-  }
-
-  .phone-shell-wrap .phone-frame {
-    padding: 0;
-    background: transparent;
-    box-shadow: none;
-  }
-
-  .phone-shell-wrap .phone-frame::before,
-  .phone-shell-wrap .phone-frame::after {
-    display: none;
-  }
-
-  .app-root.splash-root {
-    width: 100vw;
-    height: 100lvh;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
-    overflow: hidden;
-    background: var(--c-page-body-bg);
-  }
-
-  .splash-shell-wrap {
-    width: var(--phone-screen-width);
-    transform-origin: top left;
-  }
-
-  .splash-shell-wrap .phone-case,
-  .splash-shell-wrap .phone-frame {
-    width: var(--phone-screen-width);
-  }
-}
-
-/* ── Landscape phones ──
-   横屏时视口高度很短（约 390px），而竖屏手机框高约 864px；
-   旧 (max-width:500px) 媒体查询在横屏下不命中 → 回退到桌面固定尺寸手机，
-   只露出顶部「一半」。这里改为：保持竖屏手机框，整体缩放铺满横屏高度，
-   完整可见、居中显示。仅触摸设备（手机/平板）横屏时生效，不影响竖屏与桌面。 */
-@media (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 560px) {
-  html,
-  body {
-    overflow: hidden;
-    height: 100dvh;
-  }
-
-  .app-root,
-  .app-root.splash-root {
-    width: 100vw;
-    height: 100dvh;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-
-  .phone-shell-wrap {
-    --phone-total-height: calc(var(--phone-screen-height) + 2 * (var(--phone-frame-size) + var(--phone-case-padding) + var(--phone-case-border-size)));
-    transform: scale(calc((100dvh - 16px) / var(--phone-total-height)));
-    transform-origin: center center;
-  }
-}
-
-.settings-main-menu,
-.appearance-main-menu {
-  padding-bottom: calc(var(--safe-area-bottom, 0px) + 28px);
-}
-
-/* ══════════════════════════════════════════
-   Global Visual Overrides (Shadows & Borders)
-   ══════════════════════════════════════════ */
-/* 扁平态图标阴影：强度由变量控制 */
-.phone-shell:not([data-icon-effect="glass"]) .icon-glyph-box {
-  box-shadow: 0 4px 12px rgb(0 0 0 / calc(0.08 * var(--desktop-shadow-strength, 0)));
-}
-
-.phone-shell[data-borders="on"] .icon-glyph-box {
-  border: var(--desktop-outline-width, 1.5px) solid var(--desktop-outline-color, var(--user-border-color, #000)) !important;
 }
