@@ -611,12 +611,33 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       }
     }
 
-    const hasReference = Boolean(input.referenceImages?.length) || Boolean(input.referenceImageDataUrl?.trim());
-    // 锁脸提示（GPT 尽力而为：用参考图保留每个人脸与身份；GPT 无 NAI 那种强锁脸，靠此提示+参考图）
+    // 解析实际要附带的参考图数量（锁脸图 referenceImageDataUrl 或 participants 的 referenceImages）
+    const refImagesForCount = (input.referenceImages?.length
+      ? input.referenceImages
+      : (input.referenceImageDataUrl?.trim() ? [input.referenceImageDataUrl] : [])) as string[];
+    const refCount = refImagesForCount.filter(Boolean).length;
+    const hasReference = refCount > 0;
+    // 关键修复：gpt-image / 部分第三方 relay 在 edits 带多张人脸参考图时，会弱化处理文字 prompt、
+    // 直接把参考图拼回输出（表现就是「关键词不读 + 两张参考图拼接」）。
+    // 这里显式声明：参考图 ONLY 用于匹配外貌/风格，文字描述才是画面主导指令，且禁止照搬参考图的构图/姿势/背景。
     if (hasReference) {
-      finalPrompt += ". Preserve each person's exact facial features and identity shown in the reference image(s).";
+      // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
+      // 但同时要禁止模型把多张参考图当拼贴左右粘贴，也不许照搬原背景/姿势/衣服——
+      // 场景、动作、构图必须由下方文字描述主导。
+      const refNote = refCount > 1
+        ? "LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images. Then compose them into ONE coherent scene that strictly follows the description below. Do NOT collage or paste the reference images side-by-side; do NOT copy their original backgrounds, poses, or outfits."
+        : "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit.";
+      finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
-    console.log("[OAI-PROMPT] final:", { hasReference, hasCJK, len: finalPrompt.length });
+    console.log("[OAI-PROMPT] final:", {
+      hasReference,
+      refCount,
+      hasCJK,
+      endpoint: hasReference ? "edits" : "generations",
+      model,
+      promptPreview: finalPrompt.slice(0, 400),
+      len: finalPrompt.length,
+    });
 
     if (!apiKey) return { status: 400, body: { error: "缺少 API Key" } };
     if (!baseUrl) return { status: 400, body: { error: "缺少 Base URL" } };

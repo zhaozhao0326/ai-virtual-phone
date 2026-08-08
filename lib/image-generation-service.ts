@@ -576,7 +576,11 @@ async function generateImageDirect(params: {
     if (!converted) throw new Error("参考图格式无效");
     const form = new FormData();
     form.set("model", settings.model);
-    form.set("prompt", prompt);
+    // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
+    // 但同时禁止模型照搬参考图的背景/姿势/衣服，场景与构图由文字 prompt 主导，
+    // 避免 gpt-image 在 edits 模式把参考图直接拼回输出（"关键词不读 + 两张参考图拼接"）。
+    const refInstruction = "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: ";
+    form.set("prompt", refInstruction + prompt);
     if (settings.size && settings.size !== "auto") form.set("size", settings.size);
     if (settings.quality && settings.quality !== "auto") form.set("quality", settings.quality);
     form.append("image", converted.blob, `reference.${imageExtension(converted.mimeType)}`);
