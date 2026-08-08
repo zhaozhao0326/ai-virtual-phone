@@ -47,6 +47,7 @@ import { useAccount } from "@/lib/account-context";
 import { OnlineRoomConnection, onlineCloudApi } from "@/lib/online-room-client";
 import { submitContentReport } from "@/lib/moderation-client";
 import { buildGameRolePackage, callGameLLM } from "@/lib/game-engine";
+import { downloadFile } from "@/lib/download-utils";
 import {
   createDefaultGameDraft,
   deleteGameProjectionEvent,
@@ -1331,6 +1332,45 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
     showNotice("info", "草稿已删除");
   }
 
+  // 导出草稿为 JSON 文件（blob 下载，不触发页面刷新），可发给别人从草稿箱「从文件导入」
+  async function exportDraftFile(item: GameHallDraft): Promise<void> {
+    try {
+      const payload = { type: "ai-phone-game-draft", version: 1, title: item.title, draft: item.draft };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      await downloadFile(blob, `${item.title.trim() || "游戏草稿"}.json`);
+      showNotice("success", "草稿已导出为文件");
+    } catch (err) {
+      showNotice("error", err instanceof Error ? err.message : "导出失败");
+    }
+  }
+
+  // 导入草稿 JSON：整张创建表单自动填好（与「上传 HTML」共用一个入口，按扩展名分流）
+  async function importDraftIntoForm(file: File): Promise<void> {
+    try {
+      const payload = JSON.parse(await file.text()) as { type?: string; draft?: Record<string, unknown>; title?: string };
+      if (payload?.type !== "ai-phone-game-draft" || !payload.draft || typeof payload.draft !== "object") {
+        throw new Error("不是有效的游戏草稿文件（需要从草稿箱「导出文件」生成）");
+      }
+      // 只吸收与默认草稿同名同类型的字段，忽略其余内容
+      const base = createDefaultGameDraft();
+      const incoming = payload.draft;
+      const importedDraft = { ...base } as Record<string, unknown>;
+      for (const key of Object.keys(base)) {
+        const value = incoming[key];
+        if (typeof value === typeof (base as Record<string, unknown>)[key]) importedDraft[key] = value;
+      }
+      const nextDraft = importedDraft as GameTemplateDraft;
+      setEditingDraftId(null);
+      setEditingTemplateId(null);
+      setDraft(nextDraft);
+      setAdvancedStudioOpen(parseGameRoleSlots(nextDraft.roleSlotsText).length > 0);
+      const title = (typeof payload.title === "string" && payload.title.trim()) || nextDraft.title.trim() || "导入的游戏";
+      showNotice("success", `已导入草稿「${title}」，检查后可存草稿或发布`);
+    } catch (err) {
+      showNotice("error", err instanceof Error ? err.message : "导入失败");
+    }
+  }
+
   async function editPublished(template: GameTemplate): Promise<void> {
     let fullTemplate = template;
     try {
@@ -1360,9 +1400,13 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
 
   async function uploadGameHtmlFile(file: File | null): Promise<void> {
     if (!file) return;
+    if (/\.json$/i.test(file.name) || file.type === "application/json") {
+      await importDraftIntoForm(file);
+      return;
+    }
     const isHtmlFile = /\.(html?|xhtml)$/i.test(file.name) || file.type === "text/html";
     if (!isHtmlFile) {
-      showNotice("error", "请选择 HTML 文件");
+      showNotice("error", "请选择 HTML 或草稿 JSON 文件");
       return;
     }
     try {
@@ -2373,6 +2417,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
           {menuOpen ? (
             <div className="game-studio-card-menu-pop" onClick={event => event.stopPropagation()}>
               <button type="button" onClick={() => { setStudioMenuId(null); editDraft(item); }}>编辑</button>
+              <button type="button" onClick={() => { setStudioMenuId(null); void exportDraftFile(item); }}>导出文件</button>
               <button type="button" className="is-danger" onClick={() => { setStudioMenuId(null); deleteDraft(item.id); }}>删除</button>
             </div>
           ) : null}
@@ -2911,8 +2956,8 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
                     ref={htmlFileInputRef}
                     className="game-file-input"
                     type="file"
-                    accept=".html,.htm,text/html"
-                    aria-label="上传 HTML 文件"
+                    accept=".html,.htm,.json,text/html,application/json"
+                    aria-label="上传 HTML 或草稿文件"
                     onChange={event => {
                       const file = event.currentTarget.files?.[0] ?? null;
                       event.currentTarget.value = "";
@@ -2920,7 +2965,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
                     }}
                   />
                   <div className="game-html-import">
-                    <button type="button" className="game-soft-wide-button" onClick={() => htmlFileInputRef.current?.click()}><Upload size={14} /> 上传 HTML</button>
+                    <button type="button" className="game-soft-wide-button" onClick={() => htmlFileInputRef.current?.click()}><Upload size={14} /> 上传 HTML / 草稿</button>
                   </div>
                   <textarea value={draft.gameHtml} rows={18} spellCheck={false} onChange={event => updateDraft("gameHtml", event.target.value)} />
                 </div>

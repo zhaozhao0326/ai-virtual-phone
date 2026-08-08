@@ -2878,3 +2878,27 @@
   padding-top: 10px;
   flex-wrap: wrap;
 }
+
+/* 创建发布「导入草稿文件」：整行宽，跟随终端绿风格（与昵称快捷按钮同构） */
+.cp-bm-draft-import-row {
+  margin-bottom: 10px;
+}
+.cp-bm-draft-import-row button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(82, 255, 158, 0.24);
+  background: rgba(82, 255, 158, 0.06);
+  color: #8dffbd;
+  padding: 0 10px;
+  font: 800 calc(11px*var(--app-text-scale,1)) "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.cp-bm-draft-import-row button:active {
+  transform: translateY(1px);
+  background: rgba(82, 255, 158, 0.12);
+}

@@ -11,6 +11,8 @@ import {
   Pencil,
   Plus,
   MoreHorizontal,
+  Download,
+  Upload,
   PenLine,
   Play,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
   Send,
   Trash2,
 } from "lucide-react";
+import { downloadFile } from "@/lib/download-utils";
 import { kvGet, kvSet, registerKvMigration } from "@/lib/kv-db";
 
 import {
@@ -821,6 +824,7 @@ export function BlackMarketApp({ onClose, autoOpenLocalId }: BlackMarketAppProps
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [studioDrafts, setStudioDrafts] = useState<BlackMarketStudioDraft[]>(() => loadBlackMarketStudioDrafts());
+  const studioDraftFileInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<TheaterDraft>(() => createDefaultDraft());
   const [publishing, setPublishing] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
@@ -1636,6 +1640,36 @@ export function BlackMarketApp({ onClose, autoOpenLocalId }: BlackMarketAppProps
     showNotice("info", "草稿已删除");
   }
 
+  // 导出剧场草稿为 JSON 文件（blob 下载，不触发页面刷新），可发给别人「从文件导入」
+  async function exportStudioDraftFile(item: BlackMarketStudioDraft): Promise<void> {
+    try {
+      const payload = { type: "ai-phone-theater-draft", version: 1, title: item.title, draft: item.draft };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      await downloadFile(blob, `${item.title.trim() || "剧场草稿"}.json`);
+      showNotice("success", "草稿已导出为文件");
+    } catch (err) {
+      showNotice("error", err instanceof Error ? err.message : "导出失败");
+    }
+  }
+
+  // 导入草稿 JSON：整张创建表单自动填好（入口在「创建发布」表单顶部）
+  async function importStudioDraftFile(file: File): Promise<void> {
+    try {
+      const payload = JSON.parse(await file.text()) as { type?: string; draft?: unknown; title?: string };
+      if (payload?.type !== "ai-phone-theater-draft" || !payload.draft || typeof payload.draft !== "object") {
+        throw new Error("不是有效的剧场草稿文件（需要从草稿箱「EXPORT」生成）");
+      }
+      const importedDraft = normalizeStudioDraftPayload(payload.draft);
+      setEditingDraftId(null);
+      setEditingTemplateId(null);
+      setDraft(importedDraft);
+      const title = (typeof payload.title === "string" && payload.title.trim()) || importedDraft.title.trim() || "导入的剧场";
+      showNotice("success", `已导入草稿「${title}」，检查后可存草稿或发布`);
+    } catch (err) {
+      showNotice("error", err instanceof Error ? err.message : "导入失败");
+    }
+  }
+
   function buildDraftTemplate(existing?: BlackMarketTheaterTemplate | null): BlackMarketTheaterTemplate {
     const title = draft.title.trim();
     const openingHtml = draft.openingHtml.trim();
@@ -2145,6 +2179,10 @@ export function BlackMarketApp({ onClose, autoOpenLocalId }: BlackMarketAppProps
                             <Pencil size={14} />
                             EDIT
                           </button>
+                          <button type="button" onClick={() => void exportStudioDraftFile(item)}>
+                            <Download size={14} />
+                            EXPORT
+                          </button>
                           <button type="button" className="is-danger" onClick={() => handleDeleteStudioDraft(item.id)}>
                             <Trash2 size={14} />
                             DELETE
@@ -2177,6 +2215,22 @@ export function BlackMarketApp({ onClose, autoOpenLocalId }: BlackMarketAppProps
                 <div className="cp-black-market-studio-panel">
                   <h3>商品档案</h3>
                   <p className="cp-black-market-studio-hint">只需要填写用户会看到的标题和介绍；内部编号会自动处理，发布昵称可每次单独设置。</p>
+                  <div className="cp-bm-draft-import-row">
+                    <button type="button" onClick={() => studioDraftFileInputRef.current?.click()}>
+                      <Upload size={14} /> 导入草稿文件
+                    </button>
+                    <input
+                      ref={studioDraftFileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: "none" }}
+                      onChange={event => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) void importStudioDraftFile(file);
+                      }}
+                    />
+                  </div>
                   <label>
                     档案名字
                     <input value={draft.title} onFocus={() => clearDraftSampleOnFocus("title")} onChange={event => updateDraft("title", event.target.value)} />

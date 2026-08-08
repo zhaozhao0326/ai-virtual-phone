@@ -261,24 +261,63 @@ function QaMessageItem({ msg, isStreaming, onRetry, onViewImage }: { msg: QaMsg;
   }
 
   const thinkingOnly = isStreaming && !msg.content && (!msg.tools || msg.tools.length === 0);
+  // 时序分段渲染：文字与工具行按实际发生顺序交错（连续工具行合并成一组）；
+  // 旧消息没有 segments 时回退「工具在顶、文字在下」布局
+  const segmentBlocks = useMemo(() => {
+    if (!msg.segments?.length) return null;
+    const blocks: Array<{ kind: "text"; text: string } | { kind: "tools"; tools: QaToolStatus[] }> = [];
+    for (const seg of msg.segments) {
+      const last = blocks[blocks.length - 1];
+      if (seg.kind === "tool") {
+        if (last?.kind === "tools") last.tools.push(seg.tool);
+        else blocks.push({ kind: "tools", tools: [seg.tool] });
+      } else if (seg.text.trim()) {
+        if (last?.kind === "text") last.text += seg.text;
+        else blocks.push({ kind: "text", text: seg.text });
+      }
+    }
+    return blocks.length ? blocks : null;
+  }, [msg.segments]);
+
   return (
     <div className="qa-msg-assistant">
-      {msg.tools && msg.tools.length > 0 && (
-        <div className="qa-tools">
-          {msg.tools.map((tool, i) => (
-            <QaToolRow key={`${tool.name}-${i}`} tool={tool} />
-          ))}
-        </div>
-      )}
-      {thinkingOnly ? (
-        <div className="qa-thinking">{msg.toolDrafting ? "正在编写工具调用…" : msg.reasoning ? "正在思考…" : "正在生成…"}</div>
+      {segmentBlocks ? (
+        segmentBlocks.map((block, i) =>
+          block.kind === "tools" ? (
+            <div className="qa-tools" key={i}>
+              {block.tools.map((tool, j) => (
+                <QaToolRow key={`${tool.name}-${j}`} tool={tool} />
+              ))}
+            </div>
+          ) : (
+            <div className="qa-markdown" key={i}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
+                {block.text}
+              </ReactMarkdown>
+              {isStreaming && i === segmentBlocks.length - 1 && <span className="qa-cursor" />}
+            </div>
+          ),
+        )
       ) : (
-        <div className="qa-markdown">
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
-            {msg.content}
-          </ReactMarkdown>
-          {isStreaming && <span className="qa-cursor" />}
-        </div>
+        <>
+          {msg.tools && msg.tools.length > 0 && (
+            <div className="qa-tools">
+              {msg.tools.map((tool, i) => (
+                <QaToolRow key={`${tool.name}-${i}`} tool={tool} />
+              ))}
+            </div>
+          )}
+          {thinkingOnly ? (
+            <div className="qa-thinking">{msg.toolDrafting ? "正在编写工具调用…" : msg.reasoning ? "正在思考…" : "正在生成…"}</div>
+          ) : (
+            <div className="qa-markdown">
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
+                {msg.content}
+              </ReactMarkdown>
+              {isStreaming && <span className="qa-cursor" />}
+            </div>
+          )}
+        </>
       )}
       {isStreaming && msg.toolDrafting && !thinkingOnly && (
         <div className="qa-thinking qa-tool-drafting">正在编写工具调用…</div>

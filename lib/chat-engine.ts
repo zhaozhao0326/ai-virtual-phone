@@ -1,5 +1,6 @@
 // lib/chat-engine.ts
 
+import { createSseJsonParser } from "./sse-json";
 import { loadCharacters } from "./character-storage";
 import { buildScreenEffectPromptHint } from "./chat-screen-effects";
 import { emitChatPluginEvent, runChatPluginTransform } from "./chat-plugin-hooks";
@@ -698,31 +699,25 @@ async function readSseStream(
     let rawResponse = "";
     const contentStripper = createStreamingTimestampStripper();
 
-    const handleEvent = async (eventText: string) => {
-        const dataLines = eventText
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line.startsWith("data:"))
-            .map((line) => line.slice(5).trim());
-        for (const dataLine of dataLines) {
-            if (!dataLine || dataLine === "[DONE]") continue;
-            rawResponse += `${dataLine}\n`;
-            try {
-                const parsed = JSON.parse(dataLine) as unknown;
-                const parts = parseProviderStreamDelta(providerKind, parsed);
-                if (parts.reasoning) {
-                    await callbacks?.onReasoningDelta?.(parts.reasoning);
-                }
-                if (parts.content) {
-                    const cleanDelta = contentStripper.push(parts.content);
-                    if (cleanDelta) {
-                        content += cleanDelta;
-                        await callbacks?.onDelta?.(cleanDelta);
-                    }
-                }
-            } catch {
-                // Some relays send keepalive or non-JSON event data. Ignore it.
+    // 容错解析：中转把长 JSON 行切开时做碎片重组，不再静默丢增量（见 sse-json.ts）
+    const sseParser = createSseJsonParser();
+    const handleParsed = async (parsed: unknown) => {
+        const parts = parseProviderStreamDelta(providerKind, parsed);
+        if (parts.reasoning) {
+            await callbacks?.onReasoningDelta?.(parts.reasoning);
+        }
+        if (parts.content) {
+            const cleanDelta = contentStripper.push(parts.content);
+            if (cleanDelta) {
+                content += cleanDelta;
+                await callbacks?.onDelta?.(cleanDelta);
             }
+        }
+    };
+    const handleEvent = async (eventText: string) => {
+        rawResponse += `${eventText}\n`;
+        for (const parsed of sseParser.pushEvent(eventText)) {
+            await handleParsed(parsed);
         }
     };
 
@@ -739,6 +734,9 @@ async function readSseStream(
     buffer += decoder.decode();
     if (buffer.trim()) {
         await handleEvent(buffer);
+    }
+    for (const parsed of sseParser.flush()) {
+        await handleParsed(parsed);
     }
     const finalContent = contentStripper.flush();
     if (finalContent) {
@@ -1085,20 +1083,11 @@ export async function sendLLMToolStreamRequest(
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const parsed = parseSseEvents(buffer);
-            buffer = parsed.rest;
-            for (const event of parsed.events) {
-                const dataLines = event.split("\n")
-                    .filter((line) => line.startsWith("data:"))
-                    .map((line) => line.slice(5).trim());
-                for (const dataLine of dataLines) {
-                    if (!dataLine || dataLine === "[DONE]") continue;
-                    rawResponse += `${dataLine}\n`;
-                    const data = JSON.parse(dataLine) as unknown;
+        // 容错解析：中转把超长工具参数 JSON 行切开时做碎片重组，
+        // 不再因单行 JSON Parse error 杀掉整条流（写 APP 大参数时高发）
+        const sseParser = createSseJsonParser();
+        const handleParsedDelta = async (data: unknown) => {
+            {
                     const delta = parseProviderStreamDelta(request.providerKind, data);
                     if (delta.reasoning) {
                         reasoning += delta.reasoning;
@@ -1130,11 +1119,31 @@ export async function sendLLMToolStreamRequest(
                             }
                         }
                     }
+            }
+        };
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parsed = parseSseEvents(buffer);
+            buffer = parsed.rest;
+            for (const event of parsed.events) {
+                rawResponse += `${event}\n`;
+                for (const data of sseParser.pushEvent(event)) {
+                    await handleParsedDelta(data);
                 }
             }
         }
 
-        if (buffer.trim()) rawResponse += buffer.trim();
+        if (buffer.trim()) {
+            rawResponse += buffer.trim();
+            for (const data of sseParser.pushEvent(buffer)) {
+                await handleParsedDelta(data);
+            }
+        }
+        for (const data of sseParser.flush()) {
+            await handleParsedDelta(data);
+        }
         const finalContent = contentStripper.flush();
         if (finalContent) {
             content += finalContent;

@@ -60,6 +60,8 @@ import {
   uninstallCustomAppAsync,
 } from "@/lib/custom-app-storage";
 import type { CustomAppManifest, CustomAppPermission, CustomAppResourceDeclarations, InstalledCustomApp } from "@/lib/custom-app-types";
+import { createCustomAppPackageFile } from "@/lib/custom-app-package";
+import { downloadFile } from "@/lib/download-utils";
 import {
   loadCustomAppMarketPackageApp,
   newestCustomAppMarketItem,
@@ -254,27 +256,7 @@ function appNameFromEntryPath(path: string): string {
 }
 
 async function createPackageFileFromApp(app: InstalledCustomApp): Promise<File> {
-  const JSZip = (await import("jszip")).default;
-  const zip = new JSZip();
-  const manifest: CustomAppManifest = {
-    ...app.manifest,
-    name: app.name,
-    version: app.version,
-    author: app.author,
-    description: app.description,
-    permissions: app.permissions,
-  };
-  const entryPath = normalizePackagePath(manifest.entry || "index.html", "index.html");
-  zip.file(entryPath, app.entryHtml);
-  for (const asset of Object.values(app.assets)) {
-    const path = normalizePackagePath(asset.path, asset.path);
-    if (!path || path === "manifest.json" || path === entryPath) continue;
-    zip.file(path, bytesFromDataUrl(asset.dataUrl));
-  }
-  zip.file("manifest.json", JSON.stringify({ ...manifest, entry: entryPath }, null, 2));
-  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
-  const manifestId = normalizeCustomAppManifestId(manifest.id, app.name);
-  return new File([blob], `${manifestId}-${app.version}.zip`, { type: "application/zip" });
+  return createCustomAppPackageFile(app);
 }
 
 function statusLabel(status: CustomAppMarketItem["reviewStatus"]): string {
@@ -542,6 +524,17 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
     setManualBuilderOpen(false);
     setManualExistingApp(null);
     setManualExistingLoading(false);
+  }
+
+  // 导出本地 APP 为市场同款 zip 包（blob 下载，不触发页面刷新），可发给别人从市场「上传导入」
+  async function exportLocalApp(app: InstalledCustomApp) {
+    try {
+      const file = await createCustomAppPackageFile(app);
+      await downloadFile(file, file.name);
+      onNotice?.(`已导出「${app.name}」安装包`);
+    } catch (err) {
+      showErrorDialog(err, "导出失败");
+    }
   }
 
   // 编辑本地测试 APP：直接以本机安装的包为底稿打开单文件编辑器，不用下载线上包
@@ -1587,6 +1580,11 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
           <div className="app-market-sheet app-market-manual-sheet" role="dialog" aria-modal="true" aria-label="单文件逐项上传" onClick={event => event.stopPropagation()}>
             <div className="app-market-sheet-head">
               <strong>{marketEditTarget ? `编辑「${marketEditTarget.name}」` : localEditTarget ? `编辑「${localEditTarget.name}」（本地）` : "单文件逐项上传"}</strong>
+              {localEditTarget ? (
+                <button type="button" onClick={() => void exportLocalApp(localEditTarget)} aria-label={`导出${localEditTarget.name}安装包`} title="导出安装包（zip，可发给别人导入）" disabled={busy}>
+                  <Download size={18} />
+                </button>
+              ) : null}
               <button type="button" onClick={closeManualBuilder} aria-label="关闭" disabled={busy}>
                 <X size={20} />
               </button>

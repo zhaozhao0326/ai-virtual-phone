@@ -3,6 +3,8 @@
 // 黑市剧场（工作室·本机测试）。全部只写浏览器本地存储，可在对应 UI 里删除，不碰远端。
 
 import { getQaPageChars } from "./qa-prefs";
+import { createCustomAppPackageFile } from "./custom-app-package";
+import { downloadFile } from "./download-utils";
 import {
     upsertLocalTestGame,
     isLocalTestGameId,
@@ -25,8 +27,10 @@ import {
     installCustomAppAsync,
     generateCustomAppRuntimeId,
     normalizeCustomAppManifestId,
+    loadCustomAppPackage,
     CUSTOM_APP_PLACE_DESKTOP_EVENT,
 } from "./custom-app-storage";
+import { applyCustomAppRegistrationsAsync, formatCustomAppRegistrationSummary } from "./custom-app-registration";
 import { CUSTOM_APP_CREATOR_GUIDE_MD } from "./custom-app-creator-guide";
 import type { CustomAppPermission, InstalledCustomApp } from "./custom-app-types";
 
@@ -172,6 +176,7 @@ const installAppTool: QaContentTool = {
             name: { type: "string", description: "应用名（显示在桌面）" },
             html: { type: "string", description: "完整单文件 HTML（含内联 CSS/JS）" },
             description: { type: "string", description: "一句话简介" },
+            permissions: { type: "array", items: { type: "string" }, description: "可选：覆盖默认权限集（如需要 chat.tools 等）。不填用单文件默认权限" },
         },
         required: ["name", "html"],
     },
@@ -182,6 +187,7 @@ const installAppTool: QaContentTool = {
         "    · name (必填) — 应用名（会显示在桌面）",
         "    · html (必填) — 完整单文件 HTML（含内联 CSS/JS）",
         "    · description (可选) — 一句话简介",
+        "    · permissions (可选) — 权限数组，覆盖默认权限集（如 chat.tools）；不填用单文件默认权限",
         '  调用：[执行动作:安装本机应用({"name":"番茄钟","html":"<!doctype html>…"})]',
     ],
     async run(args, context) {
@@ -190,6 +196,11 @@ const installAppTool: QaContentTool = {
         if (!name) return "缺少 name（应用名）。";
         if (!html.trim()) return "缺少 html（完整单文件 HTML 内容）。";
         const description = text(args.description, 200);
+        // 可选自定义权限：透传字符串，读取时 normalizeInstalledApp 会过滤无效项
+        const customPerms = Array.isArray(args.permissions)
+            ? ([...new Set(args.permissions.filter((v): v is string => typeof v === "string" && v.length < 60))] as CustomAppPermission[])
+            : null;
+        const perms = customPerms?.length ? customPerms : SINGLE_HTML_APP_PERMISSIONS;
         const now = new Date().toISOString();
 
         const apps = loadInstalledCustomApps();
@@ -198,6 +209,8 @@ const installAppTool: QaContentTool = {
             const updated: InstalledCustomApp = {
                 ...existing,
                 entryHtml: html,
+                permissions: customPerms?.length ? perms : existing.permissions,
+                manifest: customPerms?.length ? { ...existing.manifest, permissions: perms } : existing.manifest,
                 description: description || existing.description,
                 // 关联市场版的 APP 被改动：与 UI 编辑/换包一致，标记有未发布改动
                 hasUnpublishedChanges: existing.marketItemId ? true : existing.hasUnpublishedChanges,
@@ -215,13 +228,13 @@ const installAppTool: QaContentTool = {
             version: "1.0.0",
             description: description || undefined,
             entryHtml: html,
-            permissions: SINGLE_HTML_APP_PERMISSIONS,
+            permissions: perms,
             manifest: {
                 id: normalizeCustomAppManifestId(name),
                 name,
                 version: "1.0.0",
                 entry: "index.html",
-                permissions: SINGLE_HTML_APP_PERMISSIONS,
+                permissions: perms,
             },
             assets: {},
             installedAt: now,
@@ -232,6 +245,152 @@ const installAppTool: QaContentTool = {
         window.dispatchEvent(new CustomEvent(CUSTOM_APP_PLACE_DESKTOP_EVENT, { detail: { appId: app.id } }));
         context?.onContentCreated?.({ type: "app", refId: app.id, title: name });
         return `✓ 已安装本机应用「${name}」。请告诉用户：点输入框旁的预览按钮即可直接打开测试；应用图标也已放到桌面，长按可卸载。`;
+    },
+};
+
+// ── 应用包暂存区（分段写入 → 组包安装）──────────────
+// 解决两个问题：① 模型单次输出有 max_tokens 上限，大 HTML 一次写不完——分多轮
+// 追加暂存；② 单文件安装没有 manifest 声明（权限 / chat.tools 工具）——暂存区
+// 支持完整应用包（manifest.json + 入口 + presets.json + 资源），组包后与上传 zip 等价。
+
+type StagedAppFile = { text?: string; base64?: string };
+const APP_STAGING = new Map<string, StagedAppFile>();
+const STAGE_MAX_FILES = 40;
+const STAGE_MAX_FILE_CHARS = 2_000_000;
+const STAGE_MAX_TOTAL_CHARS = 10_000_000;
+
+function stagePath(value: unknown): string {
+    return String(value ?? "").replace(/\\/g, "/").replace(/^\.?\//, "").replace(/^\/+/, "").trim();
+}
+
+function stagingSummary(): string {
+    if (APP_STAGING.size === 0) return "（暂存区为空）";
+    return [...APP_STAGING.entries()]
+        .map(([path, f]) => `${path}(${(f.text ?? f.base64 ?? "").length})`)
+        .join("、");
+}
+
+const stageAppFileTool: QaContentTool = {
+    name: "暂存应用文件",
+    nativeName: "stage_app_file",
+    parameters: {
+        type: "object",
+        properties: {
+            path: { type: "string", description: "包内路径，如 manifest.json / index.html / presets.json / icon.png" },
+            content: { type: "string", description: "文件内容（文本；二进制文件传 base64 并置 base64=true）" },
+            append: { type: "boolean", description: "true=追加到该文件已暂存内容末尾（大 HTML 分多轮写入用）" },
+            base64: { type: "boolean", description: "true=content 是 base64 编码的二进制（如图标）" },
+        },
+        required: ["path", "content"],
+    },
+    description:
+        "把应用包文件写入暂存区（不落盘）。大 HTML 超过单次输出上限时分多轮写：第一轮写骨架，后续轮 append=true 追加，绝不会被 max_tokens 截断。完整包需要 manifest.json（含 id/name/version/entry/permissions，可声明 chat.tools 等权限与 extensions.tools 工具）+ 入口 HTML；presets.json、图标等资源文件也可暂存。全部就绪后用「安装暂存应用」组包安装。",
+    schemaLines: [
+        "  参数：",
+        "    · path (必填) — 包内路径（manifest.json / index.html / presets.json / icon.png…）",
+        "    · content (必填) — 文件内容；二进制传 base64 并置 base64=true",
+        "    · append (可选) — true=追加到已暂存内容末尾（大文件分轮写）",
+        '  调用：[执行动作:暂存应用文件({"path":"index.html","content":"<!doctype html>…","append":true})]',
+    ],
+    async run(args) {
+        const path = stagePath(args.path);
+        if (!path || path.includes("..") || path.length > 100) return "path 无效（相对包内路径，不允许 ..）。";
+        const content = typeof args.content === "string" ? args.content : "";
+        if (!content) return "缺少 content。";
+        if (APP_STAGING.size >= STAGE_MAX_FILES && !APP_STAGING.has(path)) return `暂存文件数已达上限 ${STAGE_MAX_FILES}。`;
+        const isBase64 = args.base64 === true;
+        const existing = APP_STAGING.get(path);
+        let next: StagedAppFile;
+        if (args.append === true && existing?.text != null && !isBase64) {
+            next = { text: existing.text + content };
+        } else if (args.append === true && existing?.base64 != null) {
+            return `${path} 是二进制暂存，不支持追加。`;
+        } else {
+            next = isBase64 ? { base64: content.replace(/\s+/g, "") } : { text: content };
+        }
+        const size = (next.text ?? next.base64 ?? "").length;
+        if (size > STAGE_MAX_FILE_CHARS) return `单文件暂存超限（${size} > ${STAGE_MAX_FILE_CHARS} 字符）。`;
+        let total = size;
+        for (const [k, f] of APP_STAGING) { if (k !== path) total += (f.text ?? f.base64 ?? "").length; }
+        if (total > STAGE_MAX_TOTAL_CHARS) return `暂存区总量超限（${total} > ${STAGE_MAX_TOTAL_CHARS} 字符）。`;
+        APP_STAGING.set(path, next);
+        return `✓ 已暂存 ${path}（当前 ${size.toLocaleString()} 字符${args.append === true ? "，本次为追加" : ""}）。暂存区：${stagingSummary()}。继续追加或暂存其他文件；全部就绪后用「安装暂存应用」。`;
+    },
+};
+
+const installStagedAppTool: QaContentTool = {
+    name: "安装暂存应用",
+    nativeName: "install_staged_app",
+    parameters: {
+        type: "object",
+        properties: { clear: { type: "boolean", description: "true=不安装，只清空暂存区（重来）" } },
+    },
+    description:
+        "把暂存区的文件组成应用包并安装到本机（等价上传 zip：manifest 声明的权限 / chat.tools / extensions.tools / presets 全部生效）。要求暂存区已有 manifest.json 与入口 HTML。同名/同 manifest id 应用会原地更新（保留应用数据与市场关联）。安装成功后暂存区自动清空。",
+    schemaLines: [
+        "  参数：",
+        "    · clear (可选) — true=不安装，只清空暂存区",
+        '  调用：[执行动作:安装暂存应用({})]',
+    ],
+    async run(args, context) {
+        if (args.clear === true) {
+            APP_STAGING.clear();
+            return "✓ 暂存区已清空。";
+        }
+        if (APP_STAGING.size === 0) return "暂存区为空。先用「暂存应用文件」写入 manifest.json 与入口 HTML。";
+        if (!APP_STAGING.has("manifest.json")) return `暂存区缺少 manifest.json。当前：${stagingSummary()}`;
+        try {
+            const JSZip = (await import("jszip")).default;
+            const zip = new JSZip();
+            for (const [path, f] of APP_STAGING) {
+                if (f.base64 != null) {
+                    const binary = atob(f.base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+                    zip.file(path, bytes);
+                } else {
+                    zip.file(path, f.text ?? "");
+                }
+            }
+            const blob = await zip.generateAsync({ type: "blob", mimeType: "application/zip" });
+            const loaded = await loadCustomAppPackage(new File([blob], "staged-app.zip", { type: "application/zip" }));
+
+            // 同名 / 同 manifest id 原地更新：保留运行时 id（应用数据不丢）与市场关联
+            const apps = loadInstalledCustomApps();
+            const existing = apps.find(
+                (a) => a.manifest?.id === loaded.manifest?.id || a.name.trim().toLowerCase() === loaded.name.trim().toLowerCase(),
+            );
+            let installed: InstalledCustomApp;
+            if (existing) {
+                installed = {
+                    ...loaded,
+                    id: existing.id,
+                    installedAt: existing.installedAt,
+                    marketItemId: existing.marketItemId,
+                    hasUnpublishedChanges: existing.marketItemId ? true : existing.hasUnpublishedChanges,
+                };
+                await saveInstalledCustomAppsAsync([installed, ...apps.filter((a) => a.id !== existing.id)]);
+            } else {
+                installed = await installCustomAppAsync(loaded);
+                window.dispatchEvent(new CustomEvent(CUSTOM_APP_PLACE_DESKTOP_EVENT, { detail: { appId: installed.id } }));
+            }
+            // 应用 manifest 声明（presets 等注册）
+            let regNote = "";
+            try {
+                const summary = await applyCustomAppRegistrationsAsync(installed);
+                const formatted = formatCustomAppRegistrationSummary(summary);
+                if (formatted) regNote = `已登记：${formatted}。`;
+            } catch {
+                // 注册失败不阻塞安装
+            }
+            APP_STAGING.clear();
+            context?.onContentCreated?.({ type: "app", refId: installed.id, title: installed.name });
+            const toolCount = installed.manifest?.extensions?.tools?.length ?? 0;
+            const toolNote = toolCount > 0 ? `声明了 ${toolCount} 个聊天工具。` : "";
+            return `✓ 已${existing ? "更新" : "安装"}应用「${installed.name}」（完整应用包）。${toolNote}${regNote}请告诉用户：点输入框旁的预览按钮可直接打开，或到桌面找「${installed.name}」。`;
+        } catch (error) {
+            return `组包安装失败：${error instanceof Error ? error.message : String(error)}。暂存区已保留，可修正后重试（清空用 clear=true）。`;
+        }
     },
 };
 
@@ -757,13 +916,72 @@ const listContentTool: QaContentTool = {
     },
 };
 
+// ── 导出文件（分享给别人）──
+
+const exportContentTool: QaContentTool = {
+    name: "导出文件",
+    nativeName: "export_local_content",
+    parameters: {
+        type: "object",
+        properties: {
+            type: { type: "string", enum: ["app", "game", "theater"], description: "内容类型" },
+            name: { type: "string", description: "APP 名 / 游戏草稿标题 / 剧场草稿标题" },
+        },
+        required: ["type", "name"],
+    },
+    description:
+        "把一条本机内容导出为文件下载（blob 下载，不刷新页面），用户可发给别人导入：APP 导出市场同款 zip 安装包（对方从应用市场上传导入）；游戏/剧场导出草稿 JSON（对方从草稿箱「从文件导入」）。游戏/剧场只支持草稿——本机测试内容先用对应的存草稿工具转成草稿再导出。",
+    schemaLines: [
+        "  参数：",
+        "    · type (必填) — app / game / theater",
+        "    · name (必填) — APP 名 / 游戏草稿标题 / 剧场草稿标题",
+        '  调用：[执行动作:导出文件({"type":"app","name":"番茄钟"})]',
+    ],
+    async run(args) {
+        const type = text(args.type, 20);
+        const name = text(args.name, 80);
+        if (!name) return "缺少 name。先用「本机内容清单」看看本机有什么。";
+        try {
+            if (type === "app") {
+                const app = loadInstalledCustomApps().find((item) => norm(item.name) === norm(name));
+                if (!app) return `没找到名为「${name}」的本机 APP。用「本机内容清单」核对名称。`;
+                const file = await createCustomAppPackageFile(app);
+                await downloadFile(file, file.name);
+                return `已导出「${app.name}」安装包（${file.name}）。对方在 应用市场 → 发布 → 上传安装包 即可导入。`;
+            }
+            if (type === "game") {
+                const draft = loadGameDrafts().find((item) => norm(item.title) === norm(name));
+                if (!draft) return `游戏草稿箱里没有「${name}」。如果它在本机测试里，先用「保存游戏草稿」转成草稿再导出。`;
+                const payload = { type: "ai-phone-game-draft", version: 1, title: draft.title, draft: draft.draft };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                await downloadFile(blob, `${draft.title.trim() || "游戏草稿"}.json`);
+                return `已导出游戏草稿「${draft.title}」。对方在 游戏大厅 → 创作工坊 → 创建页 →「上传 HTML / 草稿」选择该文件即可导入。`;
+            }
+            if (type === "theater") {
+                const draft = loadBmDrafts().find((item) => norm(item.title) === norm(name));
+                if (!draft) return `剧场草稿箱里没有「${name}」。如果它在本机测试里，先用「保存剧场草稿」转成草稿再导出。`;
+                const payload = { type: "ai-phone-theater-draft", version: 1, title: draft.title, draft: draft.draft };
+                const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                await downloadFile(blob, `${draft.title.trim() || "剧场草稿"}.json`);
+                return `已导出剧场草稿「${draft.title}」。对方在 黑市 → 工作室 → 创建发布 →「导入草稿文件」选择该文件即可导入。`;
+            }
+            return "type 需为 app / game / theater 之一。";
+        } catch (error) {
+            return `导出失败：${error instanceof Error ? error.message : String(error)}`;
+        }
+    },
+};
+
 export const QA_CONTENT_TOOLS = [
     contentGuideTool,
     listContentTool,
     readContentTool,
     installAppTool,
+    stageAppFileTool,
+    installStagedAppTool,
     installGameTool,
     installTheaterTool,
     saveGameDraftTool,
     saveTheaterDraftTool,
+    exportContentTool,
 ];

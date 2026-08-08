@@ -13,6 +13,7 @@ import type { LLMContentPart } from "./llm-prompt-assembler";
 import { loadApiConfigs, loadBindingConfig } from "./settings-storage";
 import type { ApiConfig } from "./settings-types";
 import { buildQaSystemPrompt } from "./qa-knowledge";
+import { createSseJsonParser } from "./sse-json";
 import { getQaMaxRounds } from "./qa-prefs";
 import { parseToolCalls } from "./tool-executor";
 import {
@@ -129,29 +130,23 @@ async function streamQaProviderRequest(
         const decoder = new TextDecoder();
         let buffer = "";
 
+        // 容错解析：中转把长 JSON 行切开时做碎片重组，不再静默丢增量（见 sse-json.ts）
+        const sseParser = createSseJsonParser();
+        const handleParsed = async (parsed: unknown) => {
+            const delta = parseProviderStreamDelta(request.providerKind, parsed);
+            if (delta.reasoning) {
+                reasoning += delta.reasoning;
+                await callbacks?.onReasoningDelta?.(delta.reasoning);
+            }
+            if (delta.content) {
+                content += delta.content;
+                const visibleDelta = stripHallucinatedTimestamps(delta.content);
+                if (visibleDelta) await callbacks?.onDelta?.(visibleDelta);
+            }
+        };
         const handleEvent = async (eventText: string) => {
-            const dataLines = eventText
-                .split("\n")
-                .map((line) => line.trim())
-                .filter((line) => line.startsWith("data:"))
-                .map((line) => line.slice(5).trim());
-            for (const dataLine of dataLines) {
-                if (!dataLine || dataLine === "[DONE]") continue;
-                try {
-                    const parsed = JSON.parse(dataLine) as unknown;
-                    const delta = parseProviderStreamDelta(request.providerKind, parsed);
-                    if (delta.reasoning) {
-                        reasoning += delta.reasoning;
-                        await callbacks?.onReasoningDelta?.(delta.reasoning);
-                    }
-                    if (delta.content) {
-                        content += delta.content;
-                        const visibleDelta = stripHallucinatedTimestamps(delta.content);
-                        if (visibleDelta) await callbacks?.onDelta?.(visibleDelta);
-                    }
-                } catch {
-                    // Ignore relay keepalive / non-JSON chunks.
-                }
+            for (const parsed of sseParser.pushEvent(eventText)) {
+                await handleParsed(parsed);
             }
         };
 
@@ -168,6 +163,9 @@ async function streamQaProviderRequest(
         }
         buffer += decoder.decode();
         if (buffer.trim()) await handleEvent(buffer);
+        for (const parsed of sseParser.flush()) {
+            await handleParsed(parsed);
+        }
 
         return { content: stripHallucinatedTimestamps(content), reasoning };
     } catch (error) {

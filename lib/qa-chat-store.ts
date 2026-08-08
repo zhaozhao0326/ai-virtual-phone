@@ -16,6 +16,11 @@ const MAX_MESSAGES_PER_SESSION = 200;
 
 export type QaToolStatus = { name: string; running: boolean; success?: boolean; detail?: string; result?: string };
 
+/** 消息内的时序分段：文字与工具行按实际发生顺序交错展示 */
+export type QaSegment =
+    | { kind: "text"; text: string }
+    | { kind: "tool"; tool: QaToolStatus };
+
 export type QaPendingCommit = {
     proposal: QaProposedCommit;
     status: "pending" | "applying" | "applied" | "reverting" | "reverted" | "canceled";
@@ -33,6 +38,8 @@ export type QaMsg = {
     error?: string;
     aborted?: boolean;
     tools?: QaToolStatus[];
+    /** 时序分段（文字/工具交错）；无此字段的旧消息回退「工具在顶、文字在下」布局 */
+    segments?: QaSegment[];
     pendingCommit?: QaPendingCommit;
     /** 流过滤器正在缓冲长工具指令：显示"编写工具调用中"占位（瞬态，不持久） */
     toolDrafting?: boolean;
@@ -364,7 +371,11 @@ function autoTitle(text: string): string {
     return compact.length > 18 ? `${compact.slice(0, 18)}…` : compact || "新对话";
 }
 
-export async function sendQaMessage(text: string, images?: string[]): Promise<void> {
+export async function sendQaMessage(
+    text: string,
+    images?: string[],
+    options?: { /** true=不显示用户气泡，只把指令写入上下文（重试续接等内部续发用） */ silentUser?: boolean },
+): Promise<void> {
     const trimmed = text.trim();
     if ((!trimmed && !images?.length) || isGenerating) return;
 
@@ -388,7 +399,7 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
         ...s,
         title: s.messages.length === 0 ? autoTitle(trimmed || "（图片）") : s.title,
         updatedAt: Date.now(),
-        messages: [...s.messages, userMsg, assistantMsg].slice(-MAX_MESSAGES_PER_SESSION),
+        messages: [...s.messages, ...(options?.silentUser ? [] : [userMsg]), assistantMsg].slice(-MAX_MESSAGES_PER_SESSION),
         context: [...sessionContext(s), { role: "user", content: trimmed || "（用户发来图片）", images: images?.length ? images : undefined, turn: assistantMsg.id }],
     }));
 
@@ -400,6 +411,7 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
     let streamedContent = "";
     let streamedReasoning = "";
     let toolStatuses: QaToolStatus[] = [];
+    let segments: QaSegment[] = [];
     let stagedCommit: QaPendingCommit | undefined;
     let lastPaintAt = 0;
     let lastPaintLength = 0;
@@ -443,7 +455,13 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
             callbacks: {
                 onDelta: (delta) => {
                     streamedContent += delta;
-                    paintAssistant({ content: streamedContent, reasoning: streamedReasoning }, { persist: false });
+                    const last = segments[segments.length - 1];
+                    if (last?.kind === "text") {
+                        segments = [...segments.slice(0, -1), { kind: "text", text: last.text + delta }];
+                    } else {
+                        segments = [...segments, { kind: "text", text: delta }];
+                    }
+                    paintAssistant({ content: streamedContent, reasoning: streamedReasoning, segments }, { persist: false });
                 },
                 onReasoningDelta: (delta) => {
                     streamedReasoning += delta;
@@ -451,17 +469,28 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
                 },
                 onToolStart: (name, args) => {
                     const detail = args && Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : undefined;
-                    toolStatuses = [...toolStatuses, { name: toolLabel(name), running: true, detail }];
-                    paintAssistant({ tools: toolStatuses }, { force: true, persist: false });
+                    const status: QaToolStatus = { name: toolLabel(name), running: true, detail };
+                    toolStatuses = [...toolStatuses, status];
+                    segments = [...segments, { kind: "tool", tool: status }];
+                    paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });
                 },
                 onToolDone: (name, success, result) => {
                     let patched = false;
+                    const done: QaToolStatus[] = [];
                     toolStatuses = toolStatuses.map((t) =>
                         !patched && t.running && t.name === toolLabel(name)
-                            ? ((patched = true), { ...t, running: false, success, result })
+                            ? ((patched = true), done[0] = { ...t, running: false, success, result }, done[0])
                             : t,
                     );
-                    paintAssistant({ tools: toolStatuses }, { force: true, persist: false });
+                    if (done[0]) {
+                        let segPatched = false;
+                        segments = segments.map((seg) =>
+                            !segPatched && seg.kind === "tool" && seg.tool.running && seg.tool.name === toolLabel(name)
+                                ? ((segPatched = true), { kind: "tool" as const, tool: done[0] })
+                                : seg,
+                        );
+                    }
+                    paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });
                 },
                 onStageCommit: (proposal) => {
                     stagedCommit = { proposal, status: "pending" };
@@ -517,6 +546,7 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
                 content: streamedContent,
                 reasoning: streamedReasoning || undefined,
                 tools: toolStatuses.length ? toolStatuses : undefined,
+                segments: segments.length ? segments : undefined,
                 pendingCommit: stagedCommit,
                 toolDrafting: undefined,
             },
@@ -532,6 +562,9 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
         }
     } catch (error) {
         const finalTools = toolStatuses.length ? toolStatuses.map((t) => (t.running ? { ...t, running: false } : t)) : undefined;
+        const finalSegments = segments.length
+            ? segments.map((seg) => (seg.kind === "tool" && seg.tool.running ? { kind: "tool" as const, tool: { ...seg.tool, running: false } } : seg))
+            : undefined;
         if (controller.signal.aborted) {
             // 中断续接：已执行的工具调用/结果已在上下文里；这里补齐悬空的原生调用结果、
             // 记录已流出的可见文本，下一轮「继续」能接上，原生协议也不会因缺 tool 结果报错
@@ -558,12 +591,37 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
                 return patches.length > 0 ? { ...s, context: [...entries, ...patches] } : s;
             });
             paintAssistant(
-                { content: streamedContent, reasoning: streamedReasoning || undefined, tools: finalTools, aborted: true, toolDrafting: undefined },
+                { content: streamedContent, reasoning: streamedReasoning || undefined, tools: finalTools, segments: finalSegments, aborted: true, toolDrafting: undefined },
                 { force: true },
             );
         } else {
+            // 报错续接：与中断同构——已执行的工具结果保留在上下文，补齐悬空原生调用，
+            // 记录已流出的文本；「重试」据此从中断处继续，而不是整轮作废重来
+            const reason = formatQaErrorMessage(error);
+            updateSession(sessionId, (s) => {
+                const entries = sessionContext(s);
+                const turnEntries = entries.filter((entry) => entry.turn === assistantMsg.id);
+                const answered = new Set(turnEntries.filter((entry) => entry.role === "tool" && entry.toolCallId).map((entry) => entry.toolCallId));
+                const patches: QaContextEntry[] = [];
+                for (const entry of turnEntries) {
+                    if (entry.role !== "assistant") continue;
+                    for (const call of entry.toolCalls ?? []) {
+                        if (call.id && !answered.has(call.id)) {
+                            patches.push({ role: "tool", toolCallId: call.id, name: call.name, content: "（本次调用因报错未完成）", turn: assistantMsg.id });
+                        }
+                    }
+                }
+                if (streamedContent.trim() || patches.length > 0) {
+                    patches.push({
+                        role: "assistant",
+                        content: `${streamedContent.trim()}\n（本轮执行到一半因报错中断：${reason.slice(0, 200)}）`.trim(),
+                        turn: assistantMsg.id,
+                    });
+                }
+                return patches.length > 0 ? { ...s, context: [...entries, ...patches] } : s;
+            });
             paintAssistant(
-                { content: streamedContent, reasoning: streamedReasoning || undefined, tools: finalTools, error: formatQaErrorMessage(error), toolDrafting: undefined },
+                { content: streamedContent, reasoning: streamedReasoning || undefined, tools: finalTools, segments: finalSegments, error: reason, toolDrafting: undefined },
                 { force: true },
             );
         }
@@ -574,21 +632,26 @@ export async function sendQaMessage(text: string, images?: string[]): Promise<vo
     }
 }
 
-/** 重试：删除指定的失败 assistant 消息及其后内容，重发它前面的最后一条用户消息。 */
+/** 重试 = 续接：保留本轮已产出的文字与工具结果（已在上下文里），从中断处继续，
+ *  而不是把半途成果整轮作废重来。失败消息本身保留（去掉报错态），下方接续新回复。 */
 export async function retryQaMessage(assistantMsgId: string): Promise<void> {
     const session = getActiveSession();
     if (!session || isGenerating) return;
-    const index = session.messages.findIndex((m) => m.id === assistantMsgId);
-    if (index < 0) return;
-    const userMsg = [...session.messages.slice(0, index)].reverse().find((m) => m.role === "user");
-    if (!userMsg) return;
+    const failed = session.messages.find((m) => m.id === assistantMsgId);
+    if (!failed) return;
+    const hadProgress = Boolean(failed.content.trim() || failed.tools?.length);
+    // 失败消息转为普通历史：撤下报错条与重试按钮；若毫无产出则直接移除避免留空壳
     updateSession(session.id, (s) => ({
         ...s,
-        messages: s.messages.filter((m) => m.id !== assistantMsgId && m.id !== userMsg.id),
-        // 同步裁掉该轮的上下文条目，避免重发后出现重复轮次
-        context: s.context?.filter((entry) => entry.turn !== assistantMsgId),
+        messages: hadProgress
+            ? s.messages.map((m) => (m.id === assistantMsgId ? { ...m, error: undefined } : m))
+            : s.messages.filter((m) => m.id !== assistantMsgId),
     }));
-    await sendQaMessage(userMsg.content, userMsg.images);
+    await sendQaMessage(
+        "上一轮执行中途失败。请从中断的地方继续完成剩余部分，已经完成的操作和说过的内容不要重复。",
+        undefined,
+        { silentUser: true },
+    );
 }
 
 // ── 提交提案的确认 / 应用 / 撤销 ────────────────────
