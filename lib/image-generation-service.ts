@@ -901,6 +901,13 @@ export async function generateImageFromConfiguredApi(params: {
     return out.slice(0, 4);
   })();
   const usedReferenceImagesCount = mergedReferenceImages.length;
+  // 朋友圈锁脸诊断：确认发帖人角色是否真的取到了自己的锁脸参考图
+  console.log("[IMG-GEN] moments-lockface diag:", {
+    characterId: params.characterId,
+    useReferenceImage: params.useReferenceImage,
+    hasCharRef: Boolean(reference?.assetId),
+    mergedRefs: usedReferenceImagesCount,
+  });
   /* ============================================================== */
 
   // ── Provider 路由：NAI vs OpenAI 兼容 ──
