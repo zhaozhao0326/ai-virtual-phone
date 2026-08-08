@@ -10,6 +10,7 @@ import {
 } from "@/lib/settings-storage";
 import { loadCharacters, saveCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
+import { loadCharacterWorldGroups, type CharacterWorldGroup } from "@/lib/character-world-storage";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
 import {
     fetchImageGenerationModels,
@@ -343,6 +344,7 @@ export function ImageGenerationSettings() {
             setNaiRefPreview(loaded.novelai.referenceImageDataUrl);
         }
         setCharacters(loadCharacters());
+        setWorldGroups(loadCharacterWorldGroups());
     }, []);
 
     useEffect(() => {
@@ -624,6 +626,15 @@ export function ImageGenerationSettings() {
 
     // 生图提示词编辑框的折叠状态（默认全收起，按需展开）
     const [expandedCharId, setExpandedCharId] = useState<string | null>(null);
+
+    // 世界分组折叠：世界 = 大折叠，世界内角色参考图 = 子折叠
+    const [worldGroups, setWorldGroups] = useState<CharacterWorldGroup[]>([]);
+    const [expandedWorldId, setExpandedWorldId] = useState<string | null>(null);
+    const charactersById = useMemo(() => {
+        const map: Record<string, Character> = {};
+        for (const c of characters) map[c.id] = c;
+        return map;
+    }, [characters]);
 
     const isNai = settings.provider === "novelai";
     const isPollinations = settings.provider === "pollinations";
@@ -1432,95 +1443,134 @@ export function ImageGenerationSettings() {
                 </div>
             </div>
 
-            {/* ════════════ 角色参考图（通用）═════════════ */}
+            {/* ════════════ 角色参考图（按世界分组折叠）═════════════ */}
             <div className="flex flex-col gap-2">
                 <p className="settings-menu-section-title">Character References</p>
-                <div className="menu-group">
-                    {characters.length === 0 ? (
-                        <div className="ui-empty py-8">
-                            <Camera size={22} />
-                            <span className="menu-desc">暂无角色。</span>
-                        </div>
-                    ) : characters.map(character => {
-                        const preview = referencePreviews[character.id];
-                        return (
-                            <div key={character.id} className="menu-item flex-col items-stretch gap-2">
-                                <div className="flex w-full items-center">
-                                    <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
-                                        {preview ? (
-                                            <img src={preview} alt="" className="h-full w-full object-cover" />
-                                        ) : character.avatar ? (
-                                            <img src={character.avatar} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
-                                                {character.name.slice(0, 1)}
-                                            </span>
-                                        )}
-                                    </span>
-                                    <span className="min-w-0 flex flex-1 flex-col">
-                                        <span className="menu-label truncate">{character.name}</span>
-                                        <span className="menu-desc truncate">{preview ? "已上传参考图" : "未上传参考图"}</span>
-                                    </span>
-                                    <span className="menu-right flex gap-2">
-                                        <button
-                                            type="button"
-                                            className="ui-link-btn"
-                                            aria-label={`${expandedCharId === character.id ? "收起" : "展开"} ${character.name} 的生图提示词`}
-                                            aria-expanded={expandedCharId === character.id}
-                                            onClick={() => setExpandedCharId(prev => prev === character.id ? null : character.id)}
-                                        >
-                                            <ChevronDown
-                                                size={18}
-                                                style={{ transform: expandedCharId === character.id ? "rotate(180deg)" : "none", transition: "transform .2s" }}
-                                            />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="ui-link-btn"
-                                            aria-label={`上传 ${character.name} 的参考图`}
-                                            onClick={() => {
-                                                const input = document.createElement("input");
-                                                input.type = "file";
-                                                input.accept = "image/*";
-                                                input.onchange = async () => {
-                                                    const file = input.files?.[0];
-                                                    if (file) await uploadReference(character.id, file);
-                                                };
-                                                input.click();
-                                            }}
-                                        >
-                                            <Upload size={18} />
-                                        </button>
-                                        {preview && (
-                                            <button
-                                                type="button"
-                                                className="ui-link-btn"
-                                                data-variant="danger"
-                                                aria-label={`删除 ${character.name} 的参考图`}
-                                                onClick={() => removeReference(character.id)}
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
-                                        )}
-                                    </span>
-                                </div>
-                                {/* 生图提示词 / 形象描述（默认折叠，点击展开） */}
-                                {expandedCharId === character.id && (
-                                    <div className="flex flex-col gap-1 pl-[calc(2.75rem+0.5rem)]">
-                                        <span className="ts-11 text-[var(--c-icon)] opacity-70">生图提示词（画风 / 构图 / 着装）</span>
-                                        <textarea
-                                            className="w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-3 py-2 ts-12 text-[var(--c-text)] placeholder-[var(--c-icon)] opacity-80 focus:border-[var(--c-accent)] focus:outline-none resize-none"
-                                            rows={2}
-                                            placeholder={`描述 ${character.name} 的生图形象，如：黑长直、白裙、动漫风格…`}
-                                            value={character.appearance || ""}
-                                            onChange={(e) => updateCharacterAppearance(character.id, e.target.value)}
+                {characters.length === 0 ? (
+                    <div className="ui-empty py-8">
+                        <Camera size={22} />
+                        <span className="menu-desc">暂无角色。</span>
+                    </div>
+                ) : worldGroups.length === 0 ? (
+                    <div className="ui-empty py-8">
+                        <span className="menu-desc">暂无世界分组。</span>
+                    </div>
+                ) : (
+                    <div className="menu-group">
+                        {worldGroups.map((world, worldIdx) => {
+                            const worldChars = world.memberIds
+                                .map(id => charactersById[id])
+                                .filter((c): c is Character => Boolean(c));
+                            const worldOpen = expandedWorldId === null ? worldIdx === 0 : expandedWorldId === world.id;
+                            return (
+                                <div key={world.id} className="menu-item flex-col items-stretch gap-2">
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-center gap-2"
+                                        aria-label={`${worldOpen ? "收起" : "展开"}世界 ${world.name}`}
+                                        aria-expanded={worldOpen}
+                                        onClick={() => setExpandedWorldId(prev => prev === world.id ? null : world.id)}
+                                    >
+                                        <ChevronDown
+                                            size={18}
+                                            className="shrink-0 text-[var(--c-icon)]"
+                                            style={{ transform: worldOpen ? "rotate(180deg)" : "none", transition: "transform .2s" }}
                                         />
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+                                        <span className="min-w-0 flex flex-1 flex-col text-left">
+                                            <span className="menu-label truncate">{world.name}</span>
+                                            <span className="menu-desc truncate">{worldChars.length} 个角色</span>
+                                        </span>
+                                    </button>
+                                    {worldOpen && (
+                                        <div className="flex flex-col gap-2 pl-[calc(1.125rem+0.5rem)]">
+                                            {worldChars.length === 0 ? (
+                                                <div className="menu-desc py-2 opacity-60">该世界暂无角色。</div>
+                                            ) : worldChars.map(character => {
+                                                const preview = referencePreviews[character.id];
+                                                return (
+                                                    <div key={character.id} className="menu-item flex-col items-stretch gap-2">
+                                                        <div className="flex w-full items-center">
+                                                            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-[var(--c-input)]">
+                                                                {preview ? (
+                                                                    <img src={preview} alt="" className="h-full w-full object-cover" />
+                                                                ) : character.avatar ? (
+                                                                    <img src={character.avatar} alt="" className="h-full w-full object-cover" />
+                                                                ) : (
+                                                                    <span className="flex h-full w-full items-center justify-center ts-13 font-semibold text-[var(--c-icon)]">
+                                                                        {character.name.slice(0, 1)}
+                                                                    </span>
+                                                                )}
+                                                            </span>
+                                                            <span className="min-w-0 flex flex-1 flex-col">
+                                                                <span className="menu-label truncate">{character.name}</span>
+                                                                <span className="menu-desc truncate">{preview ? "已上传参考图" : "未上传参考图"}</span>
+                                                            </span>
+                                                            <span className="menu-right flex gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    className="ui-link-btn"
+                                                                    aria-label={`${expandedCharId === character.id ? "收起" : "展开"} ${character.name} 的生图提示词`}
+                                                                    aria-expanded={expandedCharId === character.id}
+                                                                    onClick={() => setExpandedCharId(prev => prev === character.id ? null : character.id)}
+                                                                >
+                                                                    <ChevronDown
+                                                                        size={18}
+                                                                        style={{ transform: expandedCharId === character.id ? "rotate(180deg)" : "none", transition: "transform .2s" }}
+                                                                    />
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="ui-link-btn"
+                                                                    aria-label={`上传 ${character.name} 的参考图`}
+                                                                    onClick={() => {
+                                                                        const input = document.createElement("input");
+                                                                        input.type = "file";
+                                                                        input.accept = "image/*";
+                                                                        input.onchange = async () => {
+                                                                            const file = input.files?.[0];
+                                                                            if (file) await uploadReference(character.id, file);
+                                                                        };
+                                                                        input.click();
+                                                                    }}
+                                                                >
+                                                                    <Upload size={18} />
+                                                                </button>
+                                                                {preview && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="ui-link-btn"
+                                                                        data-variant="danger"
+                                                                        aria-label={`删除 ${character.name} 的参考图`}
+                                                                        onClick={() => removeReference(character.id)}
+                                                                    >
+                                                                        <Trash2 size={18} />
+                                                                    </button>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                        {/* 生图提示词 / 形象描述（默认折叠，点击展开） */}
+                                                        {expandedCharId === character.id && (
+                                                            <div className="flex flex-col gap-1 pl-[calc(2.75rem+0.5rem)]">
+                                                                <span className="ts-11 text-[var(--c-icon)] opacity-70">生图提示词（画风 / 构图 / 着装）</span>
+                                                                <textarea
+                                                                    className="w-full rounded-lg border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-3 py-2 ts-12 text-[var(--c-text)] placeholder-[var(--c-icon)] opacity-80 focus:border-[var(--c-accent)] focus:outline-none resize-none"
+                                                                    rows={2}
+                                                                    placeholder={`描述 ${character.name} 的生图形象，如：黑长直、白裙、动漫风格…`}
+                                                                    value={character.appearance || ""}
+                                                                    onChange={(e) => updateCharacterAppearance(character.id, e.target.value)}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {/* ═══ NAI 详细设置弹窗已移除（所有字段已内联到上方） ═══ */}
