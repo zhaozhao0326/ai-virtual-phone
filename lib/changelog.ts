@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.3.4";
+export const APP_VERSION = "1.3.5";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.5",
+    date: "2026-08-09",
+    title: "同步上游：补全日历功能（农历显示 + 事件编辑弹窗）",
+    highlights: [
+      "内容级融合原仓库(xiaolongbao0709)相对本仓库独有的 2 个文件，保留本仓库全部现有改动（不覆盖任何已有代码）：农历显示库 lib/lunar.ts（基于 Intl zh-u-ca-chinese，零数据表，不支持时静默返回 null）、日历事件编辑弹窗 components/calendar/event-edit-modal.tsx",
+      "event-edit-modal.tsx 依赖的 lib/calendar-types / lib/calendar-utils / components/ui/form 本仓库均已存在，融合后日历功能完整可编译",
+      "说明：上游与本仓库历史独立、无法直接 git merge；本次采用「保留本仓库 + 仅补充上游独有文件」策略，上游相对本仓库仅多出这 2 个文件（其余 30 个本仓库独有文件如世界面具、生图修复、空回复兜底等均保留）",
+    ],
+  },
   {
     version: "1.3.4",
     date: "2026-08-09",
