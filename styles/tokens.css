@@ -139,6 +139,12 @@
   /* 弹层遮罩 */
   --c-calendar-hair: rgba(60, 60, 67, 0.10);
   /* 发丝分隔线（课表整点线等） */
+  --c-calendar-glass: rgba(255, 255, 255, 0.68);
+  /* 液态玻璃按钮底 */
+  --c-calendar-glass-edge: rgba(255, 255, 255, 0.95);
+  /* 液态玻璃描边高光 */
+  --c-calendar-glass-hi: rgba(255, 255, 255, 1);
+  /* 液态玻璃内嵌高光 */
   /* 事件色（糖果色三元组：浅底 bg + 同色系深字 fg） */
   --c-calendar-ev-blue-bg: #CFE8FF;
   --c-calendar-ev-blue-fg: #2263AE;
@@ -288,6 +294,9 @@
   --c-calendar-sel-fg: #1A1A1A;
   --c-calendar-scrim: rgba(0, 0, 0, 0.55);
   --c-calendar-hair: rgba(255, 255, 255, 0.10);
+  --c-calendar-glass: rgba(48, 48, 48, 0.62);
+  --c-calendar-glass-edge: rgba(255, 255, 255, 0.25);
+  --c-calendar-glass-hi: rgba(255, 255, 255, 0.18);
   /* 深色下事件色整体压暗（同色相、降饱和、提字亮度） */
   --c-calendar-ev-blue-bg: #1E3A57;
   --c-calendar-ev-blue-fg: #9CC9FF;

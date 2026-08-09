@@ -715,7 +715,8 @@ async function readSseStream(
         }
     };
     const handleEvent = async (eventText: string) => {
-        rawResponse += `${eventText}\n`;
+        // 原始流只为调试快照保留头部：长输出整条累积会把低内存设备的 WebView 顶爆
+        if (rawResponse.length < 65_536) rawResponse += `${eventText}\n`;
         for (const parsed of sseParser.pushEvent(eventText)) {
             await handleParsed(parsed);
         }
@@ -1144,7 +1145,7 @@ export async function sendLLMToolStreamRequest(
             const parsed = parseSseEvents(buffer);
             buffer = parsed.rest;
             for (const event of parsed.events) {
-                rawResponse += `${event}\n`;
+                if (rawResponse.length < 65_536) rawResponse += `${event}\n`;
                 for (const data of sseParser.pushEvent(event)) {
                     await handleParsedDelta(data);
                 }
@@ -1152,7 +1153,7 @@ export async function sendLLMToolStreamRequest(
         }
 
         if (buffer.trim()) {
-            rawResponse += buffer.trim();
+            if (rawResponse.length < 65_536) rawResponse += buffer.trim();
             for (const data of sseParser.pushEvent(buffer)) {
                 await handleParsedDelta(data);
             }

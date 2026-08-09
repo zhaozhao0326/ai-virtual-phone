@@ -418,7 +418,7 @@ export async function sendQaMessage(
 
     const paintAssistant = (patch: Partial<QaMsg>, options?: { persist?: boolean; force?: boolean }) => {
         const now = Date.now();
-        if (!options?.force && streamedContent.length - lastPaintLength < 12 && now - lastPaintAt < 50) return;
+        if (!options?.force && streamedContent.length - lastPaintLength < 64 && now - lastPaintAt < 150) return;
         lastPaintAt = now;
         lastPaintLength = streamedContent.length;
         updateSession(
@@ -433,6 +433,13 @@ export async function sendQaMessage(
     };
 
     const toolLabel = (name: string): string => QA_TOOLS.find((t) => t.name === name)?.name ?? name;
+
+    // 工具行的参数/结果只存 UI 需要的头部：完整内容只属于模型上下文，
+    // 90k 级的读取结果整条进渲染与持久层会把低端机拖垮
+    const clipForUi = (text: string | undefined): string | undefined => {
+        if (text == null) return undefined;
+        return text.length > 4000 ? `${text.slice(0, 4000)}\n…（已截断，完整内容共 ${text.length.toLocaleString()} 字符）` : text;
+    };
 
     try {
         const history = (getActiveSession()?.messages ?? [])
@@ -468,7 +475,7 @@ export async function sendQaMessage(
                     paintAssistant({ reasoning: streamedReasoning }, { persist: false });
                 },
                 onToolStart: (name, args) => {
-                    const detail = args && Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : undefined;
+                    const detail = args && Object.keys(args).length > 0 ? clipForUi(JSON.stringify(args, null, 2)) : undefined;
                     const subtitle = formatQaToolSubtitle(name, args) || undefined;
                     const status: QaToolStatus = { name: toolLabel(name), running: true, detail, subtitle };
                     toolStatuses = [...toolStatuses, status];
@@ -492,7 +499,7 @@ export async function sendQaMessage(
                     const done: QaToolStatus[] = [];
                     toolStatuses = toolStatuses.map((t) =>
                         !patched && t.running && t.name === toolLabel(name)
-                            ? ((patched = true), done[0] = { ...t, running: false, success, result }, done[0])
+                            ? ((patched = true), done[0] = { ...t, running: false, success, result: clipForUi(result) }, done[0])
                             : t,
                     );
                     if (done[0]) {

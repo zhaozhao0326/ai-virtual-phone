@@ -1837,54 +1837,60 @@ export const CALENDAR_CSS_EXAMPLE = `/* ═════════════�
   --c-calendar-ev-lilac-bg: #EEDFEC;  --c-calendar-ev-lilac-fg: #8A4E80;
 }
 
-/* ━━ 顶栏 ━━ */
-.calendar-header-eyebrow {
-  /* letter-spacing: 0.3em; */
+/* ━━ 顶栏 / 悬浮按钮 ━━ */
+.calendar-pill-btn,
+.calendar-icon-btn {
+  /* border-radius: 12px; */
 }
-.calendar-header-action {
-  /* border-radius: 999px; */  /* 圆形按钮 */
+.calendar-fab-primary {
+  /* background: var(--c-calendar-today); */
 }
 
 /* ━━ 主人切换条 ━━ */
-.calendar-owner-chip .ui-avatar {
-  /* border-radius: 14px !important; */  /* 方圆头像 */
+.calendar-owner-chip {
+  /* border-radius: 12px; */
 }
 
-/* ━━ 周卡片 / 月历 ━━ */
-.calendar-week-card,
-.calendar-menstrual-card,
-.calendar-grid-card {
-  /* border-radius: 24px; */
+/* ━━ 整页月历 ━━ */
+.calendar-month-title strong {
+  /* font-family: Georgia, "Songti SC", serif; */
 }
-.calendar-hero-stat strong {
-  /* color: var(--c-calendar-today); */
+.calendar-month-num {
+  /* font-weight: 700; */
 }
-.calendar-unified-date {
-  /* font-family: Georgia, "Songti SC", serif; */  /* 衬线数字 */
-}
-.calendar-unified-lunar {
+.calendar-month-lunar {
   /* display: none; */  /* 隐藏农历小字 */
 }
-.calendar-unified-row[data-current="true"] {
-  /* background: var(--c-calendar-surface-2); */
+.calendar-month-week {
+  /* border-top: none; */  /* 去掉周分隔线 */
 }
 
-/* ━━ 周课表 ━━ */
-.calendar-event-block {
+/* ━━ 详情页周条 ━━ */
+.calendar-strip-bubble {
+  /* border-radius: 14px; */  /* 方圆选中块 */
+}
+.calendar-strip-range {
+  /* background: var(--c-calendar-ev-blue-bg); */
+}
+
+/* ━━ 双日时间轴 ━━ */
+.calendar-tl-event {
   /* border-radius: 10px; */
+  /* border-left-width: 5px; */
 }
-.calendar-hour-cell:nth-child(odd) {
-  /* opacity: 0.3; */  /* 减淡小时条纹 */
+.calendar-tl-event span {
+  /* display: none; */  /* 只显示标题行 */
+}
+.calendar-tl-day > header {
+  /* background: var(--c-calendar-surface); */
 }
 
-/* ━━ 经期卡片 ━━ */
-.calendar-menstrual-pill[data-active="true"] {
+/* ━━ 经期打卡行 ━━ */
+.calendar-cycle-line {
+  /* border-bottom: none; */
+}
+.calendar-mini-btn[data-variant="primary"] {
   /* background: var(--c-calendar-ev-violet-bg); color: var(--c-calendar-ev-violet-fg); */
-}
-
-/* ━━ 浮动按钮 ━━ */
-.calendar-fab-primary {
-  /* background: var(--c-calendar-today); */
 }
 
 /* ━━ 弹窗 ━━ */

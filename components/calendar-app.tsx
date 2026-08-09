@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Droplets, MapPin, Plus, Wand2, Trash2, Bot, Check, Palette, X, HeartPulse, MoreHorizontal } from "lucide-react";
-import { Avatar, EmptyState } from "./ui/primitives";
+import { Bot, Check, ChevronLeft, HeartPulse, Plus, Trash2, Wand2, X } from "lucide-react";
+import { Avatar } from "./ui/primitives";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
+import CSSSchemeBar from "@/components/ui/css-scheme-picker";
+import { CALENDAR_CSS_EXAMPLE } from "@/lib/css-examples";
+import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { Input } from "./ui/form";
 import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "@/lib/calendar-types";
 import {
   CALENDAR_THEME_IDS,
   deleteCalendarScheduleItem,
   loadCalendarConfig,
-  loadCalendarWeekPlan,
   loadOwnerCalendarPlans,
   saveCalendarConfig,
   upsertCalendarScheduleItem,
@@ -22,21 +24,11 @@ import { loadChatSessions } from "@/lib/chat-storage";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import {
   formatIsoDate,
-  formatMonthDay,
-  formatWeekRangeLabel,
-  getMonthMatrix,
-  getWeekDates,
   getWeekStartIso,
-  getWeekdayLabel,
-  isDateInWeek,
-  isSameMonth,
   parseIsoDate,
   pickScheduleColorKey,
   sanitizeScheduleEmoji,
-  timeToMinutes,
 } from "@/lib/calendar-utils";
-import { getLunarInfoByIso } from "@/lib/lunar";
-import { CalendarEventEditModal, type CalendarEventDraft } from "./calendar/event-edit-modal";
 import {
   buildMenstrualDayMap,
   cancelFinishCurrentPeriod,
@@ -51,17 +43,14 @@ import {
   validateMenstrualSettings,
   type MenstrualRecord,
 } from "@/lib/menstrual-storage";
+import { CalendarMonthPage } from "./calendar/month-page";
+import { CalendarDetailPage } from "./calendar/detail-page";
+import { CalendarEventEditModal, type CalendarEventDraft } from "./calendar/event-edit-modal";
 
 type OwnerOption = {
   key: string;
   ownerType: CalendarOwnerType;
   ownerId: string;
-  name: string;
-  avatar?: string | null;
-};
-
-type PeriodCareCharacterOption = {
-  characterId: string;
   name: string;
   avatar?: string | null;
 };
@@ -97,6 +86,12 @@ function buildOwnerOptions(): OwnerOption[] {
   return options;
 }
 
+type PeriodCareCharacterOption = {
+  characterId: string;
+  name: string;
+  avatar?: string | null;
+};
+
 function buildPeriodCareCharacterOptions(): PeriodCareCharacterOption[] {
   const characters = loadCharacters();
   const characterById = new Map(characters.map(char => [char.id, char]));
@@ -122,23 +117,11 @@ function buildPeriodCareCharacterOptions(): PeriodCareCharacterOption[] {
     });
 }
 
-function CalendarGeneratingLabel({ loading, idle }: { loading: boolean; idle: string }) {
-  if (!loading) return <>{idle}</>;
-  return (
-    <span className="calendar-generating-label">
-      生成中
-      <span className="calendar-generating-dots" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
-    </span>
-  );
+function formatSimpleDate(dateText: string | null): string {
+  if (!dateText) return "待记录";
+  const date = parseIsoDate(dateText);
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
-
-import { CALENDAR_CSS_EXAMPLE } from "@/lib/css-examples";
-import CSSSchemeBar from "@/components/ui/css-scheme-picker";
-import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 
 export function PhoneCalendarApp({
   onClose,
@@ -147,19 +130,26 @@ export function PhoneCalendarApp({
   onClose: () => void;
   onNotice?: (text: string) => void;
 }) {
+  const todayIso = formatIsoDate(new Date());
   const [owners, setOwners] = useState<OwnerOption[]>(() => buildOwnerOptions());
-  const [selectedKey, setSelectedKey] = useState<string>(() => buildOwnerOptions()[0]?.key ?? "user:me");
-  const [weekStart, setWeekStart] = useState<string>(() => getWeekStartIso(new Date()));
-  const [selectedDate, setSelectedDate] = useState<string>(() => formatIsoDate(new Date()));
-  const [monthExpanded, setMonthExpanded] = useState(false);
-  const [plan, setPlan] = useState<CalendarWeekPlan | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string>(() => owners[0]?.key ?? "user:me");
+  const [view, setView] = useState<"month" | "detail">("month");
+  const [selectedDate, setSelectedDate] = useState<string>(todayIso);
+  const [detailKey, setDetailKey] = useState(0);
   const [ownerPlans, setOwnerPlans] = useState<CalendarWeekPlan[]>([]);
   const [config, setConfig] = useState(() => loadCalendarConfig());
   const [menstrualConfig, setMenstrualConfig] = useState(() => loadMenstrualConfig());
   const [menstrualRecords, setMenstrualRecords] = useState<MenstrualRecord[]>(() => loadMenstrualRecords());
-  const autoGenerateEnabled = config.autoGenerateEnabled;
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [showMenstrualSettings, setShowMenstrualSettings] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
+  const [showAutoConfirm, setShowAutoConfirm] = useState(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
+  const autoAttemptedRef = useRef<Set<string>>(new Set());
+  const [editingItem, setEditingItem] = useState<(CalendarEventDraft & { originalDate?: string }) | null>(null);
+  const autoGenerateEnabled = config.autoGenerateEnabled;
+
   const [menstrualDraft, setMenstrualDraft] = useState<{
     cycleLength: string;
     periodLength: string;
@@ -176,6 +166,7 @@ export function PhoneCalendarApp({
       periodCareLeadDays: String(initial.periodCareLeadDays) as "1" | "2" | "3",
     };
   });
+
   const [calendarCustomCss, setCalendarCustomCss] = useState(() =>
     typeof window !== "undefined" ? kvGet("calendar-custom-css") || "" : ""
   );
@@ -189,7 +180,7 @@ export function PhoneCalendarApp({
     setAppliedCalendarCss(trimmed);
     window.dispatchEvent(new CustomEvent("calendar-css-updated", { detail: trimmed }));
   };
-  // Listen for live CSS updates from 小卷
+  // 小卷等外部来源实时更新日历自定义 CSS
   useEffect(() => {
     const onCSSUpdate = (e: Event) => {
       const css = (e as CustomEvent).detail || "";
@@ -199,67 +190,43 @@ export function PhoneCalendarApp({
     window.addEventListener("calendar-css-updated", onCSSUpdate);
     return () => window.removeEventListener("calendar-css-updated", onCSSUpdate);
   }, []);
-  const [expandedDate, setExpandedDate] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
-  const [showAutoConfirm, setShowAutoConfirm] = useState(false);
-  const [fabMenuOpen, setFabMenuOpen] = useState(false);
-  const autoAttemptedRef = useRef<Set<string>>(new Set());
-  const [editingItem, setEditingItem] = useState<(CalendarEventDraft & { originalDate?: string }) | null>(null);
 
   const selectedOwner = useMemo(
     () => owners.find(owner => owner.key === selectedKey) ?? owners[0] ?? null,
     [owners, selectedKey],
   );
-  const weekEventCount = plan?.items.length ?? 0;
+  const weekStart = useMemo(() => getWeekStartIso(parseIsoDate(selectedDate)), [selectedDate]);
 
-  const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
-  const monthMatrix = useMemo(() => getMonthMatrix(weekStart), [weekStart]);
-  const monthDates = useMemo(() => monthMatrix.flat(), [monthMatrix]);
   const itemsByDate = useMemo(() => {
     const map = new Map<string, CalendarScheduleItem[]>();
-    for (const item of plan?.items ?? []) {
-      const list = map.get(item.date) || [];
-      list.push(item);
-      list.sort((a, b) => a.startTime.localeCompare(b.startTime));
-      map.set(item.date, list);
-    }
-    return map;
-  }, [plan]);
-  // 时间轴范围跟随事件伸缩：更早/更晚的事件自动扩展，最晚事件结束即收尾（至少展示 10 小时）
-  const [gridHourStart, gridHourEnd] = useMemo(() => {
-    let start = 8;
-    let end = 0;
-    for (const item of plan?.items ?? []) {
-      const s = timeToMinutes(item.startTime);
-      const e = timeToMinutes(item.endTime);
-      if (!Number.isNaN(s)) start = Math.min(start, Math.floor(s / 60));
-      if (!Number.isNaN(e)) end = Math.max(end, Math.ceil(e / 60));
-    }
-    end = Math.min(24, Math.max(end, start + 10));
-    return [start, end];
-  }, [plan]);
-  const gridTotalMinutes = (gridHourEnd - gridHourStart) * 60;
-  const countsByDate = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const ownerPlan of ownerPlans) {
-      for (const item of ownerPlan.items) {
-        map.set(item.date, (map.get(item.date) || 0) + 1);
+    for (const plan of ownerPlans) {
+      for (const item of plan.items) {
+        const list = map.get(item.date) || [];
+        list.push(item);
+        map.set(item.date, list);
       }
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.startTime.localeCompare(b.startTime));
     }
     return map;
   }, [ownerPlans]);
-  const menstrualDayMap = useMemo(() => {
-    if (selectedOwner?.ownerType !== "user" || monthDates.length === 0) return new Map();
-    return buildMenstrualDayMap(monthDates[0], monthDates[monthDates.length - 1], menstrualRecords, menstrualConfig);
-  }, [selectedOwner, monthDates, menstrualRecords, menstrualConfig]);
-  const weekMenstrualMap = useMemo(() => {
-    if (selectedOwner?.ownerType !== "user" || weekDates.length === 0) return new Map();
-    return buildMenstrualDayMap(weekDates[0], weekDates[weekDates.length - 1], menstrualRecords, menstrualConfig);
-  }, [selectedOwner, weekDates, menstrualRecords, menstrualConfig]);
-  const menstrualSummary = useMemo(() => getMenstrualSummary(menstrualRecords, menstrualConfig, selectedDate), [menstrualRecords, menstrualConfig, selectedDate]);
+
+  // 经期标注：覆盖月历页 ±1 年范围
+  const cycleMap = useMemo(() => {
+    if (selectedOwner?.ownerType !== "user") return null;
+    const today = parseIsoDate(todayIso);
+    const start = formatIsoDate(new Date(today.getFullYear() - 1, today.getMonth(), 1));
+    const end = formatIsoDate(new Date(today.getFullYear() + 1, today.getMonth() + 1, 0));
+    return buildMenstrualDayMap(start, end, menstrualRecords, menstrualConfig);
+  }, [selectedOwner, todayIso, menstrualRecords, menstrualConfig]);
+
+  const menstrualSummary = useMemo(
+    () => getMenstrualSummary(menstrualRecords, menstrualConfig, selectedDate),
+    [menstrualRecords, menstrualConfig, selectedDate],
+  );
   const periodCareCharacterOptions = useMemo(
-    () => showMenstrualSettings ? buildPeriodCareCharacterOptions() : [],
+    () => (showMenstrualSettings ? buildPeriodCareCharacterOptions() : []),
     [showMenstrualSettings],
   );
 
@@ -267,176 +234,33 @@ export function PhoneCalendarApp({
     setOwners(buildOwnerOptions());
   }, []);
 
-  const ownerStripRef = useRef<HTMLElement>(null);
-  const isDragging = useRef(false);
-  const isClicking = useRef(false);
-  const startX = useRef(0);
-  const scrollLeft = useRef(0);
-  const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
-
-  // 滚动区顶/底橡皮筋回弹
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const bounceInnerRef = useRef<HTMLDivElement>(null);
-  const bounceState = useRef({ startY: 0, offset: 0, tracking: false });
-
-  const handleBounceTouchStart = (e: React.TouchEvent) => {
-    bounceState.current.startY = e.touches[0].clientY;
-    bounceState.current.offset = 0;
-    bounceState.current.tracking = true;
-  };
-
-  const handleBounceTouchMove = (e: React.TouchEvent) => {
-    const scroller = scrollAreaRef.current;
-    const inner = bounceInnerRef.current;
-    if (!scroller || !inner || !bounceState.current.tracking) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const dy = e.touches[0].clientY - bounceState.current.startY;
-    const atTop = scroller.scrollTop <= 0;
-    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
-    if ((atTop && dy > 0) || (atBottom && dy < 0)) {
-      // 阻尼拉伸，最多 90px
-      const damped = Math.max(-90, Math.min(90, dy * 0.32));
-      bounceState.current.offset = damped;
-      inner.style.transition = "none";
-      inner.style.transform = `translateY(${damped}px)`;
-    } else if (bounceState.current.offset !== 0) {
-      bounceState.current.offset = 0;
-      inner.style.transform = "";
-    }
-  };
-
-  const handleBounceTouchEnd = () => {
-    const inner = bounceInnerRef.current;
-    bounceState.current.tracking = false;
-    if (!inner || bounceState.current.offset === 0) return;
-    bounceState.current.offset = 0;
-    inner.style.transition = "transform 0.34s cubic-bezier(0.22, 1.1, 0.36, 1)";
-    inner.style.transform = "translateY(0)";
+  const refreshPlans = () => {
+    if (!selectedOwner) return;
+    setOwnerPlans(loadOwnerCalendarPlans(selectedOwner.ownerType, selectedOwner.ownerId));
   };
 
   useEffect(() => {
     if (!selectedOwner) return;
-    setPlan(loadCalendarWeekPlan(selectedOwner.ownerType, selectedOwner.ownerId, weekStart));
     setOwnerPlans(loadOwnerCalendarPlans(selectedOwner.ownerType, selectedOwner.ownerId));
+  }, [selectedOwner]);
 
-    // Smooth scroll the selected avatar into view if clicked
-    if (isClicking.current) {
-      setTimeout(() => {
-        if (ownerStripRef.current) {
-          const activeEl = ownerStripRef.current.querySelector('[data-active="true"]') as HTMLElement;
-          if (activeEl) {
-            const container = ownerStripRef.current;
-            const targetScroll = activeEl.offsetLeft - container.clientWidth / 2 + activeEl.clientWidth / 2;
-            container.scrollTo({ left: targetScroll, behavior: 'smooth' });
-          }
-        }
-        setTimeout(() => { isClicking.current = false; }, 300);
-      }, 50);
-    }
-  }, [selectedOwner, weekStart]);
-
-  // Listen for cross-app calendar updates (e.g. action-parser dispatches from chat)
+  // 聊天/工具调用改动日程后刷新
   useEffect(() => {
     const handler = () => {
       if (!selectedOwner) return;
-      setPlan(loadCalendarWeekPlan(selectedOwner.ownerType, selectedOwner.ownerId, weekStart));
       setOwnerPlans(loadOwnerCalendarPlans(selectedOwner.ownerType, selectedOwner.ownerId));
     };
     window.addEventListener("calendar-updated", handler);
     return () => window.removeEventListener("calendar-updated", handler);
-  }, [selectedOwner, weekStart]);
+  }, [selectedOwner]);
 
-  const handleScroll = () => {
-    if (!ownerStripRef.current || isDragging.current || isClicking.current) return;
-    clearTimeout(scrollTimeout.current);
-    scrollTimeout.current = setTimeout(() => {
-      const container = ownerStripRef.current;
-      if (!container) return;
-      const center = container.scrollLeft + container.clientWidth / 2;
-      let minDistance = Infinity;
-      let closestKey: string | null = null;
-      
-      Array.from(container.children).forEach(node => {
-        const child = node as HTMLElement;
-        // Calculate child's absolute center relative to scroll container
-        const childCenter = child.offsetLeft + child.clientWidth / 2 - container.offsetLeft;
-        const dist = Math.abs(childCenter - center);
-        if (dist < minDistance) {
-          minDistance = dist;
-          closestKey = child.getAttribute('data-key');
-        }
-      });
-      
-      if (closestKey && closestKey !== selectedKey) {
-        setSelectedKey(closestKey);
-        setWeekStart(getWeekStartIso(new Date()));
-      }
-    }, 150); // wait for scroll to snap
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!ownerStripRef.current) return;
-    isDragging.current = true;
-    startX.current = e.pageX - ownerStripRef.current.offsetLeft;
-    scrollLeft.current = ownerStripRef.current.scrollLeft;
-  };
-
-  const snapToClosest = () => {
-    if (!ownerStripRef.current) return;
-    const container = ownerStripRef.current;
-    const center = container.scrollLeft + container.clientWidth / 2;
-    let minDistance = Infinity;
-    let closestKey: string | null = null;
-    let closestChild: HTMLElement | null = null;
-
-    Array.from(container.children).forEach(node => {
-      const child = node as HTMLElement;
-      const childCenter = child.offsetLeft + child.clientWidth / 2 - container.offsetLeft;
-      const dist = Math.abs(childCenter - center);
-      if (dist < minDistance) {
-        minDistance = dist;
-        closestKey = child.getAttribute('data-key');
-        closestChild = child;
-      }
-    });
-
-    if (closestChild) {
-      const targetScroll = (closestChild as HTMLElement).offsetLeft - container.clientWidth / 2 + (closestChild as HTMLElement).clientWidth / 2;
-      container.scrollTo({ left: targetScroll, behavior: 'smooth' });
-    }
-    if (closestKey && closestKey !== selectedKey) {
-      setSelectedKey(closestKey);
-      setWeekStart(getWeekStartIso(new Date()));
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (isDragging.current) {
-      isDragging.current = false;
-      snapToClosest();
-    }
-  };
-
-  const handleMouseUp = () => {
-    if (isDragging.current) {
-      isDragging.current = false;
-      snapToClosest();
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging.current || !ownerStripRef.current) return;
-    e.preventDefault();
-    const x = e.pageX - ownerStripRef.current.offsetLeft;
-    const walk = (x - startX.current) * 1.5; 
-    ownerStripRef.current.scrollLeft = scrollLeft.current - walk;
-  };
-
+  // 每周自动生成（仅角色）
   useEffect(() => {
     if (!selectedOwner || !autoGenerateEnabled || selectedOwner.ownerType !== "character" || isGenerating) return;
     const autoKey = `${selectedOwner.ownerType}:${selectedOwner.ownerId}:${weekStart}`;
     if (autoAttemptedRef.current.has(autoKey)) return;
-    const existing = loadCalendarWeekPlan(selectedOwner.ownerType, selectedOwner.ownerId, weekStart);
+    const existing = loadOwnerCalendarPlans(selectedOwner.ownerType, selectedOwner.ownerId)
+      .find(plan => plan.weekStart === weekStart);
     if (existing && existing.items.length > 0) return;
     void (async () => {
       autoAttemptedRef.current.add(autoKey);
@@ -450,35 +274,35 @@ export function PhoneCalendarApp({
       refreshPlans();
       onNotice?.("已自动生成本周角色日程");
     })();
-  }, [autoGenerateEnabled, isGenerating, onNotice, selectedOwner, weekStart]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerateEnabled, isGenerating, selectedOwner, weekStart]);
 
-  const refreshPlans = () => {
-    if (!selectedOwner) return;
-    setPlan(loadCalendarWeekPlan(selectedOwner.ownerType, selectedOwner.ownerId, weekStart));
-    setOwnerPlans(loadOwnerCalendarPlans(selectedOwner.ownerType, selectedOwner.ownerId));
+  // ── 事件编辑 ──
+  const openNewDraft = (date: string) => {
+    const base = createDefaultScheduleDraft(date);
+    setEditingItem({
+      date: base.date,
+      startTime: base.startTime,
+      endTime: base.endTime,
+      location: base.location,
+      title: base.title,
+      emoji: base.emoji,
+    });
   };
 
-  const moveWeek = (delta: number) => {
-    const next = parseIsoDate(weekStart);
-    next.setDate(next.getDate() + delta * 7);
-    setWeekStart(getWeekStartIso(next));
-    const nextSelected = parseIsoDate(selectedDate);
-    nextSelected.setDate(nextSelected.getDate() + delta * 7);
-    setSelectedDate(formatIsoDate(nextSelected));
-  };
-
-  const handleGenerate = async () => {
-    if (!selectedOwner || isGenerating || selectedOwner.ownerType !== "character") return;
-    setShowGenerateConfirm(false);
-    setIsGenerating(true);
-    const result = await generateWeeklyCalendarSchedule(selectedOwner.ownerType, selectedOwner.ownerId, weekStart);
-    setIsGenerating(false);
-    if (!result.success) {
-      onNotice?.(result.error || "生成失败");
-      return;
-    }
-    refreshPlans();
-    onNotice?.("本周日程已生成");
+  const openEditItem = (item: CalendarScheduleItem) => {
+    setEditingItem({
+      id: item.id,
+      date: item.date,
+      endDate: item.date,
+      originalDate: item.date,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      location: item.location,
+      title: item.title,
+      emoji: item.emoji || "",
+      colorKey: item.colorKey,
+    });
   };
 
   const handleSaveDraft = () => {
@@ -538,6 +362,21 @@ export function PhoneCalendarApp({
     onNotice?.("日程已删除");
   };
 
+  const handleGenerate = async () => {
+    if (!selectedOwner || isGenerating || selectedOwner.ownerType !== "character") return;
+    setShowGenerateConfirm(false);
+    setIsGenerating(true);
+    const result = await generateWeeklyCalendarSchedule(selectedOwner.ownerType, selectedOwner.ownerId, weekStart);
+    setIsGenerating(false);
+    if (!result.success) {
+      onNotice?.(result.error || "生成失败");
+      return;
+    }
+    refreshPlans();
+    onNotice?.("本周日程已生成");
+  };
+
+  // ── 经期 ──
   const refreshMenstrual = () => {
     setMenstrualConfig(loadMenstrualConfig());
     setMenstrualRecords(loadMenstrualRecords());
@@ -591,460 +430,183 @@ export function PhoneCalendarApp({
     onNotice?.("周期设置已保存");
   };
 
-  const handleDeleteMenstrual = (recordId: string) => {
-    setMenstrualRecords(deleteMenstrualRecord(recordId));
-    refreshMenstrual();
-    onNotice?.("经期记录已删除");
-  };
-
-  const handleStartMenstrual = () => {
-    setMenstrualConfig(startCurrentPeriod(selectedDate));
-    setMenstrualRecords(loadMenstrualRecords());
-    onNotice?.("已记录经期来了");
-  };
-
-  const handleCancelMenstrualStart = () => {
-    setMenstrualConfig(cancelCurrentPeriodStart(selectedDate));
-    setMenstrualRecords(loadMenstrualRecords());
-    onNotice?.("已取消这一天的经期来了");
-  };
-
-  const handleFinishMenstrual = () => {
-    const result = finishCurrentPeriod(selectedDate);
-    if (!result.saved) {
-      onNotice?.("请先记录经期来了");
-      return;
-    }
-    setMenstrualConfig(result.config);
-    setMenstrualRecords(result.records);
-    onNotice?.("已记录经期走了");
-  };
-
-  const handleCancelMenstrualFinish = () => {
-    const result = cancelFinishCurrentPeriod(selectedDate);
-    if (!result.restored) {
-      onNotice?.("这一天还没有记录经期走了");
-      return;
-    }
-    setMenstrualConfig(result.config);
-    setMenstrualRecords(result.records);
-    onNotice?.("已取消这一天的经期走了");
-  };
-
-  const formatSimpleDate = (dateText: string | null) => {
-    if (!dateText) return "待记录";
-    const date = parseIsoDate(dateText);
-    return `${date.getMonth() + 1}月${date.getDate()}日`;
-  };
-
-  const todayIso = formatIsoDate(new Date());
   const canCancelSelectedStart = menstrualSummary.currentPeriodStartDate === selectedDate && !menstrualSummary.todayFinished;
   const canStartSelected = !menstrualSummary.todayStarted && !menstrualSummary.isPeriodActive;
   const canCancelSelectedFinish = menstrualSummary.todayFinished;
-  const canFinishSelected = menstrualSummary.isPeriodActive && !!menstrualSummary.currentPeriodStartDate && selectedDate >= menstrualSummary.currentPeriodStartDate && !menstrualSummary.todayFinished;
+  const canFinishSelected =
+    menstrualSummary.isPeriodActive &&
+    !!menstrualSummary.currentPeriodStartDate &&
+    selectedDate >= menstrualSummary.currentPeriodStartDate &&
+    !menstrualSummary.todayFinished;
+
+  const cycleStateForSelected = cycleMap?.get(selectedDate) ?? null;
+  const cycleSummaryLine = cycleStateForSelected
+    ? `周期 · ${cycleStateForSelected.label || cycleStateForSelected.shortLabel}`
+    : menstrualSummary.isPeriodActive && menstrualSummary.currentPeriodStartDate
+      ? `本次经期从 ${formatSimpleDate(menstrualSummary.currentPeriodStartDate)} 开始`
+      : menstrualSummary.latest
+        ? null
+        : "点「经期来了」开始记录与预测";
+
+  // 详情页经期打卡行（仅用户视图）
+  const cyclePanel = selectedOwner?.ownerType === "user" ? (
+    <div className="calendar-cycle-line">
+      <i className="calendar-cycle-dot" data-type={cycleStateForSelected?.type ?? "period"} aria-hidden="true" />
+      <span className="calendar-cycle-line-text">{cycleSummaryLine ?? "周期记录"}</span>
+      {canCancelSelectedStart ? (
+        <button type="button" className="calendar-mini-btn" data-variant="primary" onClick={() => {
+          setMenstrualConfig(cancelCurrentPeriodStart(selectedDate));
+          setMenstrualRecords(loadMenstrualRecords());
+          onNotice?.("已取消这一天的经期来了");
+        }}>撤销来了</button>
+      ) : (
+        <button type="button" className="calendar-mini-btn" data-variant="primary" disabled={!canStartSelected} onClick={() => {
+          setMenstrualConfig(startCurrentPeriod(selectedDate));
+          setMenstrualRecords(loadMenstrualRecords());
+          onNotice?.("已记录经期来了");
+        }}>经期来了</button>
+      )}
+      {canCancelSelectedFinish ? (
+        <button type="button" className="calendar-mini-btn" data-variant="primary" onClick={() => {
+          const result = cancelFinishCurrentPeriod(selectedDate);
+          if (!result.restored) {
+            onNotice?.("这一天还没有记录经期走了");
+            return;
+          }
+          setMenstrualConfig(result.config);
+          setMenstrualRecords(result.records);
+          onNotice?.("已取消这一天的经期走了");
+        }}>撤销走了</button>
+      ) : (
+        <button type="button" className="calendar-mini-btn" data-variant="ghost" disabled={!canFinishSelected} onClick={() => {
+          const result = finishCurrentPeriod(selectedDate);
+          if (!result.saved) {
+            onNotice?.("请先记录经期来了");
+            return;
+          }
+          setMenstrualConfig(result.config);
+          setMenstrualRecords(result.records);
+          onNotice?.("已记录经期走了");
+        }}>经期走了</button>
+      )}
+    </div>
+  ) : null;
+
+  const ownerStrip = (
+    <section className="calendar-owner-strip hide-scrollbar">
+      {owners.map(owner => (
+        <button
+          key={owner.key}
+          type="button"
+          className="calendar-owner-chip"
+          data-active={owner.key === selectedKey ? "true" : undefined}
+          onClick={() => {
+            setFabMenuOpen(false);
+            setSelectedKey(owner.key);
+            setSelectedDate(todayIso);
+          }}
+        >
+          <Avatar src={owner.avatar || undefined} name={owner.name} size="md" />
+          <span>{owner.name}</span>
+        </button>
+      ))}
+    </section>
+  );
+
+  const openDetail = (date: string) => {
+    setSelectedDate(date);
+    setDetailKey(k => k + 1);
+    setView("detail");
+  };
 
   return (
     <div className="calendar-app-shell" data-calendar-theme={config.theme}>
       {appliedCalendarCss && <SessionCustomCSS css={appliedCalendarCss} scope=".calendar-app-shell" />}
       <div className="calendar-app">
-        <header className="calendar-header">
-          <div className="calendar-header-left">
-            <button type="button" className="calendar-header-action" onClick={onClose} aria-label="返回">
-              <ChevronLeft size={20} />
-            </button>
-          </div>
-          <div className="calendar-header-center">
-            <span className="calendar-header-eyebrow">Weekly Planner</span>
-          </div>
-          <div className="calendar-header-right">
-            <button type="button" className="calendar-header-action" onClick={() => setShowThemePanel(true)} aria-label="主题色">
-              <Palette size={18} />
-            </button>
-          </div>
-        </header>
+        {view === "month" ? (
+          <CalendarMonthPage
+            todayIso={todayIso}
+            itemsByDate={itemsByDate}
+            cycleMap={cycleMap}
+            ownerStrip={ownerStrip}
+            onPickDay={openDetail}
+            onClose={onClose}
+            onOpenTheme={() => setShowThemePanel(true)}
+          />
+        ) : (
+          <CalendarDetailPage
+            key={detailKey}
+            initialDate={selectedDate}
+            todayIso={todayIso}
+            itemsByDate={itemsByDate}
+            cycleMap={cycleMap}
+            cyclePanel={cyclePanel}
+            onOpenCycleSettings={selectedOwner?.ownerType === "user" ? openMenstrualSettings : null}
+            onBack={() => setView("month")}
+            onSelectedChange={setSelectedDate}
+            onEditItem={openEditItem}
+          />
+        )}
 
-        <div
-          className="calendar-scroll hide-scrollbar"
-          ref={scrollAreaRef}
-          onTouchStart={handleBounceTouchStart}
-          onTouchMove={handleBounceTouchMove}
-          onTouchEnd={handleBounceTouchEnd}
-          onTouchCancel={handleBounceTouchEnd}
-        >
-          <div className="calendar-scroll-bounce" ref={bounceInnerRef}>
-          <section
-            ref={ownerStripRef}
-            className="calendar-owner-strip hide-scrollbar"
-            onScroll={handleScroll}
-            onMouseDown={handleMouseDown}
-            onMouseLeave={handleMouseLeave}
-            onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}
-          >
-            {owners.map(owner => (
+        {fabMenuOpen ? <div className="calendar-fab-backdrop" onClick={() => setFabMenuOpen(false)} /> : null}
+        <div className="calendar-fab-stack">
+          {fabMenuOpen && selectedOwner?.ownerType === "character" ? (
+            <div className="calendar-fab-menu" role="menu">
               <button
-                key={owner.key}
                 type="button"
-                className="calendar-owner-chip"
-                data-key={owner.key}
-                data-active={owner.key === selectedKey ? "true" : undefined}
-                onClick={(e) => {
-                  if (Math.abs(ownerStripRef.current!.scrollLeft - scrollLeft.current) > 5) {
-                    e.preventDefault();
-                    return;
-                  }
-                  isClicking.current = true;
+                className="calendar-fab-menu-item"
+                onClick={() => {
                   setFabMenuOpen(false);
-                  setSelectedKey(owner.key);
-                  setWeekStart(getWeekStartIso(new Date()));
-                  setSelectedDate(formatIsoDate(new Date()));
+                  openNewDraft(view === "detail" ? selectedDate : todayIso);
                 }}
               >
-                <Avatar src={owner.avatar || undefined} name={owner.name} size="lg" />
-                <span>{owner.name}</span>
+                <Plus size={15} />
+                新增日程
               </button>
-            ))}
-          </section>
-
-          <div className="calendar-week-card">
-            <div className="calendar-hero">
-              <div className="calendar-hero-copy">
-                <div className="calendar-week-title">
-                  <strong>{selectedOwner?.ownerType === "user" ? "我的周程" : "角色周程"}</strong>
-                  <span className="calendar-week-owner">{formatWeekRangeLabel(weekStart)}</span>
-                </div>
-              </div>
-              <div className="calendar-hero-stat">
-                <span>本周事项</span>
-                <strong>{weekEventCount}</strong>
-              </div>
-            </div>
-
-            <div className="calendar-unified-grid">
-              <div className="calendar-unified-weekdays">
-                {["一", "二", "三", "四", "五", "六", "日"].map(label => (
-                  <span key={label}>{label}</span>
-                ))}
-              </div>
-              <div className="calendar-unified-body">
-                {monthMatrix.map((week, weekIdx) => {
-                  const isCurrentWeek = week.some(d => isDateInWeek(d, weekStart));
-                  if (!monthExpanded && !isCurrentWeek) return null;
-                  return (
-                    <div
-                      key={weekIdx}
-                      className="calendar-unified-row"
-                      data-current={isCurrentWeek ? "true" : undefined}
-                    >
-                      {week.map(date => {
-                        const hasItems = countsByDate.has(date);
-                        const isOutside = !isSameMonth(date, weekStart);
-                        const isInWeek = isDateInWeek(date, weekStart);
-                        const menstrualState = selectedOwner?.ownerType === "user" ? weekMenstrualMap.get(date) || menstrualDayMap.get(date) : null;
-                        return (
-                          <button
-                            key={date}
-                            type="button"
-                            className="calendar-unified-cell"
-                            data-outside={isOutside ? "true" : undefined}
-                            data-in-week={isInWeek ? "true" : undefined}
-                            data-has-items={hasItems ? "true" : undefined}
-                            data-selected={date === selectedDate ? "true" : undefined}
-                            data-today={date === todayIso ? "true" : undefined}
-                            data-cycle={menstrualState?.type}
-                            onClick={() => {
-                              setWeekStart(getWeekStartIso(parseIsoDate(date)));
-                              setSelectedDate(date);
-                            }}
-                          >
-                            <span className="calendar-unified-date">{parseIsoDate(date).getDate()}</span>
-                            <span className="calendar-unified-lunar">{getLunarInfoByIso(date)?.cellLabel ?? ""}</span>
-                            <span className="calendar-unified-indicators">
-                              {menstrualState ? <i className="calendar-unified-cycle-dot" data-type={menstrualState.type} /> : null}
-                              {hasItems ? <i className="calendar-unified-dot" /> : null}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="calendar-week-header">
-              <button type="button" className="calendar-nav-btn" onClick={() => moveWeek(-1)} aria-label="上一周">
-                <ChevronLeft size={15} />
+              <button
+                type="button"
+                className="calendar-fab-menu-item"
+                disabled={isGenerating}
+                onClick={() => {
+                  setFabMenuOpen(false);
+                  setShowGenerateConfirm(true);
+                }}
+              >
+                <Wand2 size={15} />
+                {isGenerating ? "生成中…" : "AI 生成本周"}
               </button>
-              <button type="button" className="calendar-month-toggle" onClick={() => setMonthExpanded(prev => !prev)} aria-label={monthExpanded ? "收起月历" : "展开月历"}>
-                <ChevronDown size={16} style={{ transform: monthExpanded ? "rotate(180deg)" : undefined, transition: "transform 0.3s" }} />
+              <button
+                type="button"
+                className="calendar-fab-menu-item"
+                data-on={autoGenerateEnabled ? "true" : undefined}
+                onClick={() => {
+                  setFabMenuOpen(false);
+                  setShowAutoConfirm(true);
+                }}
+              >
+                <Bot size={15} />
+                每周自动生成
+                <i className="calendar-fab-menu-state">{autoGenerateEnabled ? "已开" : "已关"}</i>
               </button>
-              <button type="button" className="calendar-nav-btn" onClick={() => moveWeek(1)} aria-label="下一周">
-                <ChevronRight size={15} />
-              </button>
-            </div>
-          </div>
-
-          {selectedOwner?.ownerType === "user" ? (
-            <div className="calendar-menstrual-card">
-              <div className="calendar-menstrual-head">
-                <div className="calendar-menstrual-copy">
-                  <span className="calendar-menstrual-kicker">Cycle Tracker</span>
-                  <div className="calendar-menstrual-title-row">
-                    <strong>经期记录</strong>
-                    {menstrualSummary.todayState ? (
-                      <span className="calendar-menstrual-title-tag" data-type={menstrualSummary.todayState.type}>
-                        {menstrualSummary.todayState.shortLabel}
-                      </span>
-                    ) : null}
-                  </div>
-                  <span>
-                    {menstrualSummary.isPeriodActive
-                      ? `本次经期从 ${formatSimpleDate(menstrualSummary.currentPeriodStartDate)} 开始`
-                      : menstrualSummary.latest
-                        ? "已根据最近记录在日历中标注预测经期和排卵期"
-                        : "点按“经期来了”后，会自动开始预测经期和排卵期"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className="calendar-menstrual-settings-trigger"
-                  onClick={openMenstrualSettings}
-                  aria-label="周期设置"
-                  title="周期设置"
-                >
-                  <MoreHorizontal size={17} />
-                </button>
-              </div>
-
-              <div className="calendar-menstrual-action-row">
-                <button
-                  type="button"
-                  className="calendar-menstrual-pill"
-                  data-active={menstrualSummary.todayStarted ? "true" : undefined}
-                  onClick={canCancelSelectedStart ? handleCancelMenstrualStart : handleStartMenstrual}
-                  disabled={!canCancelSelectedStart && !canStartSelected}
-                >
-                  <span className="calendar-menstrual-pill-label">
-                    <Droplets size={12} />
-                    经期来了
-                  </span>
-                  <span className="calendar-menstrual-pill-switch" aria-hidden="true">
-                    <span className="calendar-menstrual-pill-switch-thumb" />
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="calendar-menstrual-pill"
-                  data-active={menstrualSummary.todayFinished ? "true" : undefined}
-                  onClick={canCancelSelectedFinish ? handleCancelMenstrualFinish : handleFinishMenstrual}
-                  disabled={!canCancelSelectedFinish && !canFinishSelected}
-                >
-                  <span className="calendar-menstrual-pill-label">
-                    <Droplets size={12} />
-                    经期走了
-                  </span>
-                  <span className="calendar-menstrual-pill-switch" aria-hidden="true">
-                    <span className="calendar-menstrual-pill-switch-thumb" />
-                  </span>
-                </button>
-              </div>
-
-              <div className="calendar-menstrual-stats">
-                <div className="calendar-menstrual-stat-row">
-                  <div className="calendar-menstrual-stat">
-                    <span>最近一次</span>
-                    <strong>
-                      {menstrualSummary.latest
-                        ? `${formatSimpleDate(menstrualSummary.latest.startDate)} - ${formatSimpleDate(menstrualSummary.latest.endDate)}`
-                        : "暂无记录"}
-                    </strong>
-                  </div>
-                  <div className="calendar-menstrual-stat calendar-menstrual-stat-column-only">
-                    <span>周期 / 经期</span>
-                    <strong>{menstrualConfig.cycleLength}天 / {menstrualConfig.periodLength}天</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="calendar-menstrual-legend">
-                <span data-type="period">经期</span>
-                <span data-type="predicted_period">预计</span>
-                <span data-type="fertile">易孕</span>
-                <span data-type="ovulation">排卵</span>
-              </div>
             </div>
           ) : null}
-
-          <div className="calendar-grid-card">
-            <div className="calendar-grid-header" onClick={() => setExpandedDate(null)} style={{ cursor: "pointer" }}>
-              <div className="calendar-grid-heading">
-                <strong>本周安排</strong>
-              </div>
-              <span className="calendar-grid-counter">{weekEventCount} 项</span>
-            </div>
-
-            {!plan || plan.items.length === 0 ? (
-              <EmptyState
-                icon={CalendarDays}
-                message={selectedOwner?.ownerType === "user" ? "你本周还没有安排" : "这个角色本周还没有安排"}
-                action={selectedOwner?.ownerType === "character" ? (
-                  <button
-                    type="button"
-                    className="calendar-generate-button mt-3"
-                    data-loading={isGenerating ? "true" : undefined}
-                    onClick={() => setShowGenerateConfirm(true)}
-                    disabled={isGenerating}
-                    aria-busy={isGenerating}
-                  >
-                    <Wand2 size={16} className="calendar-generate-button-icon" />
-                    <CalendarGeneratingLabel loading={isGenerating} idle="生成日程" />
-                  </button>
-                ) : undefined}
-              />
-            ) : (
-              <div className="calendar-grid-shell">
-                <div className="calendar-grid-days-head">
-                  <span />
-                  <div className="calendar-grid-day-heads" style={expandedDate ? { gridTemplateColumns: weekDates.map(d => d === expandedDate ? "3fr" : "1fr").join(" ") } : undefined}>
-                    {weekDates.map(date => (
-                      <div
-                        key={date}
-                        className="calendar-grid-day-head"
-                        data-selected={date === expandedDate ? "true" : undefined}
-                        onClick={() => setExpandedDate(prev => prev === date ? null : date)}
-                        style={{ cursor: "pointer" }}
-                      >
-                        <strong>{getWeekdayLabel(date)}</strong>
-                        <span>{formatMonthDay(date)}</span>
-                        {selectedOwner?.ownerType === "user" && weekMenstrualMap.get(date) ? (
-                          <i className="calendar-grid-day-phase-dot" data-type={weekMenstrualMap.get(date)?.type} />
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="calendar-grid-layout">
-                  <div className="calendar-time-column" style={{ gridTemplateRows: `repeat(${gridHourEnd - gridHourStart}, 1fr)` }}>
-                    {Array.from({ length: gridHourEnd - gridHourStart }, (_, idx) => gridHourStart + idx).map(hour => (
-                      <span key={hour}>{String(hour).padStart(2, "0")}:00</span>
-                    ))}
-                  </div>
-                  <div
-                    className="calendar-day-columns"
-                    style={{
-                      ...(expandedDate ? { gridTemplateColumns: weekDates.map(d => d === expandedDate ? "3fr" : "1fr").join(" ") } : null),
-                      "--calendar-grid-rows": String(gridHourEnd - gridHourStart),
-                    } as React.CSSProperties}
-                  >
-                    {weekDates.map(date => (
-                      <div key={date} className="calendar-day-column">
-                        {Array.from({ length: gridHourEnd - gridHourStart }, (_, idx) => (
-                          <div key={idx} className="calendar-hour-cell" />
-                        ))}
-                        {(itemsByDate.get(date) || []).map(item => {
-                          const start = timeToMinutes(item.startTime);
-                          const end = timeToMinutes(item.endTime);
-                          const top = ((start - gridHourStart * 60) / gridTotalMinutes) * 100;
-                          const height = Math.max(((end - start) / gridTotalMinutes) * 100, 5.5);
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="calendar-event-block"
-                              data-color={item.colorKey}
-                              style={{ top: `${top}%`, height: `${height}%` }}
-                              onClick={() =>
-                                setEditingItem({
-                                  id: item.id,
-                                  date: item.date,
-                                  endDate: item.date,
-                                  originalDate: item.date,
-                                  startTime: item.startTime,
-                                  endTime: item.endTime,
-                                  location: item.location,
-                                  title: item.title,
-                                  emoji: item.emoji || "",
-                                  colorKey: item.colorKey,
-                                })
-                              }
-                            >
-                              <strong>{item.emoji ? `${item.emoji} ` : ""}{item.title}</strong>
-                              <span><Clock3 size={12} />{item.startTime}-{item.endTime}</span>
-                              <span><MapPin size={12} />{item.location || "未定"}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          </div>
+          <button
+            type="button"
+            className="calendar-fab calendar-fab-primary"
+            data-loading={isGenerating ? "true" : undefined}
+            onClick={() => {
+              if (selectedOwner?.ownerType === "character") {
+                setFabMenuOpen(prev => !prev);
+              } else {
+                openNewDraft(view === "detail" ? selectedDate : todayIso);
+              }
+            }}
+            aria-label={selectedOwner?.ownerType === "character" ? "日程操作菜单" : "新增事项"}
+            aria-expanded={selectedOwner?.ownerType === "character" ? fabMenuOpen : undefined}
+          >
+            <Plus size={20} style={{ transform: fabMenuOpen ? "rotate(45deg)" : undefined, transition: "transform 0.2s" }} />
+          </button>
         </div>
-
-          {fabMenuOpen ? <div className="calendar-fab-backdrop" onClick={() => setFabMenuOpen(false)} /> : null}
-          <div className="calendar-fab-stack">
-            {fabMenuOpen && selectedOwner?.ownerType === "character" ? (
-              <div className="calendar-fab-menu" role="menu">
-                <button
-                  type="button"
-                  className="calendar-fab-menu-item"
-                  onClick={() => {
-                    setFabMenuOpen(false);
-                    setEditingItem(createDefaultScheduleDraft(selectedDate));
-                  }}
-                >
-                  <Plus size={15} />
-                  新增日程
-                </button>
-                <button
-                  type="button"
-                  className="calendar-fab-menu-item"
-                  disabled={isGenerating}
-                  onClick={() => {
-                    setFabMenuOpen(false);
-                    setShowGenerateConfirm(true);
-                  }}
-                >
-                  <Wand2 size={15} />
-                  {isGenerating ? "生成中…" : "AI 生成本周"}
-                </button>
-                <button
-                  type="button"
-                  className="calendar-fab-menu-item"
-                  data-on={autoGenerateEnabled ? "true" : undefined}
-                  onClick={() => {
-                    setFabMenuOpen(false);
-                    setShowAutoConfirm(true);
-                  }}
-                >
-                  <Bot size={15} />
-                  每周自动生成
-                  <i className="calendar-fab-menu-state">{autoGenerateEnabled ? "已开" : "已关"}</i>
-                </button>
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="calendar-fab calendar-fab-primary"
-              data-loading={isGenerating ? "true" : undefined}
-              onClick={() => {
-                if (selectedOwner?.ownerType === "character") {
-                  setFabMenuOpen(prev => !prev);
-                } else {
-                  setEditingItem(createDefaultScheduleDraft(selectedDate));
-                }
-              }}
-              aria-label={selectedOwner?.ownerType === "character" ? "日程操作菜单" : "新增事项"}
-              aria-expanded={selectedOwner?.ownerType === "character" ? fabMenuOpen : undefined}
-            >
-              <Plus size={20} style={{ transform: fabMenuOpen ? "rotate(45deg)" : undefined, transition: "transform 0.2s" }} />
-            </button>
-          </div>
       </div>
 
       {showThemePanel && (
@@ -1129,7 +691,7 @@ export function PhoneCalendarApp({
         <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowMenstrualSettings(false)}>
           <div className="calendar-edit-modal calendar-menstrual-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header" data-ui="modal-header">
-              <button onClick={() => setShowMenstrualSettings(false)} className="modal-header-btn modal-header-btn-muted">
+              <button onClick={() => setShowMenstrualSettings(false)} className="modal-header-btn modal-header-btn-muted" aria-label="返回">
                 <ChevronLeft size={18} />
               </button>
               <span className="modal-header-title">周期设置</span>
@@ -1241,7 +803,11 @@ export function PhoneCalendarApp({
                         <button
                           type="button"
                           className="calendar-menstrual-modal-delete"
-                          onClick={() => handleDeleteMenstrual(record.id)}
+                          onClick={() => {
+                            setMenstrualRecords(deleteMenstrualRecord(record.id));
+                            refreshMenstrual();
+                            onNotice?.("经期记录已删除");
+                          }}
                           aria-label="删除记录"
                         >
                           <Trash2 size={14} />
@@ -1251,7 +817,7 @@ export function PhoneCalendarApp({
                   </div>
                 </div>
               ) : (
-                <div className="calendar-menstrual-empty">还没有完成的经期记录。先在主页点“经期来了”，结束时再点“经期走了”。</div>
+                <div className="calendar-menstrual-empty">还没有完成的经期记录。先在日程页点“经期来了”，结束时再点“经期走了”。</div>
               )}
             </div>
           </div>
@@ -1261,12 +827,10 @@ export function PhoneCalendarApp({
       {showGenerateConfirm && selectedOwner && (
         <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowGenerateConfirm(false)}>
           <div className="calendar-edit-modal calendar-confirm-dialog" onClick={e => e.stopPropagation()}>
-            <Wand2 size={28} className="calendar-confirm-icon" />
-            <div className="calendar-confirm-title">
-              确认生成日程？
-            </div>
+            <Wand2 size={26} className="calendar-confirm-icon" />
+            <div className="calendar-confirm-title">确认生成日程？</div>
             <div className="calendar-confirm-desc">
-              将为 <strong>{selectedOwner.name}</strong> 生成一周日程并覆盖当前已有安排
+              将为 <strong>{selectedOwner.name}</strong> 生成一周日程并覆盖当前已有 AI 安排（手动添加的保留）
             </div>
             <div className="calendar-confirm-footer">
               <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowGenerateConfirm(false)}>取消</button>
@@ -1279,7 +843,7 @@ export function PhoneCalendarApp({
                 disabled={isGenerating}
                 aria-busy={isGenerating}
               >
-                <CalendarGeneratingLabel loading={isGenerating} idle="确认" />
+                {isGenerating ? "生成中…" : "确认"}
               </button>
             </div>
           </div>
@@ -1289,7 +853,7 @@ export function PhoneCalendarApp({
       {showAutoConfirm && selectedOwner && (
         <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowAutoConfirm(false)}>
           <div className="calendar-edit-modal calendar-confirm-dialog" onClick={e => e.stopPropagation()}>
-            <Bot size={28} className="calendar-confirm-icon" />
+            <Bot size={26} className="calendar-confirm-icon" />
             <div className="calendar-confirm-title">
               {autoGenerateEnabled ? "关闭自动生成？" : "开启自动生成？"}
             </div>
@@ -1300,14 +864,19 @@ export function PhoneCalendarApp({
             </div>
             <div className="calendar-confirm-footer">
               <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowAutoConfirm(false)}>取消</button>
-              <button type="button" className="calendar-block-btn" data-variant="primary" onClick={() => {
-                const next = !autoGenerateEnabled;
-                const nextConfig = { ...config, autoGenerateEnabled: next };
-                setConfig(nextConfig);
-                saveCalendarConfig(nextConfig);
-                setShowAutoConfirm(false);
-                onNotice?.(next ? "已开启每周自动生成" : "已关闭每周自动生成");
-              }}>
+              <button
+                type="button"
+                className="calendar-block-btn"
+                data-variant="primary"
+                onClick={() => {
+                  const next = !autoGenerateEnabled;
+                  const nextConfig = { ...config, autoGenerateEnabled: next };
+                  setConfig(nextConfig);
+                  saveCalendarConfig(nextConfig);
+                  setShowAutoConfirm(false);
+                  onNotice?.(next ? "已开启每周自动生成" : "已关闭每周自动生成");
+                }}
+              >
                 确认
               </button>
             </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
@@ -248,7 +248,47 @@ function QaToolRow({ tool }: { tool: QaToolStatus }) {
   );
 }
 
+// 已完成文本的 Markdown 渲染：memo 缓存——流式期间每次增量都全文重排 remark 是
+// 低端机 WebView OOM 崩溃的主因（几万字 × 每秒多次解析）。文本不变就不重渲。
+const QaMarkdownBlock = memo(function QaMarkdownBlock({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
+      {text}
+    </ReactMarkdown>
+  );
+});
+
+// 正在生长的活跃段：纯文本渲染（零解析成本），生成结束后换回完整 Markdown
+function QaStreamingText({ text }: { text: string }) {
+  return (
+    <>
+      <div className="qa-stream-text">{text}</div>
+      <span className="qa-cursor" />
+    </>
+  );
+}
+
 function QaMessageItem({ msg, isStreaming, onRetry, onViewImage }: { msg: QaMsg; isStreaming: boolean; onRetry: (id: string) => void; onViewImage: (url: string) => void }) {
+  const thinkingOnly = isStreaming && !msg.content && (!msg.tools || msg.tools.length === 0);
+  // 时序分段渲染：文字与工具行按实际发生顺序交错（连续工具行合并成一组）；
+  // 旧消息没有 segments 时回退「工具在顶、文字在下」布局。
+  // hooks 必须在 user 分支 early-return 之前调用（rules-of-hooks）
+  const segmentBlocks = useMemo(() => {
+    if (!msg.segments?.length) return null;
+    const blocks: Array<{ kind: "text"; text: string } | { kind: "tools"; tools: QaToolStatus[] }> = [];
+    for (const seg of msg.segments) {
+      const last = blocks[blocks.length - 1];
+      if (seg.kind === "tool") {
+        if (last?.kind === "tools") last.tools.push(seg.tool);
+        else blocks.push({ kind: "tools", tools: [seg.tool] });
+      } else if (seg.text.trim()) {
+        if (last?.kind === "text") last.text += seg.text;
+        else blocks.push({ kind: "text", text: seg.text });
+      }
+    }
+    return blocks.length ? blocks : null;
+  }, [msg.segments]);
+
   if (msg.role === "user") {
     return (
       <div className="qa-msg-user-row">
@@ -268,25 +308,6 @@ function QaMessageItem({ msg, isStreaming, onRetry, onViewImage }: { msg: QaMsg;
     );
   }
 
-  const thinkingOnly = isStreaming && !msg.content && (!msg.tools || msg.tools.length === 0);
-  // 时序分段渲染：文字与工具行按实际发生顺序交错（连续工具行合并成一组）；
-  // 旧消息没有 segments 时回退「工具在顶、文字在下」布局
-  const segmentBlocks = useMemo(() => {
-    if (!msg.segments?.length) return null;
-    const blocks: Array<{ kind: "text"; text: string } | { kind: "tools"; tools: QaToolStatus[] }> = [];
-    for (const seg of msg.segments) {
-      const last = blocks[blocks.length - 1];
-      if (seg.kind === "tool") {
-        if (last?.kind === "tools") last.tools.push(seg.tool);
-        else blocks.push({ kind: "tools", tools: [seg.tool] });
-      } else if (seg.text.trim()) {
-        if (last?.kind === "text") last.text += seg.text;
-        else blocks.push({ kind: "text", text: seg.text });
-      }
-    }
-    return blocks.length ? blocks : null;
-  }, [msg.segments]);
-
   return (
     <div className="qa-msg-assistant">
       {segmentBlocks ? (
@@ -297,12 +318,13 @@ function QaMessageItem({ msg, isStreaming, onRetry, onViewImage }: { msg: QaMsg;
                 <QaToolRow key={`${tool.name}-${j}`} tool={tool} />
               ))}
             </div>
+          ) : isStreaming && i === segmentBlocks.length - 1 ? (
+            <div className="qa-markdown" key={i}>
+              <QaStreamingText text={block.text} />
+            </div>
           ) : (
             <div className="qa-markdown" key={i}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
-                {block.text}
-              </ReactMarkdown>
-              {isStreaming && i === segmentBlocks.length - 1 && <span className="qa-cursor" />}
+              <QaMarkdownBlock text={block.text} />
             </div>
           ),
         )
@@ -317,12 +339,13 @@ function QaMessageItem({ msg, isStreaming, onRetry, onViewImage }: { msg: QaMsg;
           )}
           {thinkingOnly ? (
             <div className="qa-thinking">{msg.toolDrafting ? "正在编写工具调用…" : msg.reasoning ? "正在思考…" : "正在生成…"}</div>
+          ) : isStreaming ? (
+            <div className="qa-markdown">
+              <QaStreamingText text={msg.content} />
+            </div>
           ) : (
             <div className="qa-markdown">
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
-                {msg.content}
-              </ReactMarkdown>
-              {isStreaming && <span className="qa-cursor" />}
+              <QaMarkdownBlock text={msg.content} />
             </div>
           )}
         </>
