@@ -253,6 +253,7 @@ const CREATE_CHARACTER_SCHEMA = {
         name: { type: "string", description: "角色全名" },
         persona: { type: "string", description: "完整人设（7 段式 markdown）" },
         personality: { type: "string", description: "性格简介（80-200 字）" },
+        appearance: { type: "string", description: "生图形象描述（appearance）：根据 persona 推导的该角色长相/穿搭/画风关键词，2~4 句中文，用于 AI 生图时还原长相。可留空，留空则创建后由用户手动生成。" },
     },
     required: ["name", "persona", "personality"],
     additionalProperties: false,
@@ -908,7 +909,7 @@ export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
         description: "创建 / 修改 / 查看 角色卡。角色由 name/persona/personality 三个字段组成。",
         subTools: [
             { name: "读取角色", description: "不传 name 时列出所有角色；传 name 时返回完整字段。", parameterSchema: READ_CHARACTER_SCHEMA },
-            { name: "创建角色", description: "新建一张角色卡。persona 必须包含 7 段式人设（基础信息/外貌/世界观/性格/补充信息/经历）。", parameterSchema: CREATE_CHARACTER_SCHEMA },
+            { name: "创建角色", description: "新建一张角色卡。persona 必须包含 7 段式人设（基础信息/外貌/世界观/性格/补充信息/经历）。创建时请根据 persona 推导并尽量填写 appearance（生图形象描述，2~4 句中文，描述长相/穿搭/画风），让 AI 生图能还原该角色长相；若人设不足以推断则 appearance 留空。", parameterSchema: CREATE_CHARACTER_SCHEMA },
             { name: "更新角色字段", description: "修改某角色的单个字段（name/persona/personality/appearance/timeZone/tags/briefPersona）。", parameterSchema: UPDATE_CHARACTER_FIELD_SCHEMA },
             { name: "删除角色", description: "删除指定角色卡。不可逆，请先确认。", parameterSchema: DELETE_CHARACTER_SCHEMA },
         ],
@@ -1777,6 +1778,7 @@ async function handleCreateCharacter(args: Record<string, unknown>): Promise<Too
         name: args.name as string,
         persona: args.persona as string,
         personality: args.personality as string,
+        appearance: (args.appearance as string)?.trim() || undefined,
         avatar: null,
     });
     chars.push(newChar);

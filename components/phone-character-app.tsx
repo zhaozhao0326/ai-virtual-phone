@@ -16,7 +16,9 @@ import {
 
   CHAR_BLOCKED_FIELDS,
 } from "@/lib/character-storage";
-import { generateBriefPersonaText, isBriefPersonaStale } from "@/lib/brief-persona";
+import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
+import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
+import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
 import {
   addCharacterWorldRelation,
@@ -1752,6 +1754,12 @@ function CharArchiveView({
   const [persona, setPersona] = useState(char.persona || "");
   const [personality, setPersonality] = useState(char.personality || "");
   const [appearance, setAppearance] = useState(char.appearance || "");
+  const [appearanceBusy, setAppearanceBusy] = useState(false);
+  const [appearanceError, setAppearanceError] = useState("");
+  const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testError, setTestError] = useState("");
+  const [applyBusy, setApplyBusy] = useState(false);
   const [briefPersona, setBriefPersona] = useState(char.briefPersona || "");
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefError, setBriefError] = useState("");
@@ -1903,6 +1911,72 @@ function CharArchiveView({
       setBriefBusy(false);
     }
   }
+
+  // 根据人设生成「生图形象描述（appearance）」并填入框
+  async function handleGenerateAppearance() {
+    if (appearanceBusy) return;
+    setAppearanceBusy(true);
+    setAppearanceError("");
+    try {
+      const text = await generateAppearanceText({
+        ...char,
+        name: name.trim() || char.name || "未命名角色",
+        persona,
+        personality: personality.trim() || undefined,
+      });
+      setAppearance(text);
+    } catch (error) {
+      setAppearanceError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAppearanceBusy(false);
+    }
+  }
+
+  // 用当前 appearance 提示词生一张图预览（不挂参考图，纯测试提示词效果）
+  async function handleTestGenerate() {
+    const prompt = appearance.trim();
+    if (!prompt) {
+      setTestError("先填写或生成生图形象描述，再测试生图。");
+      return;
+    }
+    setTestBusy(true);
+    setTestError("");
+    try {
+      const settings = { ...loadImageGenerationSettings(), enabled: true };
+      const result = await generateImageFromConfiguredApi({ description: prompt, settings });
+      if (!result) throw new Error("图像生成未返回结果。");
+      const url = await blobToDataUrl(result.blob);
+      setTestImageUrl(url);
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
+  // 把测试生成的图设为该角色头像（压缩到 512px 防止 localStorage 膨胀）
+  async function handleSetAvatar() {
+    if (!testImageUrl) return;
+    setApplyBusy(true);
+    try {
+      const downscaled = await downscaleDataUrl(testImageUrl, 512);
+      setAvatar(downscaled);
+    } finally {
+      setApplyBusy(false);
+    }
+  }
+
+  // 把测试生成的图挂为该角色的形象参考图（锁脸图）
+  async function handleSetReference() {
+    if (!testImageUrl) return;
+    setApplyBusy(true);
+    try {
+      await setCharacterReferenceFromDataUrl(char.id, testImageUrl);
+    } finally {
+      setApplyBusy(false);
+    }
+  }
+
 
   // Helper limits
   const personaText = persona || "NO DATA AVAILABLE.";
@@ -2157,8 +2231,17 @@ function CharArchiveView({
           {/* 生图形象 — 生图时描述长相，让「谁是谁」更可控 */}
           {(isEditing || appearance.trim()) && (
             <div className="char-log-entry mb-4 border-t border-dashed border-[#999] pt-3">
-              <div className="char-log-entry-header">
-                <span>APPEARANCE / 生图形象</span>
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <span className="char-log-entry-header !mb-0">APPEARANCE / 生图形象</span>
+                {isEditing && (
+                  <button
+                    className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer disabled:opacity-50 hover:bg-[#222222] transition-colors"
+                    disabled={appearanceBusy}
+                    onClick={handleGenerateAppearance}
+                  >
+                    {appearanceBusy ? "生成中…" : appearance.trim() ? "重新生成" : "AI 生成"}
+                  </button>
+                )}
               </div>
               {isEditing ? (
                 <AutoResizingTextarea
@@ -2174,6 +2257,49 @@ function CharArchiveView({
                 />
               ) : (
                 <p className="char-archive-p whitespace-pre-wrap break-words">{appearance}</p>
+              )}
+              {isEditing && appearanceError && (
+                <p className="ts-10 mt-1" style={{ color: "#b4233b" }}>{appearanceError}</p>
+              )}
+
+              {isEditing && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer disabled:opacity-50 hover:bg-[#222222] transition-colors"
+                      disabled={testBusy}
+                      onClick={handleTestGenerate}
+                    >
+                      {testBusy ? "生图中…" : "形象图生成测试"}
+                    </button>
+                    {testImageUrl && (
+                      <>
+                        <button
+                          className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer disabled:opacity-50 hover:bg-[#222222] transition-colors"
+                          disabled={applyBusy}
+                          onClick={handleSetAvatar}
+                        >
+                          设定为头像
+                        </button>
+                        <button
+                          className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer disabled:opacity-50 hover:bg-[#222222] transition-colors"
+                          disabled={applyBusy}
+                          onClick={handleSetReference}
+                        >
+                          设为人物形象参考图
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {testError && <p className="ts-10" style={{ color: "#b4233b" }}>{testError}</p>}
+                  {testImageUrl && (
+                    <img
+                      src={testImageUrl}
+                      alt="形象图测试预览"
+                      className="max-h-[260px] max-w-full rounded-lg object-contain border border-dashed border-[#666]"
+                    />
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -2424,6 +2550,36 @@ function AutoResizingTextarea({
 }
 
 // ── 工具函数 ─────────────────────────────────────────
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error || new Error("读取失败"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+// 把 data URL 等比压缩到最长边 maxSize，导出 PNG data URL（防止头像/参考图过大撑爆存储）
+function downscaleDataUrl(dataUrl: string, maxSize: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return resolve(dataUrl);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("图片解析失败"));
+    img.src = dataUrl;
+  });
+}
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {

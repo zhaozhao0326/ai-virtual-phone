@@ -65,3 +65,50 @@ export function isBriefPersonaStale(character: Character): boolean {
     if (!character.updatedAt) return false;
     return Date.parse(character.updatedAt) > Date.parse(character.briefPersonaUpdatedAt);
 }
+
+/**
+ * 根据角色设定推导「生图形象描述（appearance）」——AI 生图时用于描述该角色长什么样。
+ * 与 generateBriefPersonaText 同理，刻意不走预设系统组装（simpleLLMCall + 代码手动组提示词），
+ * 避免角色扮演指令/正则污染输出。本函数只生成文本，不直接写角色存储（由调用方当表单字段持久化）。
+ */
+export async function generateAppearanceText(character: Character): Promise<string> {
+    if (!character.persona?.trim() && !character.personality?.trim()) {
+        throw new Error("角色还没有设定内容，先填写人设再生成生图形象。");
+    }
+
+    const bindings = loadBindingConfig();
+    const slot = resolveBinding(bindings, character.id, "chat");
+    if (!slot.apiConfigId) throw new Error("尚未绑定 API 配置，请先在绑定设置中配置。");
+    const apiConfig = loadApiConfigs().find(c => c.id === slot.apiConfigId);
+    if (!apiConfig) throw new Error("绑定的 API 配置不存在。");
+
+    const name = character.name?.trim() || "该角色";
+    const systemPrompt = [
+        `你是角色形象设计助手。以下是角色「${name}」的完整设定，请为TA写一段「生图形象描述（appearance）」，用于 AI 生图时描述TA长什么样（性别/发型/身材/穿搭/画风气质）。`,
+        "",
+        `【角色设定】\n${character.persona?.trim() || "（暂无）"}`,
+        ...(character.personality?.trim() ? ["", `【性格】\n${character.personality.trim()}`] : []),
+        "",
+        "要求：",
+        "- 用中文，第三人称，2~4 句话（约 40~120 字）",
+        "- 只写可视觉感知的外貌/穿搭/画风气质：性别与年龄感、发型发色、身材体态、常穿的服装风格与配色、整体氛围（如温柔 / 冷峻 / 俏皮）",
+        "- 从设定中合理推断，不要写设定里没有的硬伤；不要写剧情、内心、能力、对话等非外观内容",
+        "- 只输出描述正文，不要标题、引号或任何额外说明",
+    ].join("\n");
+
+    const result = await simpleLLMCall(
+        apiConfig,
+        [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: `请为「${name}」生成生图形象描述。` },
+        ],
+        { temperature: 0.7, max_tokens: 2048 },
+    );
+
+    if (result.error || !result.content) {
+        throw new Error(result.error || "模型返回了空内容，请重试。");
+    }
+    const text = result.content.trim();
+    if (!text) throw new Error("模型返回了空内容，请重试。");
+    return text;
+}

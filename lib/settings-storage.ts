@@ -819,6 +819,24 @@ export function saveImageGenerationSettings(settings: ImageGenerationSettings): 
     window.dispatchEvent(new CustomEvent("settings-image-generation-updated"));
 }
 
+/**
+ * 把一张已生成的图（data URL）直接挂为某角色的「形象参考图 / 锁脸图」。
+ * 复用与设置页上传相同的存储路径：存入 IndexedDB 拿到 assetId，再写入 characterReferences[characterId]。
+ * 供角色档案编辑页「设为人物形象参考图」按钮调用。
+ */
+export async function setCharacterReferenceFromDataUrl(characterId: string, dataUrl: string): Promise<void> {
+    if (typeof window === "undefined") return;
+    const { saveChatImageToIndexedDB } = await import("./chat-asset-storage");
+    const blob = await (await fetch(dataUrl)).blob();
+    const assetId = await saveChatImageToIndexedDB(blob);
+    const settings = loadImageGenerationSettings();
+    settings.characterReferences = {
+        ...(settings.characterReferences || {}),
+        [characterId]: { assetId, updatedAt: Date.now() },
+    };
+    saveImageGenerationSettings(settings);
+}
+
 // --- Binding Config ──────────────────────────────────────────
 
 const DEFAULT_BINDING_CONFIG: BindingConfig = {
