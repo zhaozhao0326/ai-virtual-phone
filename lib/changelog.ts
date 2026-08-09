@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.1",
+    date: "2026-08-09",
+    title: "紧急修复：打开任意聊天必崩（白屏/报错）",
+    highlights: [
+      "修复 v1.4.0 引入的致命回归：聊天输入框组件 ChatTextInputBar 引用了未传入的 session 变量（session.dissolved），导致打开任一 1:1 或群聊会话时抛 TypeError、整页崩溃",
+      "根因：v1.4.0 接「群解散」时给输入框加了 group dissolve 锁定逻辑，但漏把 session 作为 prop 传给 ChatTextInputBar（父组件也未传），运行时 session 为 undefined",
+      "修复方式：为 ChatTextInputBar 增加 session: ChatSession prop 并在父组件显式传入；聊天列表本身不渲染输入框所以此前没暴露，一进会话就崩",
+      "已用 headless 浏览器复现并验证：修复后打开 1:1 / 群聊会话均正常渲染输入框与消息，零报错",
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-08-09",

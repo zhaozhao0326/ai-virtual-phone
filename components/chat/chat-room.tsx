@@ -624,9 +624,11 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     setNarratorText: (text: string) => void;
     setShowNarratorDialog: (show: boolean) => void;
     onInjectNarration: (text: string) => void;
+    session: ChatSession;
 }>(function ChatTextInputBar({
     characterName,
     characterId,
+    session,
     stickerCharacterIds,
     isGroup,
     isSpectator,
@@ -6072,8 +6074,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
                 onSendSticker={(name, url) => { setShowStickerPanel(false); sendRichMessage("sticker", { label: name, stickerUrl: url }); }}
-                showNarratorDialog={showNarratorDialog}
                 narratorText={narratorText}
+                session={session}
+                showNarratorDialog={showNarratorDialog}
                 setNarratorText={setNarratorText}
                 setShowNarratorDialog={setShowNarratorDialog}
                 onInjectNarration={(text) => pushChatMessage({ sessionId: session.id, role: "system", content: "📖 " + text })}
