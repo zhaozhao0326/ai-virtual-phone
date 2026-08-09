@@ -1241,8 +1241,17 @@ export async function generateMomentPhotoUrl(
 ): Promise<string | undefined> {
     try {
         throwIfAborted(signal);
+        // 朋友圈主角锚定：把发帖角色的名字写进提示词（仅当原描述未含该名字时），
+        // 让生图画面明确是「谁」在场景里，配合 {char1} 锁脸锚点使用。
+        let finalDescription = description;
+        try {
+            const author = loadCharacters().find(c => c.id === characterId);
+            if (author?.name && !description.includes(author.name)) {
+                finalDescription = `${author.name}，${description}`;
+            }
+        } catch { /* 取不到角色名时退回原描述 */ }
         const generated = await generateImageFromConfiguredApi({
-            description,
+            description: finalDescription,
             characterId,
             useReferenceImage,
             signal,
