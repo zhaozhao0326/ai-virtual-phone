@@ -103,6 +103,15 @@ export const COMPLETE_TODO_TAG_RE = /\[([^\]]+?)完成(?:了)?群待办[:：]\s*
 /** 角色删除群待办：[A删除了群待办: 买饮料] */
 export const REMOVE_TODO_TAG_RE = /\[([^\]]+?)删除了?群待办[:：]\s*([^\]]+?)\]/;
 
+/**
+ * 角色主动发好友申请（1:1 场景）：
+ *   [加好友] / [添加好友] / [申请加好友]
+ *   [加好友|备注:一起出来玩] / [申请加好友|理由:想认识你]
+ * 捕获组：1=申请留言（备注/理由，可选）。半角 `|` 与全角 `｜` 分隔符均可。
+ */
+export const ADD_FRIEND_TAG_RE =
+    /\[(?:(?:申请)?加好友|添加好友)(?:\s*[|｜]\s*(?:备注|理由)[:：]\s*([^\]]+?))?\]/;
+
 const RICH_PATTERNS: {
     regex: RegExp;
     build: (m: RegExpMatchArray) => ParsedMessagePart;
