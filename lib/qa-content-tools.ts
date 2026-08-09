@@ -33,6 +33,8 @@ import {
 } from "./custom-app-storage";
 import { applyCustomAppRegistrationsAsync, formatCustomAppRegistrationSummary } from "./custom-app-registration";
 import { CUSTOM_APP_CREATOR_GUIDE_MD } from "./custom-app-creator-guide";
+import { fetchCustomAppMarketItems, fetchMyCustomAppMarketItems } from "./custom-app-market-client";
+import { buildMarketItemByAppId, classifyInstalledApp, type MarketOwnershipData } from "./custom-app-ownership";
 import type { CustomAppPermission, InstalledCustomApp } from "./custom-app-types";
 
 /** 本轮对话创建的内容条目（供工坊内预览打开） */
@@ -256,6 +258,8 @@ const installAppTool: QaContentTool = {
         const apps = loadInstalledCustomApps();
         const existing = apps.find((app) => app.name.trim().toLowerCase() === name.toLowerCase());
         if (existing) {
+            const denial = await denyIfOthersMarketApp(existing, "覆盖");
+            if (denial) return `${denial}\n想创建自己的应用请换一个名称。`;
             const updated: InstalledCustomApp = {
                 ...existing,
                 entryHtml: html,
@@ -443,6 +447,10 @@ const installStagedAppTool: QaContentTool = {
             const existing = apps.find(
                 (a) => a.manifest?.id === loaded.manifest?.id || a.name.trim().toLowerCase() === loaded.name.trim().toLowerCase(),
             );
+            if (existing) {
+                const denial = await denyIfOthersMarketApp(existing, "覆盖安装");
+                if (denial) return `${denial}\n想发布自己的应用请改用不同的名称与 manifest id 后重新组包。`;
+            }
             let installed: InstalledCustomApp;
             if (existing) {
                 installed = {
@@ -743,6 +751,36 @@ function section(label: string, value: string): string {
     return value.trim() ? `\n=== ${label} ===\n${value}` : "";
 }
 
+// 版权护栏：从市场安装的他人应用，源码读取/导出/修改仅限作者本人。
+// 归类逻辑与市场 UI 的"本地测试"分区共用同一实现（lib/custom-app-ownership），
+// 保证"本地测试里看不到的，小坊也碰不到"。市场数据短暂缓存，连续操作不反复拉接口。
+let marketOwnershipCache: { at: number; data: MarketOwnershipData } | null = null;
+
+async function fetchMarketOwnershipData(): Promise<MarketOwnershipData> {
+    if (marketOwnershipCache && Date.now() - marketOwnershipCache.at < 60_000) return marketOwnershipCache.data;
+    const [publicItems, myItems] = await Promise.all([fetchCustomAppMarketItems(), fetchMyCustomAppMarketItems()]);
+    const data: MarketOwnershipData = { myItems, itemByAppId: buildMarketItemByAppId(publicItems, myItems) };
+    marketOwnershipCache = { at: Date.now(), data };
+    return data;
+}
+
+async function denyIfOthersMarketApp(app: InstalledCustomApp, action: string): Promise<string | null> {
+    let data: MarketOwnershipData;
+    try {
+        data = await fetchMarketOwnershipData();
+    } catch {
+        // 失败策略与市场 UI 相反（UI 宽容防创作区被离线锁死，这里严格防泄露）：
+        // 带市场标记的一律拒绝，宁可等联网确认；仅无标记应用放行——
+        // 刚在本机写出的新应用不能因断网而无法继续迭代。
+        if (!app.marketItemId) return null;
+        return `「${app.name}」关联了应用市场条目，当前无法确认你是否为其作者（未登录或网络异常），为保护创作者版权，暂不能${action}。请联网并登录后重试；如果这是你自己发布的应用，届时即可正常操作。`;
+    }
+    if (classifyInstalledApp(app, data) === "others") {
+        return `「${app.name}」是从应用市场安装的他人作品，为保护创作者版权，${action}仅限作者本人。如需二次创作，请联系原作者或在市场中查看其授权说明。`;
+    }
+    return null;
+}
+
 const readContentTool: QaContentTool = {
     name: "读取本机内容",
     nativeName: "read_local_content",
@@ -772,6 +810,8 @@ const readContentTool: QaContentTool = {
         if (type === "app") {
             const app = loadInstalledCustomApps().find((item) => norm(item.name) === norm(name));
             if (!app) return `没有找到名为「${name}」的自定义 APP。先用「清单」确认名称。`;
+            const denial = await denyIfOthersMarketApp(app, "读取源码");
+            if (denial) return denial;
             const assets = Object.values(app.assets).map((a) => a.path);
             const doc = [
                 `名称：${app.name} · v${app.version}`,
@@ -1074,6 +1114,8 @@ const exportContentTool: QaContentTool = {
             if (type === "app") {
                 const app = loadInstalledCustomApps().find((item) => norm(item.name) === norm(name));
                 if (!app) return `没找到名为「${name}」的本机 APP。用「清单」核对名称。`;
+                const denial = await denyIfOthersMarketApp(app, "导出安装包");
+                if (denial) return denial;
                 const file = await createCustomAppPackageFile(app);
                 await downloadFile(file, file.name);
                 return `已导出「${app.name}」安装包（${file.name}）。对方在 应用市场 → 发布 → 上传安装包 即可导入。`;
@@ -1303,6 +1345,8 @@ export async function workbenchEditLocal(args: Record<string, unknown>, context?
         const apps = loadInstalledCustomApps();
         const app = apps.find((item) => norm(item.name) === norm(name));
         if (!app) return `没找到已安装应用「${name}」${path ? `，暂存区也没有 ${path}` : ""}。先用「清单」确认。`;
+        const denial = await denyIfOthersMarketApp(app, "修改");
+        if (denial) return denial;
         const result = applyReplace(app.entryHtml, find, replace, all);
         if ("error" in result) return `应用「${app.name}」：${result.error}`;
         const updated: InstalledCustomApp = {

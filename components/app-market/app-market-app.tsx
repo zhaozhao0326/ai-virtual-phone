@@ -43,6 +43,7 @@ import {
   validateCustomAppMarketItem,
 } from "@/lib/custom-app-market-client";
 import type { CustomAppMarketItem } from "@/lib/custom-app-market-types";
+import { buildMarketItemByAppId, classifyInstalledApp, linkedOwnMarketItem } from "@/lib/custom-app-ownership";
 import {
   applyCustomAppRegistrationsAsync,
   formatCustomAppRegistrationRemovalSummary,
@@ -347,25 +348,13 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
   const marketRefreshCountRef = useRef(0);
 
   const installedById = useMemo(() => new Map(apps.map(app => [app.id, app])), [apps]);
-  const marketItemByAppId = useMemo(() => {
-    const map = new Map<string, CustomAppMarketItem>();
-    for (const item of [...marketApps, ...myMarketApps]) {
-      const existing = map.get(item.appId);
-      if (!existing || new Date(item.updatedAt).getTime() > new Date(existing.updatedAt).getTime()) {
-        map.set(item.appId, item);
-      }
-    }
-    return map;
-  }, [marketApps, myMarketApps]);
-  // 找到本机副本对应的自己发布的市场条目：显式标记（marketItemId/运行时 id）优先，
-  // 包内稳定身份（manifest.id、名字）兜底——运行时 id 每次安装会变，兜底让老副本也能对上号。
+  const marketItemByAppId = useMemo(
+    () => buildMarketItemByAppId(marketApps, myMarketApps),
+    [marketApps, myMarketApps],
+  );
+  // 归类与"自己条目"匹配逻辑统一收拢在 lib/custom-app-ownership（小坊版权护栏共用同一实现）
   function linkedMarketItemFor(app: InstalledCustomApp): CustomAppMarketItem | null {
-    const norm = (value: unknown) => String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-    return myMarketApps.find(item => item.id === app.marketItemId)
-      ?? myMarketApps.find(item => item.appId === app.id)
-      ?? myMarketApps.find(item => norm(item.manifest?.id) && norm(item.manifest?.id) === norm(app.manifest?.id))
-      ?? myMarketApps.find(item => norm(item.name) === norm(app.name))
-      ?? null;
+    return linkedOwnMarketItem(app, myMarketApps);
   }
 
   // "本地测试"= 创作者的工作副本：纯本地导入的 APP（未上架），加上和自己市场发布关联的副本（已上架，
@@ -375,19 +364,9 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
     if (!marketReady) return [];
     const entries: Array<{ app: InstalledCustomApp; linkedItem: CustomAppMarketItem | null }> = [];
     for (const app of apps) {
-      const linked = linkedMarketItemFor(app);
-      if (app.marketItemId) {
-        // 显式标记：指向自己的条目 → 关联工作副本；指向他人条目（或已失联）→ 不进本地测试
-        if (linked && linked.id === app.marketItemId) entries.push({ app, linkedItem: linked });
-        continue;
-      }
-      // 旧版安装没有 marketItemId 标记:市场安装的运行时 id 等于市场条目的 appId,按此判断来源
-      const fromMarket = marketItemByAppId.get(app.id);
-      if (fromMarket) {
-        if (linked && linked.id === fromMarket.id) entries.push({ app, linkedItem: linked });
-        continue;
-      }
-      entries.push({ app, linkedItem: linked });
+      // others（别人发布、从市场安装的副本）绝不进本地测试——不能对他人内容提供编辑/换包/发布
+      if (classifyInstalledApp(app, { myItems: myMarketApps, itemByAppId: marketItemByAppId }) === "others") continue;
+      entries.push({ app, linkedItem: linkedMarketItemFor(app) });
     }
     return entries;
     // eslint-disable-next-line react-hooks/exhaustive-deps

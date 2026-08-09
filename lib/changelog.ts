@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.4";
+export const APP_VERSION = "1.4.5";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.5",
+    date: "2026-08-09",
+    title: "融合原仓库更新：应用归属归类收拢 + 小坊版权护栏",
+    highlights: [
+      "新增 lib/custom-app-ownership.ts：本机已装应用的归属归类唯一实现（mine / local-only / others），应用市场「本地测试」分区与小坊的版权护栏共用，两边永不漂移",
+      "小坊版权护栏：从应用市场安装的他人作品，读取源码/导出安装包/覆盖安装会被拒绝，仅作者本人可操作；无法联网确认归属时宁可靠拒绝保护创作者版权",
+      "应用市场「本地测试」分区改为按归属归类展示：只显示自己的工作副本与纯本地创作，他人市场应用不再混入",
+      "融合采用内容级同步：保留本机全部既有更新，仅吸收原仓库此前的这次重构（commit 598ca295）",
+    ],
+  },
   {
     version: "1.4.4",
     date: "2026-08-09",
