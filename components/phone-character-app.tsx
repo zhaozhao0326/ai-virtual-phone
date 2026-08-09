@@ -18,7 +18,7 @@ import {
 } from "@/lib/character-storage";
 import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
 import {
   addCharacterWorldRelation,
@@ -1340,6 +1340,7 @@ function CharListView({
             selectWorld(DEFAULT_CHARACTER_WORLD_ID);
             onNotice("卷宗已删除，角色并回默认世界");
           }}
+          onSetWorldIdentity={id => setWorldUserIdentity(currentGroup.id, id)}
           onClose={() => setShowWorldEditor(false)}
         />
       )}

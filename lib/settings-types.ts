@@ -360,6 +360,8 @@ export type BindingConfig = {
     /** App-level defaults shared by every character; character app overrides still win. */
     appDefaults?: Partial<Record<string, BindingSlot>>;
     characterBindings: CharacterBinding[];
+    /** World-level defaults: keyed by worldId (CharacterWorldGroup.id). Applies to every member of that world, overriding per-character exclusive masks but below app overrides. */
+    worldBindings?: Partial<Record<string, BindingSlot>>;
     /** Auxiliary API: used for memory summarization (global, not per-character) */
     memorySummaryApiConfigId?: string;
     /** Auxiliary API: used for embedding/vector recall (global, not per-character) */

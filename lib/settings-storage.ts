@@ -842,7 +842,8 @@ export async function setCharacterReferenceFromDataUrl(characterId: string, data
 const DEFAULT_BINDING_CONFIG: BindingConfig = {
     globalDefaults: {},
     appDefaults: {},
-    characterBindings: []
+    characterBindings: [],
+    worldBindings: {}
 };
 
 function normalizeBindingConfig(config: BindingConfig): { config: BindingConfig; changed: boolean } {
@@ -871,6 +872,7 @@ function normalizeBindingConfig(config: BindingConfig): { config: BindingConfig;
             ...config,
             appDefaults: config.appDefaults && typeof config.appDefaults === "object" ? config.appDefaults : {},
             characterBindings,
+            worldBindings: config.worldBindings && typeof config.worldBindings === "object" ? config.worldBindings : {},
         },
         changed,
     };
@@ -927,7 +929,8 @@ export function setCharacterBinding(config: BindingConfig, binding: CharacterBin
 export function resolveBinding(
     config: BindingConfig,
     characterId?: string,
-    appId?: string
+    appId?: string,
+    worldId?: string
 ): BindingSlot {
     const global = config.globalDefaults;
 
@@ -950,12 +953,18 @@ export function resolveBinding(
         if (slot.regexIds && slot.regexIds.length > 0) resolved.regexIds = [...slot.regexIds];
     };
 
-    if (!characterId) return resolved;
+    // character exclusive
+    let charBinding: CharacterBinding | undefined;
+    if (characterId) {
+        charBinding = config.characterBindings.find(b => b.characterId === characterId);
+        if (charBinding) {
+            applySlot(charBinding.defaults);
+        }
+    }
 
-    // Apply character defaults
-    const charBinding = config.characterBindings.find(b => b.characterId === characterId);
-    if (charBinding) {
-        applySlot(charBinding.defaults);
+    // world mask — overrides per-character exclusive mask (design: world > character exclusive)
+    if (worldId && config.worldBindings?.[worldId]) {
+        applySlot(config.worldBindings[worldId]!);
     }
 
     if (appId && config.appDefaults?.[appId]) {
@@ -1103,18 +1112,52 @@ export function saveUserIdentities(identities: UserIdentity[]): void {
 
 /**
  * Resolve user identity through the binding cascade:
- *   global defaults → character defaults → app overrides.
- * Falls back to first identity if binding has no userIdentityId set.
+ *   global defaults → character exclusive → world mask → app overrides.
+ * Falls back to first identity if no binding has a userIdentityId set.
+ * worldId is derived from characterId when not passed explicitly.
  */
-export function resolveUserIdentity(characterId?: string, appId?: string): UserIdentity | null {
+export function resolveUserIdentity(characterId?: string, appId?: string, worldId?: string): UserIdentity | null {
     const identities = loadUserIdentities();
     if (identities.length === 0) return null;
     const config = loadBindingConfig();
-    const resolved = resolveBinding(config, characterId, appId);
+    const derivedWorldId = worldId ?? getWorldIdForCharacter(characterId ?? "");
+    const resolved = resolveBinding(config, characterId, appId, derivedWorldId);
     if (resolved.userIdentityId) {
         return identities.find(i => i.id === resolved.userIdentityId) || identities[0];
     }
     return identities[0];
+}
+
+/**
+ * Look up which world a character belongs to, without importing character-world-storage
+ * (avoids a settings ↔ world circular dependency). Mirrors CHARACTER_WORLDS_KEY there.
+ */
+const CHARACTER_WORLDS_KEY = "ai_phone_character_worlds_v1";
+function getWorldIdForCharacter(characterId: string): string | null {
+    if (typeof window === "undefined" || !characterId) return null;
+    try {
+        const raw = kvGet(CHARACTER_WORLDS_KEY);
+        if (!raw) return null;
+        const groups = JSON.parse(raw) as { id?: string; memberIds?: string[] }[];
+        if (!Array.isArray(groups)) return null;
+        const found = groups.find(g => Array.isArray(g.memberIds) && g.memberIds.includes(characterId));
+        return found?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+
+/** Set (or clear, with null) the default user identity mask for a world. */
+export function setWorldUserIdentity(worldId: string, identityId: string | null): void {
+    if (typeof window === "undefined") return;
+    const config = loadBindingConfig();
+    const worldBindings: Record<string, BindingSlot> = { ...(config.worldBindings || {}) };
+    if (identityId) {
+        worldBindings[worldId] = { ...(worldBindings[worldId] || {}), userIdentityId: identityId };
+    } else {
+        delete worldBindings[worldId];
+    }
+    saveBindingConfig({ ...config, worldBindings });
 }
 
 // --- Migration from legacy CharacterSettingsOverride ---

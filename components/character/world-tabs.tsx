@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { CharacterWorldGroup } from "@/lib/character-world-storage";
 import { DEFAULT_CHARACTER_WORLD_ID } from "@/lib/character-world-storage";
+import { loadUserIdentities, loadBindingConfig } from "@/lib/settings-storage";
 
 export function WorldTabStrip({
   groups,
@@ -63,21 +64,29 @@ export function WorldCaseSheet({
   onUpdateDescription,
   onDelete,
   onClose,
+  onSetWorldIdentity,
 }: {
   group: CharacterWorldGroup;
   onRename: (name: string) => void;
   onUpdateDescription: (description: string) => void;
   onDelete: () => void;
   onClose: () => void;
+  onSetWorldIdentity?: (identityId: string | null) => void;
 }) {
   const [name, setName] = useState(group.name);
   const [description, setDescription] = useState(group.description);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [worldIdentityId, setWorldIdentityId] = useState<string | null>(
+    () => loadBindingConfig().worldBindings?.[group.id]?.userIdentityId ?? null
+  );
+  const identities = loadUserIdentities();
   const isDefault = group.id === DEFAULT_CHARACTER_WORLD_ID;
 
   const save = () => {
     if (name.trim() && name.trim() !== group.name) onRename(name.trim());
     if (description.trim() !== group.description) onUpdateDescription(description.trim());
+    const current = loadBindingConfig().worldBindings?.[group.id]?.userIdentityId ?? null;
+    if (worldIdentityId !== current) onSetWorldIdentity?.(worldIdentityId);
     onClose();
   };
 
@@ -102,6 +111,17 @@ export function WorldCaseSheet({
           onChange={e => setDescription(e.target.value)}
           placeholder="写下这个世界的背景、时代、阵营边界、共同常识或角色互动前提…"
         />
+        <label className="wt-paper-label">世界默认面具（该世界的角色会以此身份与你交流）</label>
+        <select
+          className="wt-paper-input"
+          value={worldIdentityId ?? ""}
+          onChange={e => setWorldIdentityId(e.target.value || null)}
+        >
+          <option value="">不指定（跟随专属 / 全局默认面具）</option>
+          {identities.map(idn => (
+            <option key={idn.id} value={idn.id}>{idn.name || "未命名面具"}</option>
+          ))}
+        </select>
         <div className="wt-paper-actions">
           {!isDefault && (
             confirmDelete ? (

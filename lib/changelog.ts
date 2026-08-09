@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.3.2";
+export const APP_VERSION = "1.3.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.3",
+    date: "2026-08-09",
+    title: "世界面具：给整个世界绑定一个默认用户身份",
+    highlights: [
+      "身份级联新增「世界」层级：全局 → 角色专属 → 世界面具 → App。世界选了面具时，该世界全部角色默认以这个世界面具与你交流；世界未指定则退回专属 / 全局默认面具",
+      "世界卷宗编辑面板（WorldCaseSheet）新增「世界默认面具」选择器：列出你所有面具 +「不指定（跟随专属 / 全局）」选项，关闭卷宗即保存",
+      "底层 BindingConfig 增加 worldBindings（按 worldId 存面具），resolveUserIdentity 自动按角色反查所属世界并套用；1:1 聊天、朋友圈、各角色引擎均自动生效",
+    ],
+  },
   {
     version: "1.3.2",
     date: "2026-08-09",
