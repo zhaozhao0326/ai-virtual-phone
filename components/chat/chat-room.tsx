@@ -4,7 +4,7 @@ import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
-import { parseAIResponse, CREATE_GROUP_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
@@ -41,7 +41,7 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
-import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
+import { PENDING_REPLY_PREFIX, applyAIProactiveFriendRequest } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
@@ -3667,7 +3667,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     signal: generationRun.controller.signal,
                 }, {
                     onReasoning: (t) => { pendingReasoning = t; },
-                    onTextPart: async (text, _senderInfo, options) => {
+                    onTextPart: async (text, senderInfo, options) => {
                         if (!isCurrentGeneration()) return;
                         if (text.trim()) {
                             // 角色自主建群标签拦截（1:1 场景）：建群 + 把用户拉进去，再从文本里剥掉标签
@@ -3682,6 +3682,20 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     showChatToast(`${cg[1]?.trim() || ""} 创建了群聊「${created.groupName}」并把你拉了进去`);
                                 }
                                 text = text.replace(CREATE_GROUP_TAG_RE, "");
+                            }
+                            // 角色主动发好友申请标签拦截（1:1 场景）：发起申请（若还不是联系人），再从文本里剥掉标签
+                            const fr = ADD_FRIEND_TAG_RE.exec(text);
+                            if (fr) {
+                                const actorName = (senderInfo?.characterName || "对方");
+                                const reason = (fr[1] || "").trim() || "想和你成为更亲密的朋友";
+                                const fres = applyAIProactiveFriendRequest(session.contactId, reason);
+                                if (fres.created) {
+                                    showChatToast(`${actorName} 向你发来了好友申请`);
+                                    pushChatMessage({ sessionId: session.id, role: "system", content: `${actorName} 向你发起了好友申请，备注：${reason}` });
+                                } else if (fres.reason === "already_contact") {
+                                    pushChatMessage({ sessionId: session.id, role: "system", content: `${actorName} 想和你更亲近一点~` });
+                                }
+                                text = text.replace(ADD_FRIEND_TAG_RE, "");
                             }
                             const reasoningText = pendingReasoning;
                             pendingReasoning = undefined;

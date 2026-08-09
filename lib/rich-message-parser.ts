@@ -103,6 +103,16 @@ export const COMPLETE_TODO_TAG_RE = /\[([^\]]+?)完成(?:了)?群待办[:：]\s*
 /** 角色删除群待办：[A删除了群待办: 买饮料] */
 export const REMOVE_TODO_TAG_RE = /\[([^\]]+?)删除了?群待办[:：]\s*([^\]]+?)\]/;
 
+/**
+ * 角色在日常 1:1 聊天中主动向用户发起好友申请：
+ *   [加好友 | 备注: 想认识你] / [申请加好友 | 理由: 多聊聊天] / [添加好友]
+ * 捕获组：1=备注/理由（可选）
+ * 注意：此标签仅在 1:1 聊天路径（chat-room 的 onTextPart）中按正则拦截处理，
+ *       不进入 RICH_PATTERNS（好友申请由通讯录「新的朋友」承载，无需气泡 mediaType）。
+ */
+export const ADD_FRIEND_TAG_RE =
+    /\[(?:加好友|申请加好友|添加好友|加为好友|好友申请)\s*(?:\|[｜]\s*(?:备注|理由|留言|附言|say)[:：]\s*([^\]]*?))?\s*\]/;
+
 const RICH_PATTERNS: {
     regex: RegExp;
     build: (m: RegExpMatchArray) => ParsedMessagePart;
