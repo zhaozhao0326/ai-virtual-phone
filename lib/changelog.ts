@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.2";
+export const APP_VERSION = "1.4.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.3",
+    date: "2026-08-09",
+    title: "修复：角色群主说「解散」却不真解散",
+    highlights: [
+      "根因：群解散的解析/权限/执行链路（[A解散了群聊] → canGroupAdminAct → applyGroupAdminAction 置 dissolved=true）本来接好了，但 AI 的系统提示「群管理操作」清单里漏写了解散这一种格式",
+      "表现：角色听到你让它解散时只回大白话（如「好的我解散了」），不匹配协议标签，被静默丢弃，于是「答应了但不执行」",
+      "修复：在 builtin-preset.ts 的群管理操作清单补上 [角色名]: [A解散了群聊]（仅群主），角色现在会按协议触发真正解散",
+      "注意铁律：只有群主能解散。若群是你（用户）创建的，群主是你本人，角色再怎么说也不能解散——需先把群主转让给角色（[A将群主转让给了B]）它才能解散；角色自建的群天然就是角色群主，可直接解散",
+    ],
+  },
   {
     version: "1.4.2",
     date: "2026-08-09",
