@@ -33,8 +33,17 @@ import {
     formatQaFeedbackMarkdown,
     type QaFeedbackTicket,
 } from "./qa-feedback";
-import { QA_CONTENT_TOOLS, type QaCreatedContent } from "./qa-content-tools";
+import {
+    QA_CONTENT_TOOLS,
+    workbenchWriteLocal,
+    workbenchEditLocal,
+    workbenchPublishLocal,
+    getAppStagingNote,
+    readStagedAppFile,
+    type QaCreatedContent,
+} from "./qa-content-tools";
 import { searchQaFaq, readQaFaqPage } from "./qa-faq";
+import { kvGet, kvSet } from "./kv-db";
 import { getQaPageChars } from "./qa-prefs";
 
 export type { QaCreatedContent } from "./qa-content-tools";
@@ -211,7 +220,7 @@ const errorLogTool: QaTool = {
         const lines: string[] = [];
         const errors = getQaErrorEntries();
         if (errors.length === 0) {
-            lines.push("本次会话没有捕获到页面报错。");
+            lines.push("本次会话没有捕获到运行时报错。（收集范围：宿主页面与本机测试游戏/剧场 iframe；自定义 APP 内部报错不在此列，「没有报错」不代表你写的代码没问题——排查代码问题请用「读取」看源码。）");
         } else {
             lines.push(`捕获到 ${errors.length} 条报错（最近 10 条）：`);
             for (const entry of errors.slice(-10)) {
@@ -273,7 +282,7 @@ const faqTool: QaTool = {
         },
     },
     description:
-        "检索产品答疑文档（持续补充的 FAQ）：传 find 按关键词查相关问答，不传则分页通读。回答没把握的产品问题前先查这里；查不到再用 GitHub 工具读源码求证。",
+        "检索产品答疑文档（FAQ）——只用于回答用户的产品使用问题：功能怎么用、设置在哪、故障怎么排查。回答没把握的产品问题前先查这里；查不到再读源码求证。注意：开发 APP/小游戏/剧场所需的运行时协议、宿主 API、manifest/权限/工具声明等资料全部在「创作指南」里，创作任务不要来这里查资料。",
     schemaLines: [
         "  参数：",
         "    · find (可选) — 关键词，任一命中即返回对应问答条目",
@@ -565,7 +574,90 @@ const githubBranchTool: QaTool = {
         const from = typeof args.from === "string" && args.from.trim() ? args.from.trim() : undefined;
         const result = await createQaBranch(config, { name, from }, context?.signal);
         if (!result.created) return `分支「${name}」已存在，可直接往它提交。`;
-        return `✓ 已从「${result.from}」创建分支「${name}」。之后用「提交修改」的 branch 参数即可提交到该分支。`;
+        return `✓ 已从「${result.from}」创建分支「${name}」。之后「发布」type=repo 时用 branch 参数即可提交到该分支。`;
+    },
+};
+
+// ── 提交暂存区（分段写入 → 提交引用）────────────────
+// 与应用包暂存区同思路：往仓库新写大文件时，单次输出可能被 max_tokens 截断——
+// 先分多轮 append 到内存暂存区，再在「提交修改」里用 {path, fromStaged:true} 引用。
+// 改已有文件不需要它：走「提交修改」的 find/replace 片段替换。
+
+// 与应用暂存区同理：持久化到 kv，页面重载后分段写入/编辑的内容不丢
+const COMMIT_STAGING_KEY = "ai_phone_qa_commit_staging_v1";
+const COMMIT_STAGING_MEM = new Map<string, string>();
+let commitStagingLoaded = false;
+
+function commitStaging(): Map<string, string> {
+    if (!commitStagingLoaded) {
+        commitStagingLoaded = true;
+        try {
+            const parsed = JSON.parse(kvGet(COMMIT_STAGING_KEY) || "[]") as Array<[string, string]>;
+            if (Array.isArray(parsed)) {
+                for (const [key, value] of parsed) {
+                    if (typeof key === "string" && typeof value === "string") COMMIT_STAGING_MEM.set(key, value);
+                }
+            }
+        } catch {
+            // ignore
+        }
+    }
+    return COMMIT_STAGING_MEM;
+}
+
+function persistCommitStaging(): void {
+    kvSet(COMMIT_STAGING_KEY, JSON.stringify([...commitStaging()]));
+}
+const COMMIT_STAGE_MAX_FILES = 40;
+const COMMIT_STAGE_MAX_FILE_CHARS = 2_000_000;
+const COMMIT_STAGE_MAX_TOTAL_CHARS = 10_000_000;
+
+function commitStagingSummary(): string {
+    if (commitStaging().size === 0) return "（提交暂存区为空）";
+    return [...commitStaging().entries()].map(([path, c]) => `${path}(${c.length})`).join("、");
+}
+
+const githubStageFileTool: QaTool = {
+    name: "暂存提交文件",
+    nativeName: "stage_commit_file",
+    parameters: {
+        type: "object",
+        properties: {
+            path: { type: "string", description: "仓库内路径，如 src/app.js" },
+            content: { type: "string", description: "文件内容（文本）" },
+            append: { type: "boolean", description: "true=追加到该路径已暂存内容末尾（大文件分多轮写）" },
+            clear: { type: "boolean", description: "true=清空整个提交暂存区（重来），此时可不传 path/content" },
+        },
+    },
+    description:
+        "把要提交到仓库的文件内容写入暂存区（只在本机内存，不动仓库）。新写大文件超过单次输出上限时分多轮：首轮写骨架，后续轮 append=true 追加，绝不会被 max_tokens 截断。写完后在「提交修改」的 files 里用 {path, fromStaged:true} 引用即可提交。改已有文件优先用「提交修改」的 find/replace 片段替换，不必走暂存。",
+    schemaLines: [
+        "  参数：",
+        "    · path (必填) — 仓库内路径",
+        "    · content (必填) — 文件内容（文本）",
+        "    · append (可选) — true=追加到该路径已暂存内容末尾（大文件分轮写）",
+        "    · clear (可选) — true=清空提交暂存区",
+        '  调用：[执行动作:暂存提交文件({"path":"src/app.js","content":"…","append":true})]',
+    ],
+    async run(args) {
+        if (args.clear === true) {
+            commitStaging().clear();
+            persistCommitStaging();
+            return "✓ 提交暂存区已清空。";
+        }
+        const path = typeof args.path === "string" ? args.path.trim().replace(/^\.?\//, "") : "";
+        if (!path || path.includes("..") || path.length > 200) return "path 无效（仓库内相对路径，不允许 ..）。";
+        const content = typeof args.content === "string" ? args.content : "";
+        if (!content) return "缺少 content。";
+        if (commitStaging().size >= COMMIT_STAGE_MAX_FILES && !commitStaging().has(path)) return `暂存文件数已达上限 ${COMMIT_STAGE_MAX_FILES}。`;
+        const next = args.append === true ? (commitStaging().get(path) ?? "") + content : content;
+        if (next.length > COMMIT_STAGE_MAX_FILE_CHARS) return `单文件暂存超限（${next.length} > ${COMMIT_STAGE_MAX_FILE_CHARS} 字符）。`;
+        let total = next.length;
+        for (const [k, c] of commitStaging()) { if (k !== path) total += c.length; }
+        if (total > COMMIT_STAGE_MAX_TOTAL_CHARS) return `暂存区总量超限（${total} > ${COMMIT_STAGE_MAX_TOTAL_CHARS} 字符）。`;
+        commitStaging().set(path, next);
+        persistCommitStaging();
+        return `✓ 已暂存 ${path}（当前 ${next.length.toLocaleString()} 字符${args.append === true ? "，本次为追加" : ""}）。暂存区：${commitStagingSummary()}。继续追加或暂存其他文件；全部写完后用「发布」type=repo 提交（需 message）。`;
     },
 };
 
@@ -578,11 +670,18 @@ const githubCommitTool: QaTool = {
             message: { type: "string", description: "提交说明（一句话，中文）" },
             files: {
                 type: "array",
-                description: "要写入的文件，每项 {path, content}，content 是完整新内容",
+                description: "要修改的文件。三种形态：整写 {path, content}；片段替换 {path, find, replace}（改大文件用，只输出改动片段）；引用暂存 {path, fromStaged:true}（新写大文件先用「暂存提交文件」分轮写完）",
                 items: {
                     type: "object",
-                    properties: { path: { type: "string" }, content: { type: "string" } },
-                    required: ["path", "content"],
+                    properties: {
+                        path: { type: "string" },
+                        content: { type: "string", description: "整写：该文件完整新内容" },
+                        find: { type: "string", description: "片段替换：要被替换的原文片段（须在文件中唯一，含足够上下文）" },
+                        replace: { type: "string", description: "片段替换：替换后的新片段" },
+                        all: { type: "boolean", description: "片段替换：true=替换全部匹配处（默认要求唯一匹配）" },
+                        fromStaged: { type: "boolean", description: "true=内容取自「暂存提交文件」暂存区的同路径文件（大文件分段写完后用）" },
+                    },
+                    required: ["path"],
                 },
             },
             deletes: { type: "array", items: { type: "string" }, description: "要删除的文件路径" },
@@ -591,15 +690,15 @@ const githubCommitTool: QaTool = {
         required: ["message"],
     },
     description:
-        "把对仓库文件的修改（新增/覆盖/删除）提交上去。给出完整的新文件内容（不是 diff）。确认模式下会先展示给用户确认再提交；全自动模式下直接提交。修改前应先用「读取仓库文件」拿到原内容再改。",
+        "把对仓库文件的修改（新增/覆盖/删除）提交上去。三种改法：新建/整写用 {path, content}；改已有大文件优先用片段替换 {path, find, replace}——只输出改动片段，省 token 且不会被输出上限截断；新写大文件先用「暂存提交文件」分轮写完，再用 {path, fromStaged:true} 引用。确认模式下会先展示给用户确认再提交；全自动模式下直接提交。片段替换前先用「读取仓库文件」确认原文。",
     schemaLines: [
         "  参数：",
         "    · message (必填) — 提交说明（一句话，中文）",
-        "    · files (可选) — 数组，每项 {path, content}，content 是该文件的完整新内容",
+        "    · files (可选) — 数组。整写：{path, content}；片段替换：{path, find, replace[, all]}——改大文件优先用它，find 须是文件中唯一的原文片段（带足够上下文），all=true 替换全部匹配；引用暂存：{path, fromStaged:true}——新写大文件先「暂存提交文件」分轮写完再引用",
         "    · deletes (可选) — 要删除的文件路径数组；重命名 = 新路径写入 files + 旧路径放 deletes",
         "    · branch (可选) — 目标分支，默认仓库默认分支；分支不存在会自动从默认分支创建",
         "    · files 与 deletes 至少给一个",
-        '  调用：[执行动作:提交修改({"message":"更新标题","files":[{"path":"README.md","content":"# 新标题\\n"}],"deletes":["old.md"]})]',
+        '  调用：[执行动作:提交修改({"message":"更新标题","files":[{"path":"README.md","find":"# 旧标题","replace":"# 新标题"}]})]',
     ],
     async run(args, context) {
         const config = loadQaGithubConfig();
@@ -607,9 +706,48 @@ const githubCommitTool: QaTool = {
         if (!config.token) return "写操作需要 PAT。请引导用户在工坊「仓库」里填入有写权限的 fine-grained PAT。";
         const message = typeof args.message === "string" ? args.message.trim() : "";
         const rawFiles = Array.isArray(args.files) ? args.files : [];
-        const files: QaCommitFile[] = rawFiles
-            .filter((f): f is { path: string; content: string } => !!f && typeof f === "object" && typeof (f as { path?: unknown }).path === "string" && typeof (f as { content?: unknown }).content === "string")
-            .map((f) => ({ path: f.path.trim(), content: f.content }));
+        // 两种形态：整写 {path, content}；片段替换 {path, find, replace[, all]}——
+        // 替换在此处解析成完整内容（读当前文件→替换→交给原提交管线），确认面板展示的即最终内容
+        const files: QaCommitFile[] = [];
+        const resolved = new Map<string, string>(); // 同文件多条编辑按顺序叠加
+        const consumedStaged: string[] = []; // 引用了暂存区的路径：提案落地后才清空（提交失败可重试）
+        for (const raw of rawFiles) {
+            if (!raw || typeof raw !== "object") continue;
+            const entry = raw as { path?: unknown; content?: unknown; find?: unknown; replace?: unknown; all?: unknown; fromStaged?: unknown };
+            const path = typeof entry.path === "string" ? entry.path.trim() : "";
+            if (!path) continue;
+            if (entry.fromStaged === true) {
+                const stagedKey = commitStaging().has(path) ? path : path.replace(/^\.?\//, "");
+                const staged = commitStaging().get(stagedKey);
+                if (staged == null) return `文件 ${path}：提交暂存区里没有它。先用「暂存提交文件」写入。当前暂存区：${commitStagingSummary()}`;
+                resolved.set(path, staged);
+                consumedStaged.push(stagedKey);
+                continue;
+            }
+            if (typeof entry.content === "string") {
+                resolved.set(path, entry.content);
+                continue;
+            }
+            if (typeof entry.find === "string" && typeof entry.replace === "string") {
+                if (!entry.find) return `文件 ${path}：find 不能为空。`;
+                let base = resolved.get(path);
+                if (base == null) {
+                    try {
+                        base = (await readQaGithubFile(config, path, context?.signal)).text;
+                    } catch (error) {
+                        return `片段替换失败：读取 ${path} 出错——${error instanceof Error ? error.message : String(error)}。新文件请用 {path, content} 整写。`;
+                    }
+                }
+                const count = base.split(entry.find).length - 1;
+                if (count === 0) return `文件 ${path}：找不到 find 片段。先用「读取仓库文件」核对原文（注意空格与换行须完全一致）。`;
+                if (count > 1 && entry.all !== true) return `文件 ${path}：find 片段匹配了 ${count} 处。加长片段使其唯一，或加 all:true 替换全部。`;
+                base = entry.all === true ? base.split(entry.find).join(entry.replace) : base.replace(entry.find, entry.replace);
+                resolved.set(path, base);
+                continue;
+            }
+            return `文件 ${path}：需给 content（整写）或 find+replace（片段替换）。`;
+        }
+        for (const [path, content] of resolved) files.push({ path, content });
         const deletes = (Array.isArray(args.deletes) ? args.deletes : [])
             .map((p) => (typeof p === "string" ? p.trim() : ""))
             .filter(Boolean);
@@ -622,15 +760,23 @@ const githubCommitTool: QaTool = {
             files.length ? `改 ${files.length} 个：${files.map((f) => f.path).join("、")}` : "",
             deletes.length ? `删 ${deletes.length} 个：${deletes.join("、")}` : "",
         ].filter(Boolean).join("；");
+        const releaseStaged = () => {
+            for (const key of consumedStaged) commitStaging().delete(key);
+            if (consumedStaged.length) persistCommitStaging();
+        };
         if (context?.autoCommit) {
             // 立即提交：后续工具（创建PR 等）依赖提交已经落到分支上
             if (context.commitNow) {
                 const result = await context.commitNow(proposal);
-                if (!result.ok) return `提交失败：${result.error ?? "未知错误"}。请把失败原因告诉用户，不要假装已提交。`;
+                if (!result.ok) return `提交失败：${result.error ?? "未知错误"}${consumedStaged.length ? "（暂存文件已保留，可修正后重试）" : ""}。请把失败原因告诉用户，不要假装已提交。`;
+                releaseStaged();
                 return `✓ 已提交（${summary}）到 ${branch || "默认分支"}：${result.htmlUrl ?? ""}。请向用户简述你做的修改和影响。`;
             }
+            releaseStaged();
             return `修改提案已生成（${summary}），当前是全自动模式，系统会直接提交。请向用户简述你做的修改和影响。`;
         }
+        // 确认模式：内容已复制进提案（用户点「应用」时用提案里的内容），暂存区可释放
+        releaseStaged();
         return `已生成修改提案（${summary}），已在界面展示给用户，等待用户点「应用」确认。请告诉用户你准备做的修改和影响，让他确认。不要假装已经提交成功。`;
     },
 };
@@ -778,6 +924,7 @@ const GITHUB_TOOLS: QaTool[] = [
 const GITHUB_WRITE_TOOLS: QaTool[] = [
     githubBranchTool,
     githubBranchDeleteTool,
+    githubStageFileTool,
     githubCommitTool,
     githubPullCreateTool,
     githubPullMergeTool,
@@ -846,19 +993,365 @@ const feedbackTool: QaTool = {
     },
 };
 
+// ── 统一 CRUD 工具集 ─────────────────────────────────
+// 主流 agent 形态：内容与仓库统一寻址（type + name/path + field），每个动作只有
+// 一个入口——清单 / 读取 / 写入(append 分段) / 编辑(find/replace) / 发布，再加
+// 归类后的辅助工具。旧工具全部保留为隐藏别名（仍可执行，兼容旧会话回放与弱模型
+// 记忆里的旧指令），但不再出现在系统提示里。
+
+function contentToolByNative(native: string): QaTool {
+    const tool = QA_CONTENT_TOOLS.find((t) => t.nativeName === native);
+    if (!tool) throw new Error(`内容工具缺失：${native}`);
+    return tool;
+}
+
+const listTool: QaTool = {
+    name: "清单",
+    nativeName: "list_items",
+    parameters: {
+        type: "object",
+        properties: {
+            scope: { type: "string", enum: ["local", "repo"], description: "local=本机内容（默认）；repo=已连接仓库的文件树" },
+            filter: { type: "string", description: "scope=repo 时按路径关键词过滤" },
+        },
+    },
+    description:
+        "看看有什么。scope=local（默认）：本机自定义 APP、游戏/剧场草稿箱、本机测试内容、两个暂存区的状态；scope=repo：已连接 GitHub 仓库的文件树（可 filter 过滤路径）。",
+    schemaLines: [
+        "  参数：",
+        "    · scope (可选) — local（默认，本机内容与暂存区）/ repo（仓库文件树）",
+        "    · filter (可选) — repo 文件树按路径关键词过滤",
+        '  调用：[执行动作:清单({})] 或 [执行动作:清单({"scope":"repo","filter":"chat"})]',
+    ],
+    async run(args, context) {
+        if (args.scope === "repo") return githubTreeTool.run({ filter: args.filter }, context);
+        const local = await contentToolByNative("list_local_content").run({}, context);
+        return `${local}\n${getAppStagingNote()}\n提交暂存区：${commitStaging().size === 0 ? "（空）" : commitStagingSummary()}`;
+    },
+};
+
+const readTool: QaTool = {
+    name: "读取",
+    nativeName: "read_item",
+    parameters: {
+        type: "object",
+        properties: {
+            type: { type: "string", enum: ["app", "game", "theater", "repo"], description: "内容类型" },
+            name: { type: "string", description: "app/game/theater：APP 名 / 游戏标题 / 剧场档案名" },
+            path: { type: "string", description: "repo：仓库文件路径；app：读应用暂存区的包文件（分段写入时核实进度用）" },
+            page: { type: "number", description: "本机内容/暂存文件较长时分页，默认第 1 页（最后一页可看结尾）" },
+            start: { type: "number", description: "repo：起始行" },
+            end: { type: "number", description: "repo：结束行" },
+        },
+        required: ["type"],
+    },
+    description:
+        "读取一条内容的完整源码与字段：本机 APP/游戏/剧场用 type+name（可分页）；仓库文件用 type=repo + path（可 start/end 行号范围，暂存区有未提交修改时读到的是暂存版本）；应用暂存区的包文件用 type=app + path。修改前/续写前先读，基于真实内容再动手。",
+    schemaLines: [
+        "  参数：",
+        "    · type (必填) — app / game / theater / repo",
+        "    · name — 本机内容的名称（type=app/game/theater 已装内容用）",
+        "    · path — 仓库文件路径（type=repo）/ 应用暂存区包文件路径（type=app，分段写入时核实进度）",
+        "    · page (可选) — 本机内容/暂存文件分页；start/end (可选) — 仓库文件行号范围",
+        '  调用：[执行动作:读取({"type":"game","name":"五子棋"})] 或 [执行动作:读取({"type":"app","path":"index.html","page":2})]',
+    ],
+    async run(args, context) {
+        if (args.type === "repo") {
+            // 提交暂存区的工作副本优先：分段写入/编辑过的文件，续写要基于暂存版本而不是仓库旧版
+            const path = typeof args.path === "string" ? args.path.trim().replace(/^\.?\//, "") : "";
+            const staged = path ? commitStaging().get(path) : undefined;
+            if (staged != null) {
+                const lines = staged.split("\n");
+                const start = typeof args.start === "number" ? Math.max(1, args.start) : 1;
+                const end = typeof args.end === "number" ? Math.min(lines.length, args.end) : lines.length;
+                const numbered = lines.slice(start - 1, end).map((line, i) => `${start + i}\t${line}`).join("\n");
+                const body = `${path}（提交暂存区的未提交版本，共 ${lines.length} 行，显示 ${start}-${Math.min(end, lines.length)}）：\n${numbered}`;
+                const limit = getQaPageChars();
+                return body.length > limit ? `${body.slice(0, limit)}\n…（已截断，用 start/end 行号范围继续读）` : body;
+            }
+            return githubReadTool.run({ path: args.path, start: args.start, end: args.end }, context);
+        }
+        if (args.type === "app" && typeof args.path === "string" && args.path.trim()) {
+            return readStagedAppFile(args.path, args.page, args.start, args.end);
+        }
+        const result = await contentToolByNative("read_local_content").run({ type: args.type, name: args.name, page: args.page }, context);
+        if (args.type === "app" && result.startsWith("没有找到名为") && !getAppStagingNote().includes("（暂存区为空）")) {
+            return `${result}\n${getAppStagingNote()}——暂存区文件还没安装，读它们要用 path 参数（如 {"type":"app","path":"index.html"}）。`;
+        }
+        return result;
+    },
+};
+
+const writeTool: QaTool = {
+    name: "写入",
+    nativeName: "write_item",
+    parameters: {
+        type: "object",
+        properties: {
+            type: { type: "string", enum: ["app", "game", "theater", "repo"], description: "写入目标" },
+            name: { type: "string", description: "game/theater：草稿标题（没有会新建）" },
+            path: { type: "string", description: "app：包内路径（如 index.html / manifest.json）；repo：仓库文件路径" },
+            field: { type: "string", description: "game/theater：字段名。game 默认 gameHtml（还有 pickerHtml/roleSlots/subtitle/synopsis/playNote/tags）；theater 默认 openingHtml（还有 aiInstruction/outputContract/renderRules/renderCss/memorySummaryPrompt/subtitle/synopsis/storyText/tags）" },
+            content: { type: "string", description: "内容（roleSlots/renderRules 传 JSON 数组文本）" },
+            append: { type: "boolean", description: "true=追加到已有内容末尾——大文件分多轮写，每段自然收尾，绝不会被输出上限截断" },
+            base64: { type: "boolean", description: "仅 app：content 是 base64 二进制（如图标）" },
+        },
+        required: ["type", "content"],
+    },
+    description:
+        "写内容（新建或整体覆盖，append=true 则分段追加）：app 按包内 path 写应用暂存区（单文件应用只需 index.html；完整包加 manifest.json）；game/theater 按 name+field 写草稿（可逐字段分多轮写）；repo 按 path 写提交暂存区。大文件必须分段 append，写完用「发布」。",
+    schemaLines: [
+        "  参数：",
+        "    · type (必填) — app（暂存区，配 path）/ game / theater（草稿，配 name+field）/ repo（提交暂存区，配 path）",
+        "    · name / path — 见 type 说明；field (可选) — game 默认 gameHtml，theater 默认 openingHtml",
+        "    · content (必填) — 内容；append (可选) — true=追加（大文件分轮写）",
+        '  调用：[执行动作:写入({"type":"game","name":"五子棋","content":"<!doctype html>…","append":true})]',
+    ],
+    async run(args, context) {
+        if (args.type === "repo") return githubStageFileTool.run({ path: args.path, content: args.content, append: args.append, clear: args.clear }, context);
+        if (args.type === "app") return contentToolByNative("stage_app_file").run({ path: args.path, content: args.content, append: args.append, base64: args.base64 }, context);
+        return workbenchWriteLocal(args as Record<string, unknown>);
+    },
+};
+
+const editTool: QaTool = {
+    name: "编辑",
+    nativeName: "edit_item",
+    parameters: {
+        type: "object",
+        properties: {
+            type: { type: "string", enum: ["app", "game", "theater", "repo"], description: "编辑目标" },
+            name: { type: "string", description: "app：已装应用名；game/theater：标题（只在本机测试时会自动转成草稿再改）" },
+            path: { type: "string", description: "app：暂存文件路径；repo：仓库文件路径" },
+            field: { type: "string", description: "game/theater：字段名，game 默认 gameHtml，theater 默认 openingHtml" },
+            find: { type: "string", description: "要被替换的原文片段（须唯一，含足够上下文；空格换行须与原文完全一致）" },
+            replace: { type: "string", description: "替换后的新片段" },
+            all: { type: "boolean", description: "true=替换全部匹配处（默认要求唯一匹配）" },
+        },
+        required: ["type", "find", "replace"],
+    },
+    description:
+        "改已有内容的首选方式（find/replace 片段替换）：只输出改动片段，省 token 且不会被输出上限截断，绝不要整体重写大文件。可改：已装 APP（name）、应用暂存文件（path）、游戏/剧场草稿字段（name+field）、仓库文件（type=repo + path，改动进提交暂存区，「发布」时才提交）。改前先「读取」核对原文。",
+    schemaLines: [
+        "  参数：",
+        "    · type (必填) — app / game / theater / repo",
+        "    · name / path / field — 定位目标，见参数说明",
+        "    · find (必填) / replace (必填) / all (可选) — 原文片段须唯一，all=true 替换全部",
+        '  调用：[执行动作:编辑({"type":"game","name":"五子棋","find":"const SIZE = 15","replace":"const SIZE = 19"})]',
+    ],
+    async run(args, context) {
+        if (args.type === "repo") {
+            const config = loadQaGithubConfig();
+            if (!config) return "尚未连接 GitHub 仓库。";
+            const path = typeof args.path === "string" ? args.path.trim().replace(/^\.?\//, "") : "";
+            if (!path) return "编辑 repo 需要 path（仓库文件路径）。";
+            const find = typeof args.find === "string" ? args.find : "";
+            const replace = typeof args.replace === "string" ? args.replace : "";
+            if (!find) return "缺少 find（要被替换的原文片段）。";
+            let base = commitStaging().get(path);
+            const fromStaging = base != null;
+            if (base == null) {
+                try {
+                    base = (await readQaGithubFile(config, path, context?.signal)).text;
+                } catch (error) {
+                    return `读取 ${path} 失败：${error instanceof Error ? error.message : String(error)}。新文件请用「写入」type=repo。`;
+                }
+            }
+            const count = base.split(find).length - 1;
+            if (count === 0) return `文件 ${path}：找不到 find 片段。先用「读取」type=repo 核对原文（空格与换行须完全一致）。`;
+            if (count > 1 && args.all !== true) return `文件 ${path}：find 片段匹配了 ${count} 处。加长片段使其唯一，或加 all:true 替换全部。`;
+            const next = args.all === true ? base.split(find).join(replace) : base.replace(find, replace);
+            commitStaging().set(path, next);
+            persistCommitStaging();
+            return `✓ 已替换 ${path} 的 ${args.all === true ? count : 1} 处并暂存（${fromStaging ? "基于暂存内容" : "基于仓库当前内容"}，现 ${next.length.toLocaleString()} 字符）。全部修改就绪后用「发布」type=repo 提交。`;
+        }
+        return workbenchEditLocal(args as Record<string, unknown>, context);
+    },
+};
+
+const publishTool: QaTool = {
+    name: "发布",
+    nativeName: "publish_item",
+    parameters: {
+        type: "object",
+        properties: {
+            type: { type: "string", enum: ["app", "game", "theater", "repo"], description: "发布目标" },
+            name: { type: "string", description: "app 单文件时的应用名；game/theater：草稿标题" },
+            message: { type: "string", description: "repo：提交说明（必填）" },
+            branch: { type: "string", description: "repo：目标分支，默认仓库默认分支，不存在会自动创建" },
+            deletes: { type: "array", items: { type: "string" }, description: "repo：要删除的文件路径" },
+            description: { type: "string", description: "app：一句话简介" },
+            permissions: { type: "array", items: { type: "string" }, description: "app：覆盖默认权限集" },
+            clear: { type: "boolean", description: "true=不发布，只清空对应暂存区（app/repo）" },
+        },
+        required: ["type"],
+    },
+    description:
+        "把写好的内容落地：app=用应用暂存区组包安装到桌面（有 manifest.json 走完整包，只有 index.html 时配 name 走单文件）；game/theater=把草稿装进本机测试（游戏大厅/黑市剧场）；repo=把提交暂存区的全部修改提交到仓库（需 message，确认模式会先给用户确认）。app/game 发布前会做结构体检（文档收尾位置、script 配平、内联脚本语法试编译），不过会返回具体问题——按提示「编辑」修复后重新发布即可。",
+    schemaLines: [
+        "  参数：",
+        "    · type (必填) — app / game / theater / repo",
+        "    · name — app 单文件应用名 / game、theater 草稿标题",
+        "    · message (repo 必填) / branch / deletes — 提交说明、目标分支、要删除的路径",
+        "    · clear (可选) — true=只清空对应暂存区",
+        '  调用：[执行动作:发布({"type":"game","name":"五子棋"})] 或 [执行动作:发布({"type":"repo","message":"修复计分"})]',
+    ],
+    async run(args, context) {
+        if (args.type === "repo") {
+            if (args.clear === true) {
+                commitStaging().clear();
+                persistCommitStaging();
+                return "✓ 提交暂存区已清空。";
+            }
+            const deletes = Array.isArray(args.deletes) ? args.deletes : [];
+            if (commitStaging().size === 0 && deletes.length === 0) return "提交暂存区为空，也没有 deletes。先用「写入」或「编辑」type=repo 修改文件。";
+            const message = typeof args.message === "string" ? args.message.trim() : "";
+            if (!message) return "发布 repo 需要 message（提交说明）。";
+            const files = [...commitStaging().keys()].map((path) => ({ path, fromStaged: true }));
+            return githubCommitTool.run({ message, branch: args.branch, files, deletes: deletes.length ? deletes : undefined }, context);
+        }
+        return workbenchPublishLocal(args as Record<string, unknown>, context);
+    },
+};
+
+const diagnoseTool: QaTool = {
+    name: "环境体检",
+    nativeName: "env_check",
+    parameters: {
+        type: "object",
+        properties: {
+            scope: { type: "string", enum: ["api", "storage", "errors", "device"], description: "检查什么：api=LLM API 连通性；storage=浏览器存储占用；errors=运行时报错收集（见工具说明的覆盖范围）；device=设备与运行环境" },
+            name: { type: "string", description: "scope=api 时只测指定名称的配置" },
+        },
+        required: ["scope"],
+    },
+    description:
+        "检查运行环境本身是否健康：api=逐个真实测试已配置的 LLM API 连通性；storage=存储配额与占用；device=浏览器/视口/PWA/通知权限；errors=本次会话收集到的运行时报错（宿主页面 + 本机测试游戏/剧场 iframe）与 LLM 请求快照。它只看环境，不分析任何内容代码——某个 APP/游戏自身功能不对，用「读取」看它的源码。",
+    schemaLines: [
+        "  参数：",
+        "    · scope (必填) — api / storage / errors / device",
+        "    · name (可选) — scope=api 时只测该名称的配置",
+        '  调用：[执行动作:环境体检({"scope":"api"})]',
+    ],
+    async run(args, context) {
+        if (args.scope === "api") return apiCheckTool.run({ name: args.name }, context);
+        if (args.scope === "storage") return storageReportTool.run({}, context);
+        if (args.scope === "errors") return errorLogTool.run({}, context);
+        if (args.scope === "device") return deviceInfoTool.run({}, context);
+        return "scope 需为 api / storage / errors / device 之一。";
+    },
+};
+
+// 「诊断」旧名别名：改名「环境体检」前的会话回放/弱模型旧指令仍可执行（隐藏，不进提示词）
+const diagnoseLegacyAliasTool: QaTool = {
+    name: "诊断",
+    nativeName: "run_diagnostics",
+    parameters: diagnoseTool.parameters,
+    description: diagnoseTool.description,
+    schemaLines: diagnoseTool.schemaLines,
+    run: (args, context) => diagnoseTool.run(args, context),
+};
+
+const repoQueryTool: QaTool = {
+    name: "仓库查询",
+    nativeName: "repo_query",
+    parameters: {
+        type: "object",
+        properties: {
+            kind: { type: "string", enum: ["commits", "branches", "pulls", "issues"], description: "查什么，默认 commits" },
+            sha: { type: "string", description: "commits：看该提交的改动详情（含 diff）" },
+            number: { type: "number", description: "pulls/issues：编号，不填列出列表" },
+            state: { type: "string", enum: ["open", "closed", "all"], description: "pulls/issues 列表状态过滤，默认 open" },
+            branch: { type: "string", description: "commits：按分支过滤" },
+            path: { type: "string", description: "commits：只看该文件的历史" },
+            limit: { type: "number", description: "commits：条数，默认 10" },
+        },
+    },
+    description:
+        "查仓库状态：kind=commits（默认）看提交历史或某次提交的 diff（sha）；branches 列分支；pulls 列 PR 或看详情（number）；issues 列 issue 或看详情与评论（number）。",
+    schemaLines: [
+        "  参数：",
+        "    · kind (可选) — commits（默认）/ branches / pulls / issues",
+        "    · sha / number / state / branch / path / limit — 按 kind 取用",
+        '  调用：[执行动作:仓库查询({"kind":"pulls"})] 或 [执行动作:仓库查询({"sha":"abc123"})]',
+    ],
+    async run(args, context) {
+        const kind = typeof args.kind === "string" ? args.kind : "";
+        if (kind === "branches") return githubBranchListTool.run({}, context);
+        if (kind === "pulls") return githubPullReadTool.run({ number: args.number, state: args.state }, context);
+        if (kind === "issues") return githubIssueReadTool.run({ number: args.number, state: args.state }, context);
+        return githubHistoryTool.run({ sha: args.sha, branch: args.branch, path: args.path, limit: args.limit }, context);
+    },
+};
+
+const branchOpsTool: QaTool = {
+    name: "分支管理",
+    nativeName: "branch_ops",
+    parameters: {
+        type: "object",
+        properties: {
+            action: { type: "string", enum: ["create", "delete"], description: "create=新建分支；delete=删除分支" },
+            name: { type: "string", description: "分支名" },
+            from: { type: "string", description: "create：从哪个分支切出，默认仓库配置分支/默认分支" },
+        },
+        required: ["action", "name"],
+    },
+    description:
+        "管理仓库分支：create 新建（已存在不报错，之后「发布」type=repo 用 branch 参数提交过去）；delete 删除（默认分支与工坊工作分支受保护）。",
+    schemaLines: [
+        "  参数：",
+        "    · action (必填) — create / delete",
+        "    · name (必填) — 分支名；from (可选) — create 时的源分支",
+        '  调用：[执行动作:分支管理({"action":"create","name":"feature/dark-mode"})]',
+    ],
+    async run(args, context) {
+        if (args.action === "delete") return githubBranchDeleteTool.run({ name: args.name }, context);
+        if (args.action === "create") return githubBranchTool.run({ name: args.name, from: args.from }, context);
+        return "action 需为 create / delete。";
+    },
+};
+
+// ── 注册表 ───────────────────────────────────────────
+
+// 旧工具分组（隐藏别名：仍可执行，不进系统提示）
 const BASE_TOOLS: QaTool[] = [apiCheckTool, storageReportTool, errorLogTool, deviceInfoTool, feedbackTool, faqTool, ...QA_CONTENT_TOOLS];
 
-/** 当前可用工具集：基础诊断 + 内容开发工场 + （已连接仓库时）GitHub 只读 + （有 PAT 时）写入工具。 */
+// 暴露给模型的统一工具集
+const UNIFIED_BASE_TOOLS: QaTool[] = [
+    listTool,
+    readTool,
+    writeTool,
+    editTool,
+    publishTool,
+    contentToolByNative("read_creation_guide"),
+    faqTool,
+    contentToolByNative("export_local_content"),
+    diagnoseTool,
+    feedbackTool,
+];
+const UNIFIED_GITHUB_READ_TOOLS: QaTool[] = [githubSearchTool, repoQueryTool];
+const UNIFIED_GITHUB_WRITE_TOOLS: QaTool[] = [branchOpsTool, githubPullCreateTool, githubPullMergeTool, githubIssueUpdateTool];
+
+/** 当前可用工具集：统一 CRUD + 辅助 + （已连接仓库）查询 + （有 PAT）写入。 */
 export function getQaTools(): QaTool[] {
     const config = loadQaGithubConfig();
-    if (!config) return BASE_TOOLS;
-    const tools = [...BASE_TOOLS, ...GITHUB_TOOLS];
-    if (config.token) tools.push(...GITHUB_WRITE_TOOLS);
+    const tools = [...UNIFIED_BASE_TOOLS];
+    if (config) tools.push(...UNIFIED_GITHUB_READ_TOOLS);
+    if (config?.token) tools.push(...UNIFIED_GITHUB_WRITE_TOOLS);
     return tools;
 }
 
-// 全量工具（store 里用于工具名映射与执行查找）
-export const QA_TOOLS: QaTool[] = [...BASE_TOOLS, ...GITHUB_TOOLS, ...GITHUB_WRITE_TOOLS];
+// 全量注册表（store 里用于工具名映射与执行查找）：统一工具 + 全部旧工具隐藏别名，
+// Set 去重（部分工具两边都在）
+export const QA_TOOLS: QaTool[] = [...new Set([
+    ...UNIFIED_BASE_TOOLS,
+    ...UNIFIED_GITHUB_READ_TOOLS,
+    ...UNIFIED_GITHUB_WRITE_TOOLS,
+    diagnoseLegacyAliasTool,
+    ...BASE_TOOLS,
+    ...GITHUB_TOOLS,
+    ...GITHUB_WRITE_TOOLS,
+])];
 
 // ── 原生工具协议（function calling）────────────────────
 
@@ -882,7 +1375,11 @@ export function buildQaToolsPrompt(): string {
     const tools = getQaTools();
     const lines: string[] = [];
     lines.push("===== 你的工具 =====");
-    lines.push("排查用户问题时优先实际检测，不要凭空猜测。可用工具：");
+    lines.push("排查用户问题先分诊，再选工具，不要凭空猜测、也不要把工具挨个跑一遍：");
+    lines.push("· 某个 APP/游戏/剧场自身行为不对（界面不显示、按钮没反应、数据不对）→ 这是它的代码问题，「读取」它的源码定位逻辑，与环境无关；");
+    lines.push("· 环境问题（API 连不上、存储满、整个页面崩溃报错、设备兼容）→「环境体检」对应 scope；");
+    lines.push("· 产品用法问题（功能怎么用、设置在哪）→「答疑文档」。");
+    lines.push("可用工具：");
     lines.push("");
     for (const tool of tools) {
         lines.push(`【${tool.name}】${tool.description}`);
@@ -893,11 +1390,59 @@ export function buildQaToolsPrompt(): string {
     lines.push('· 执行动作：使用 [执行动作:工具名({"参数":"值"})] 格式，无参数时用 [执行动作:工具名({})]');
     lines.push("· 一条回复里可以调用多个工具；调用后等待系统返回工具结果再继续分析");
     lines.push("· 产品问题没把握时先用「答疑文档」按关键词检索；文档查不到且已连接仓库时再查源码；仍无结论就如实说明");
-    lines.push("· 回答代码问题时，先用「仓库文件树」或「搜索仓库代码」定位，再用「读取仓库文件」看具体实现，基于真实代码作答");
-    lines.push("· 用户想要新 APP/小游戏/剧场时：先用「创作指南」读对应类型的制作说明（可分页），写好完整内容后用对应安装工具装进本机，最后告诉用户去哪里打开；同名会更新，改完可直接重装");
+    lines.push("· 回答代码问题时，先用「清单」scope=repo 或「搜索仓库代码」定位，再用「读取」type=repo 看具体实现，基于真实代码作答");
+    lines.push("· 用户想要新 APP/小游戏/剧场时：先用「创作指南」读对应类型的制作说明（可分页），用「写入」写内容（可能超出输出预算的大文件才分段 append），写完「发布」装进本机，最后告诉用户去哪里打开；同名会更新。创作所需的协议/API/声明资料一律以「创作指南」为准，不要查「答疑文档」——那是给用户答疑用的");
+    lines.push("· 改已有内容（本机或仓库）一律先「读取」核对原文，再用「编辑」find/replace 只改动片段，绝不整体重写大文件；改完本机内容重新「发布」生效");
     lines.push("· 收到工具结果后，用人话向用户解释结论和建议，不要原样罗列");
     lines.push("· 不需要工具时直接回复文字");
     return lines.join("\n");
+}
+
+/**
+ * 工具行副标题：从参数里提炼一句人能看懂的摘要（统一工具名太泛，"读取/写入"
+ * 不带参数没有信息量）。规则通用，旧工具的 title/query/path 也能覆盖。
+ * 例：读取 → repo:lib/chat-engine.ts 1-80行；写入 → app:index.html 3.2k字·追加。
+ */
+export function formatQaToolSubtitle(name: string, args?: Record<string, unknown>): string {
+    void name;
+    if (!args || typeof args !== "object") return "";
+    const str = (v: unknown): string => (typeof v === "string" && v.trim() ? v.trim() : "");
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const clipText = (v: string, max: number): string => (v.length > max ? `${v.slice(0, max)}…` : v);
+
+    const kind = str(args.type) || str(args.scope) || str(args.kind) || str(args.action);
+    const target = str(args.path) || str(args.name) || str(args.title);
+    const field = str(args.field);
+    const parts: string[] = [];
+    if (kind && target) parts.push(`${kind}:${clipText(target, 36)}${field ? `·${field}` : ""}`);
+    else if (kind) parts.push(kind + (field ? `·${field}` : ""));
+    else if (target) parts.push(clipText(target, 36) + (field ? `·${field}` : ""));
+
+    const query = str(args.query) || (!target ? str(args.find) : "");
+    if (query) parts.push(clipText(query, 24));
+    const sha = str(args.sha);
+    if (sha) parts.push(sha.slice(0, 8));
+    const number = num(args.number);
+    if (number != null) parts.push(`#${number}`);
+    const page = num(args.page);
+    if (page != null && page > 1) parts.push(`第${page}页`);
+    const start = num(args.start);
+    const end = num(args.end);
+    if (start != null || end != null) parts.push(`${start ?? 1}-${end ?? ""}行`);
+
+    const contentLen = typeof args.content === "string" ? args.content.length : 0;
+    if (contentLen > 0) {
+        const size = contentLen >= 1000 ? `${(contentLen / 1000).toFixed(1)}k` : String(contentLen);
+        parts.push(`${size}字${args.append === true ? "·追加" : ""}`);
+    } else if (args.append === true) {
+        parts.push("追加");
+    }
+    if (args.fromDraft === true) parts.push("从草稿");
+    if (args.fromStaged === true) parts.push("从暂存");
+    if (args.clear === true) parts.push("清空");
+    const message = str(args.message);
+    if (message) parts.push(clipText(message, 20));
+    return parts.join(" ");
 }
 
 export async function runQaToolCall(call: ToolCall, context?: QaToolContext): Promise<QaToolRunResult> {

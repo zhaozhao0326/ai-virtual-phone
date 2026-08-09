@@ -47,6 +47,11 @@ import {
   QA_DEFAULT_MAX_ROUNDS,
   QA_MAX_ROUNDS_MIN,
   QA_MAX_ROUNDS_MAX,
+  getQaMaxOutputTokens,
+  setQaMaxOutputTokens,
+  QA_DEFAULT_MAX_OUTPUT_TOKENS,
+  QA_MAX_OUTPUT_TOKENS_MIN,
+  QA_MAX_OUTPUT_TOKENS_MAX,
 } from "@/lib/qa-prefs";
 import { resolveQaApiConfig } from "@/lib/qa-agent-engine";
 import {
@@ -217,7 +222,10 @@ function QaToolRow({ tool }: { tool: QaToolStatus }) {
         disabled={!hasDetail}
       >
         {tool.running ? <Loader2 size={13} className="qa-spin" /> : <Wrench size={13} />}
-        <span className="qa-tool-row-summary">{summary}</span>
+        <span className="qa-tool-row-summary">
+          {summary}
+          {tool.subtitle && <span className="qa-tool-row-sub">{tool.subtitle}</span>}
+        </span>
         {hasDetail && <ChevronRight size={14} className={`qa-tool-row-chevron ${open ? "is-open" : ""}`} />}
       </button>
       {open && hasDetail && (
@@ -405,6 +413,10 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
   const [budget, setBudget] = useState(() => String(getQaContextBudgetChars()));
   const [pageChars, setPageChars] = useState(() => String(getQaPageChars()));
   const [maxRounds, setMaxRounds] = useState(() => String(getQaMaxRounds()));
+  const [maxOutTokens, setMaxOutTokens] = useState(() => {
+    const v = getQaMaxOutputTokens();
+    return v == null ? "" : String(v);
+  });
   const usedChars = getQaActiveContextChars();
   const pct = Math.round((usedChars / getQaContextBudgetChars()) * 100);
 
@@ -424,9 +436,17 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
       onNotice?.(`工具调用上限需为 ${QA_MAX_ROUNDS_MIN} - ${QA_MAX_ROUNDS_MAX} 之间的数字。`);
       return;
     }
+    const trimmedTokens = maxOutTokens.trim();
+    const parsedTokens = trimmedTokens ? Number(trimmedTokens) : null;
+    if (parsedTokens != null && (!Number.isFinite(parsedTokens) || parsedTokens < QA_MAX_OUTPUT_TOKENS_MIN || parsedTokens > QA_MAX_OUTPUT_TOKENS_MAX)) {
+      onNotice?.(`单次最大输出 token 需留空或为 ${QA_MAX_OUTPUT_TOKENS_MIN.toLocaleString()} - ${QA_MAX_OUTPUT_TOKENS_MAX.toLocaleString()} 之间的数字。`);
+      return;
+    }
     setQaContextBudgetChars(parsed);
     setQaPageChars(parsedPage);
     setQaMaxRounds(parsedRounds);
+    // 留空 = 显式不传 max_tokens（0 哨兵），与"没设置用默认值"区分开
+    setQaMaxOutputTokens(trimmedTokens ? parsedTokens : 0);
     onNotice?.("已保存工坊配置。");
     onClose();
   };
@@ -435,9 +455,11 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
     setQaContextBudgetChars(null);
     setQaPageChars(null);
     setQaMaxRounds(null);
+    setQaMaxOutputTokens(null);
     setBudget(String(QA_DEFAULT_CONTEXT_BUDGET_CHARS));
     setPageChars(String(QA_DEFAULT_PAGE_CHARS));
     setMaxRounds(String(QA_DEFAULT_MAX_ROUNDS));
+    setMaxOutTokens(String(QA_DEFAULT_MAX_OUTPUT_TOKENS));
     onNotice?.("已恢复默认配置。");
   };
 
@@ -490,6 +512,22 @@ function QaSettingsSheet({ onClose, onNotice }: { onClose: () => void; onNotice?
         </label>
         <div className="qa-settings-hint">
           一次提问里小坊最多连续执行多少轮工具，用完会提示「回复继续」。默认 {QA_DEFAULT_MAX_ROUNDS}；复杂任务（写游戏、改代码）可调大，想控制 token 消耗可调小。
+        </div>
+        <label className="qa-settings-field">
+          <span>单次最大输出 token</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={QA_MAX_OUTPUT_TOKENS_MIN}
+            max={QA_MAX_OUTPUT_TOKENS_MAX}
+            step={1000}
+            placeholder="留空 = 不传"
+            value={maxOutTokens}
+            onChange={(e) => setMaxOutTokens(e.target.value)}
+          />
+        </label>
+        <div className="qa-settings-hint">
+          输出长度护栏：每次请求带 max_tokens，小坊会按该预算分段写大文件，写超被安全截断后自动续接，不再整轮报废。默认 {QA_DEFAULT_MAX_OUTPUT_TOKENS.toLocaleString()}；留空 = 不传该参数（部分模型/中转不支持 max_tokens 时请留空）。
         </div>
         <div className="qa-devnotice-actions is-row">
           <button type="button" className="qa-devnotice-btn" onClick={reset}>恢复默认</button>

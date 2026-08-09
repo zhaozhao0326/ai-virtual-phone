@@ -1802,186 +1802,94 @@ export const VN_CSS_EXAMPLE = `/* ═══ 漫卷模式(VN)样式示例 ══�
 `;
 
 export const CALENDAR_CSS_EXAMPLE = `/* ══════════════════════════════════════════
-   日历页面自定义样式 — 暗夜星空主题
-   修改后点击「保存」即刻生效
-   清空全部内容保存即恢复默认
+   日历页面自定义样式 — 焦糖奶茶主题
+   修改后点击「应用」即刻生效
+   清空全部内容应用即恢复默认
    ══════════════════════════════════════════ */
 
 /* ━━ 全部色彩变量 ━━ */
 .calendar-app-shell {
-  /* 背景渐变三段 */
-  --c-calendar-bg-top: #0f0e1a;
-  --c-calendar-bg-mid: #151228;
-  --c-calendar-bg-bottom: #1a1530;
-  /* 装饰光球 */
-  --c-calendar-orb-1: rgba(100, 60, 220, 0.5);
-  --c-calendar-orb-2: rgba(220, 80, 160, 0.4);
-  /* 文字 */
-  --c-calendar-text: #f0ecfa;
-  --c-calendar-sub: #bdb2da;
-  /* 强调色 */
-  --c-calendar-accent: #a78bfa;
-  --c-calendar-accent-dim: rgba(167, 139, 250, 0.2);
-  /* 周末色 */
-  --c-calendar-weekend: #f472b6;
-  /* 按钮 / 操作色 */
-  --c-calendar-action: #818cf8;
-  /* 弹窗背景渐变 */
-  --c-calendar-modal-pink: rgba(80, 50, 140, 0.4);
-  --c-calendar-modal-blue: rgba(40, 30, 100, 0.4);
-  /* 面板底色 / 边框 */
-  /* 玻璃层 (透明度梯度) */
-  --c-calendar-glass-1: rgba(255, 255, 255, 0.04);
-  --c-calendar-glass-3: rgba(255, 255, 255, 0.06);
-  --c-calendar-glass-4: rgba(255, 255, 255, 0.08);
-  --c-calendar-glass-5: rgba(255, 255, 255, 0.1);
-  --c-calendar-glass-55: rgba(255, 255, 255, 0.12);
-  --c-calendar-glass-6: rgba(255, 255, 255, 0.14);
-  --c-calendar-glass-7: rgba(255, 255, 255, 0.18);
-  --c-calendar-glass-8: rgba(255, 255, 255, 0.22);
-  --c-calendar-glass-85: rgba(255, 255, 255, 0.85);
-  --c-calendar-glass-9: rgba(255, 255, 255, 0.9);
-  --c-calendar-glass-full: #fff;
-  /* 阴影 */
-  --c-calendar-shadow-2: rgba(0, 0, 0, 0.08);
-  --c-calendar-shadow-3: rgba(0, 0, 0, 0.12);
-  --c-calendar-shadow-4: rgba(0, 0, 0, 0.15);
-  --c-calendar-shadow-6: rgba(0, 0, 0, 0.2);
-  --c-calendar-shadow-10: rgba(0, 0, 0, 0.3);
-  --c-calendar-shadow-15: rgba(0, 0, 0, 0.4);
-  /* 遮罩 */
-  /* 日程事件色板 */
-  --c-calendar-event-blue: #818cf8;
-  --c-calendar-event-green: #34d399;
-  --c-calendar-event-amber: #fbbf24;
-  --c-calendar-event-rose: #fb7185;
-  --c-calendar-event-violet: #a78bfa;
-  --c-calendar-event-teal: #2dd4bf;
-  --c-calendar-event-slate: #94a3b8;
-  --c-calendar-event-purple: #c084fc;
+  /* 页面底色 / 灰色块 / 弹层底色 */
+  --c-calendar-bg: #F7F0E6;
+  --c-calendar-surface: #EDE2D2;
+  --c-calendar-surface-2: #E2D4BF;
+  --c-calendar-sheet: #FFFBF4;
+  /* 文字三级 */
+  --c-calendar-ink: #453425;
+  --c-calendar-sub: #94816C;
+  --c-calendar-faint: #C8B8A2;
+  /* 今天强调色 */
+  --c-calendar-today: #C96F2E;
+  /* 选中态色块 */
+  --c-calendar-sel-bg: #453425;
+  --c-calendar-sel-fg: #FFF9F0;
+  /* 弹层遮罩 */
+  --c-calendar-scrim: rgba(69, 52, 37, 0.35);
+
+  /* 事件色板（每色一对：浅底 bg + 深字 fg） */
+  --c-calendar-ev-blue-bg: #D8E6EE;   --c-calendar-ev-blue-fg: #35617C;
+  --c-calendar-ev-green-bg: #DEEBD2;  --c-calendar-ev-green-fg: #4C6B35;
+  --c-calendar-ev-amber-bg: #F6E3C5;  --c-calendar-ev-amber-fg: #96601C;
+  --c-calendar-ev-rose-bg: #F4DCDC;   --c-calendar-ev-rose-fg: #A04A4E;
+  --c-calendar-ev-violet-bg: #E5DEEC; --c-calendar-ev-violet-fg: #6A5390;
+  --c-calendar-ev-teal-bg: #D6EAE4;   --c-calendar-ev-teal-fg: #2F6E5F;
+  --c-calendar-ev-slate-bg: #E5E1DA;  --c-calendar-ev-slate-fg: #5C574E;
+  --c-calendar-ev-lilac-bg: #EEDFEC;  --c-calendar-ev-lilac-fg: #8A4E80;
 }
 
-/* ━━ 页面整体 ━━ */
-.calendar-app {
-  /* 可替换整体背景 */
-  /* background: linear-gradient(180deg, #0f0e1a, #1a1530); */
-}
-
-/* ━━ 顶部导航栏 ━━ */
-.calendar-header {
-  /* backdrop-filter: blur(20px); */
-}
+/* ━━ 顶栏 ━━ */
 .calendar-header-eyebrow {
-  /* letter-spacing: 2px; */
+  /* letter-spacing: 0.3em; */
 }
 .calendar-header-action {
-  /* opacity: 0.8; */
+  /* border-radius: 999px; */  /* 圆形按钮 */
 }
 
-/* ━━ 角色/用户切换条 ━━ */
-.calendar-owner-strip {
-  /* gap: 8px; */
-}
-.calendar-owner-chip {
-  border-radius: 20px;
-  /* box-shadow: 0 2px 12px rgba(167, 139, 250, 0.2); */
+/* ━━ 主人切换条 ━━ */
+.calendar-owner-chip .ui-avatar {
+  /* border-radius: 14px !important; */  /* 方圆头像 */
 }
 
-/* ━━ 周标题区 ━━ */
-.calendar-week-header {
-  /* padding: 12px 16px; */
-}
-.calendar-week-title {
-  /* font-size: calc(15px*var(--app-text-scale,1)); */
-}
-
-/* ━━ 月历网格 ━━ */
-.calendar-grid-shell {
-  border-radius: 18px;
-  /* box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); */
-}
+/* ━━ 周卡片 / 月历 ━━ */
+.calendar-week-card,
+.calendar-menstrual-card,
 .calendar-grid-card {
-  border-radius: 10px;
-}
-.calendar-grid-counter {
-  /* font-size: calc(10px*var(--app-text-scale,1)); */
-}
-
-/* ━━ 日程时间轴 ━━ */
-.calendar-day-columns {
-  /* gap: 2px; */
-}
-.calendar-day-column {
-  /* min-width: 0; */
-}
-.calendar-event-block {
-  border-radius: 8px;
-  /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2); */
-}
-
-/* ━━ 统一视图 ━━ */
-.calendar-unified-grid {
-  /* border-radius: 16px; */
-}
-.calendar-unified-row {
-  /* padding: 8px 12px; */
-}
-.calendar-unified-cell {
-  border-radius: 8px;
-}
-
-/* ━━ Hero 卡片 ━━ */
-.calendar-hero {
-  border-radius: 20px;
-  /* box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); */
-}
-.calendar-hero-kicker {
-  /* font-size: calc(11px*var(--app-text-scale,1)); */
-}
-.calendar-hero-stat {
-  color: #fff;
+  /* border-radius: 24px; */
 }
 .calendar-hero-stat strong {
-  background: linear-gradient(135deg, #c4b5fd, #f9a8d4);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  /* color: var(--c-calendar-today); */
+}
+.calendar-unified-date {
+  /* font-family: Georgia, "Songti SC", serif; */  /* 衬线数字 */
+}
+.calendar-unified-lunar {
+  /* display: none; */  /* 隐藏农历小字 */
+}
+.calendar-unified-row[data-current="true"] {
+  /* background: var(--c-calendar-surface-2); */
 }
 
-/* ━━ 设置卡片 ━━ */
-.calendar-setting-card {
-  border-radius: 16px;
+/* ━━ 周课表 ━━ */
+.calendar-event-block {
+  /* border-radius: 10px; */
 }
-.calendar-setting-row {
-  /* padding: 12px 16px; */
+.calendar-hour-cell:nth-child(odd) {
+  /* opacity: 0.3; */  /* 减淡小时条纹 */
+}
+
+/* ━━ 经期卡片 ━━ */
+.calendar-menstrual-pill[data-active="true"] {
+  /* background: var(--c-calendar-ev-violet-bg); color: var(--c-calendar-ev-violet-fg); */
 }
 
 /* ━━ 浮动按钮 ━━ */
-.calendar-fab {
-  /* box-shadow: 0 4px 16px rgba(167, 139, 250, 0.3); */
-}
 .calendar-fab-primary {
-  /* background: var(--c-calendar-action); */
-}
-.calendar-fab-secondary {
-  /* opacity: 0.9; */
+  /* background: var(--c-calendar-today); */
 }
 
-/* ━━ 编辑弹窗 ━━ */
+/* ━━ 弹窗 ━━ */
 .calendar-edit-modal {
-  border-radius: 24px;
-  /* backdrop-filter: blur(5px) saturate(140%); */
-}
-
-/* ━━ 确认弹窗 ━━ */
-.calendar-confirm-dialog {
-  /* max-width: 280px; */
-}
-.calendar-confirm-icon {
-  /* opacity: 0.9; */
-}
-.calendar-confirm-title {
-  /* font-size: calc(15px*var(--app-text-scale,1)); */
+  /* border-radius: 24px; */
 }`;
 
 export const MUSIC_CSS_EXAMPLE = `/* ══════════════════════════════════════════

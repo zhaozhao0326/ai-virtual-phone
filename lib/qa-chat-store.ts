@@ -1,5 +1,5 @@
 import { callQaAgent, compactQaContext, formatQaErrorMessage, type QaContextEntry } from "./qa-agent-engine";
-import { QA_TOOLS, type QaCreatedContent, type QaProposedCommit } from "./qa-agent-tools";
+import { QA_TOOLS, formatQaToolSubtitle, type QaCreatedContent, type QaProposedCommit } from "./qa-agent-tools";
 import { loadQaGithubConfig } from "./qa-github";
 import { commitQaFiles, revertQaCommit, type QaCommitResult } from "./qa-github-write";
 
@@ -14,7 +14,7 @@ const QA_STATE_KEY = "state";
 const MAX_SESSIONS = 30;
 const MAX_MESSAGES_PER_SESSION = 200;
 
-export type QaToolStatus = { name: string; running: boolean; success?: boolean; detail?: string; result?: string };
+export type QaToolStatus = { name: string; running: boolean; success?: boolean; detail?: string; result?: string; subtitle?: string };
 
 /** 消息内的时序分段：文字与工具行按实际发生顺序交错展示 */
 export type QaSegment =
@@ -73,7 +73,7 @@ export type QaChatSnapshot = {
 // ── 上下文预算与压缩 ──
 // 预算按字符估算（中文 ≈1 字符/角标 token 量级）。可用 localStorage
 // 键 ai_phone_qa_context_budget_chars 覆盖（调参/测试用）。
-const DEFAULT_CONTEXT_BUDGET_CHARS = 100_000;
+const DEFAULT_CONTEXT_BUDGET_CHARS = 1_000_000;
 
 function getContextBudget(): number {
     try {
@@ -469,7 +469,20 @@ export async function sendQaMessage(
                 },
                 onToolStart: (name, args) => {
                     const detail = args && Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : undefined;
-                    const status: QaToolStatus = { name: toolLabel(name), running: true, detail };
+                    const subtitle = formatQaToolSubtitle(name, args) || undefined;
+                    const status: QaToolStatus = { name: toolLabel(name), running: true, detail, subtitle };
+                    toolStatuses = [...toolStatuses, status];
+                    segments = [...segments, { kind: "tool", tool: status }];
+                    paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });
+                },
+                // 引擎静默续接时给用户一行可见说明——否则模型突然谈"被截断"显得没头没脑
+                onAutoContinue: (reason) => {
+                    const status: QaToolStatus = {
+                        name: "自动续写",
+                        running: false,
+                        success: true,
+                        subtitle: reason === "truncated" ? "输出到达单次上限被截断，已自动接力" : "分段未完，自动继续",
+                    };
                     toolStatuses = [...toolStatuses, status];
                     segments = [...segments, { kind: "tool", tool: status }];
                     paintAssistant({ tools: toolStatuses, segments }, { force: true, persist: false });

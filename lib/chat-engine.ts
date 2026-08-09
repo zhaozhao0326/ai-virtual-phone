@@ -990,6 +990,8 @@ export type LLMToolRequestResult = {
     reasoning?: string;
     openRouterReasoningDetails?: unknown[];
     toolCalls: LlmToolCall[];
+    /** 参数 JSON 被截断（输出上限/连接中断）而丢弃的调用名——调用方据此提示重试/分段 */
+    truncatedToolCalls?: string[];
     rawResponse: string;
     providerKind: LlmProviderKind;
     usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
@@ -1014,23 +1016,35 @@ function mergeToolCallDelta(drafts: Map<number, StreamToolCallDraft>, delta: Llm
     });
 }
 
-function finalizeStreamToolCalls(drafts: Map<number, StreamToolCallDraft>): LlmToolCall[] {
-    return [...drafts.entries()]
-        .sort(([a], [b]) => a - b)
-        .map(([index, draft]) => {
-            const args = draft.args ?? JSON.parse(draft.argsText || "{}") as unknown;
-            if (!args || typeof args !== "object" || Array.isArray(args)) {
-                throw new ChatEngineError(`原生动作 ${draft.name || index} 的参数不是 JSON object。`);
+function finalizeStreamToolCalls(drafts: Map<number, StreamToolCallDraft>): { calls: LlmToolCall[]; truncatedNames: string[] } {
+    const calls: LlmToolCall[] = [];
+    const truncatedNames: string[] = [];
+    for (const [index, draft] of [...drafts.entries()].sort(([a], [b]) => a - b)) {
+        if (!draft.name) continue;
+        let args: unknown = draft.args;
+        if (args == null) {
+            try {
+                args = JSON.parse(draft.argsText || "{}") as unknown;
+            } catch {
+                // 参数 JSON 残缺：模型被输出上限/连接中断掐断在调用中途。
+                // 不再抛错杀掉整轮（症状：Unterminated string）——丢弃该调用并记录，交调用方提示重试/分段
+                truncatedNames.push(draft.name);
+                continue;
             }
-            const call: LlmToolCall = {
-                id: draft.id || `tool_${Date.now()}_${index}`,
-                name: draft.name || "",
-                args: args as Record<string, unknown>,
-            };
-            if (draft.thoughtSignature) call.thoughtSignature = draft.thoughtSignature;
-            return call;
-        })
-        .filter(call => call.name);
+        }
+        if (!args || typeof args !== "object" || Array.isArray(args)) {
+            truncatedNames.push(draft.name);
+            continue;
+        }
+        const call: LlmToolCall = {
+            id: draft.id || `tool_${Date.now()}_${index}`,
+            name: draft.name,
+            args: args as Record<string, unknown>,
+        };
+        if (draft.thoughtSignature) call.thoughtSignature = draft.thoughtSignature;
+        calls.push(call);
+    }
+    return { calls, truncatedNames };
 }
 
 export async function sendLLMToolStreamRequest(
@@ -1046,6 +1060,8 @@ export async function sendLLMToolStreamRequest(
         followUpCount?: number;
         debugSessionId?: string;
         signal?: AbortSignal;
+        /** 单次最大输出 token：按调用覆盖预设值（工坊输出护栏用） */
+        maxTokens?: number;
     },
     callbacks?: ChatCompletionStreamCallbacks,
 ): Promise<LLMToolRequestResult> {
@@ -1053,7 +1069,7 @@ export async function sendLLMToolStreamRequest(
     const pluginPurpose = options?.appId ?? "chat";
     const afterPlugins = await applyChatPluginLlmRequest(preset, messages, pluginPurpose, options?.debugSessionId);
     const effectivePreset = afterPlugins.preset;
-    const request = buildProviderRequest(config, effectivePreset, afterPlugins.messages, { tools, stream: true });
+    const request = buildProviderRequest(config, effectivePreset, afterPlugins.messages, { tools, stream: true, maxTokens: options?.maxTokens });
     publishDebugPromptSnapshot({ request, config, preset: effectivePreset, meta, options, requestKind: "native-tools-stream", tools });
     const requestBodyJson = JSON.stringify(request.body);
     const llmAbort = new AbortController();
@@ -1155,7 +1171,7 @@ export async function sendLLMToolStreamRequest(
             ...m,
             content: typeof m.content === "string" ? m.content : "[vision: 含图片的多模态消息]",
         }));
-        const toolCalls = finalizeStreamToolCalls(toolDrafts);
+        const { calls: toolCalls, truncatedNames } = finalizeStreamToolCalls(toolDrafts);
         const logEntry: DebugInfo = {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             characterName: meta?.characterName,
@@ -1169,7 +1185,7 @@ export async function sendLLMToolStreamRequest(
         while (logs.length > MAX_API_LOGS) logs.shift();
         _saveLogs(logs);
 
-        if (!content && toolCalls.length === 0) {
+        if (!content && toolCalls.length === 0 && truncatedNames.length === 0) {
             throw new ChatEngineError("原生动作流式响应没有解析到文本或动作。");
         }
 
@@ -1178,6 +1194,7 @@ export async function sendLLMToolStreamRequest(
             reasoning,
             openRouterReasoningDetails: undefined,
             toolCalls,
+            truncatedToolCalls: truncatedNames.length ? truncatedNames : undefined,
             rawResponse: logEntry.rawResponse,
             providerKind: request.providerKind,
         };

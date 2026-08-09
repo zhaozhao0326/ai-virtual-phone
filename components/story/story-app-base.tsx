@@ -132,7 +132,7 @@ const STORY_THEMES = [
 function getStoryPreview(messages: StoryMessage[]): string {
   const last = messages[messages.length - 1];
   if (!last) return "从这里开始新的剧情。";
-  const source = last.renderedContent || last.rawContent;
+  const source = last.renderedContent || last.rawContent || "";
   // Strip HTML tags and collapse whitespace for preview text
   const text = source.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   return text.slice(0, 60) || "继续上次的场景。";
@@ -532,7 +532,15 @@ export function StoryApp({ onClose }: StoryAppProps) {
     const activeAssistantMessages = messages.filter((message) => message.role === "assistant");
     if (activeAssistantMessages.length === 0) return;
 
-    const { regexSignature, parserVersion } = getStoryRenderSignature(activeCharacterId);
+    // 配置解析可能抛错（如绑定的 API 配置已被删除）；这里在渲染 effect 里，
+    // 抛出去会让整个剧情页白屏，所以失败时跳过缓存刷新，错误留到发送时提示
+    let signature: { regexSignature: string; parserVersion: number };
+    try {
+      signature = getStoryRenderSignature(activeCharacterId);
+    } catch {
+      return;
+    }
+    const { regexSignature, parserVersion } = signature;
     const hasStaleMessage = activeAssistantMessages.some((message) => (
       !message.renderedContent
       || message.regexSignature !== regexSignature
@@ -550,7 +558,13 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
     const runRefresh = () => {
       if (cancelled) return;
-      const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
+      let rebuilt: StoryMessage[];
+      try {
+        rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
+      } catch {
+        if (cacheRefreshKeyRef.current === refreshKey) cacheRefreshKeyRef.current = null;
+        return;
+      }
       if (cancelled) return;
       if (activeSessionIdRef.current === currentSession.id) {
         setMessages(rebuilt);
@@ -986,10 +1000,14 @@ export function StoryApp({ onClose }: StoryAppProps) {
           <button
             className="story-tool-btn"
             onClick={() => {
-              const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
-              setMessages(rebuilt);
-              setStorageVersion((value) => value + 1);
-              alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
+              try {
+                const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
+                setMessages(rebuilt);
+                setStorageVersion((value) => value + 1);
+                alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
+              } catch (error) {
+                alert(error instanceof Error ? error.message : "缓存重建失败，请检查 API 绑定配置");
+              }
             }}
           >
             重建渲染缓存

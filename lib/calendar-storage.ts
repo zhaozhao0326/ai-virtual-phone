@@ -1,15 +1,15 @@
-import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "./calendar-types";
+import type { CalendarColorKey, CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "./calendar-types";
 import {
-  CALENDAR_HOUR_END,
-  CALENDAR_HOUR_START,
   formatIsoDate,
   getOwnerStorageKey,
   getWeekDates,
   getWeekStartIso,
   getWeekdayLabel,
+  isCalendarColorKey,
   isCalendarTimeRangeAllowed,
   normalizeTime,
   pickScheduleColorKey,
+  sanitizeScheduleEmoji,
   sortScheduleItems,
   timeToMinutes,
 } from "./calendar-utils";
@@ -31,8 +31,24 @@ export type CalendarConfig = {
 
 const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   autoGenerateEnabled: false,
-  theme: "ocean",
+  theme: "light",
 };
+
+/** 旧版主题 id → 新版主题 id（v2 改版后主题全部重定义） */
+const LEGACY_THEME_MAP: Record<string, string> = {
+  ocean: "light",
+  orange: "cream",
+  honey: "cream",
+  melon: "mint",
+};
+
+export const CALENDAR_THEME_IDS = ["light", "dark", "cream", "mint", "mist", "sakura"] as const;
+
+export function normalizeCalendarTheme(theme: unknown): string {
+  if (typeof theme !== "string" || !theme) return DEFAULT_CALENDAR_CONFIG.theme;
+  const mapped = LEGACY_THEME_MAP[theme] ?? theme;
+  return (CALENDAR_THEME_IDS as readonly string[]).includes(mapped) ? mapped : DEFAULT_CALENDAR_CONFIG.theme;
+}
 
 function loadStore(): PersistedCalendarStore {
   if (typeof window === "undefined") return { plans: [] };
@@ -56,7 +72,9 @@ export function loadCalendarConfig(): CalendarConfig {
   try {
     const raw = kvGet(CALENDAR_CONFIG_KEY);
     if (!raw) return { ...DEFAULT_CALENDAR_CONFIG };
-    return { ...DEFAULT_CALENDAR_CONFIG, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_CALENDAR_CONFIG, ...JSON.parse(raw) } as CalendarConfig;
+    parsed.theme = normalizeCalendarTheme(parsed.theme);
+    return parsed;
   } catch {
     return { ...DEFAULT_CALENDAR_CONFIG };
   }
@@ -157,6 +175,7 @@ export function upsertCalendarScheduleItem(
     endTime: item.endTime,
     location: item.location.trim(),
     title: item.title.trim(),
+    emoji: sanitizeScheduleEmoji(item.emoji),
     colorKey: item.colorKey || pickScheduleColorKey(item.startTime),
     source: item.source,
     createdAt: item.createdAt ?? now,
@@ -288,6 +307,8 @@ export function normalizeGeneratedScheduleItems(
     endTime: string;
     location: string;
     title: string;
+    emoji?: string;
+    colorKey?: CalendarColorKey;
   }>,
 ): CalendarScheduleItem[] {
   const now = new Date().toISOString();
@@ -301,7 +322,8 @@ export function normalizeGeneratedScheduleItems(
         endTime: normalizeTime(item.endTime) || item.endTime,
         location: item.location.trim(),
         title: item.title.trim(),
-        colorKey: pickScheduleColorKey(item.startTime),
+        emoji: sanitizeScheduleEmoji(item.emoji),
+        colorKey: isCalendarColorKey(item.colorKey) ? item.colorKey : pickScheduleColorKey(item.startTime),
         source: "generated" as const,
         createdAt: now,
         updatedAt: now,
@@ -343,12 +365,9 @@ export function validateScheduleDraft(item: {
 }): string | null {
   const start = normalizeTime(item.startTime);
   const end = normalizeTime(item.endTime);
-  if (!item.date) return "请选择日期";
+  if (!item.date || !/^\d{4}-\d{2}-\d{2}$/.test(item.date)) return "请选择日期";
   if (!start || !end) return "请输入正确的时间格式";
   if (start >= end) return "结束时间需要晚于开始时间";
-  if (!isCalendarTimeRangeAllowed(start, end)) {
-    return `日程时间需在 ${String(CALENDAR_HOUR_START).padStart(2, "0")}:00 到 ${String(CALENDAR_HOUR_END).padStart(2, "0")}:00 之间`;
-  }
   if (!item.title.trim()) return "请输入事项";
   return null;
 }

@@ -134,6 +134,7 @@ export function ToolboxSettings() {
     const [toolboxImportMessage, setToolboxImportMessage] = useState<string | null>(null);
     const [toolboxImportError, setToolboxImportError] = useState<string | null>(null);
     const [expandedCompositePackageIds, setExpandedCompositePackageIds] = useState<Set<string>>(() => new Set());
+    const [expandedCustomAppGroupIds, setExpandedCustomAppGroupIds] = useState<Set<string>>(() => new Set());
 
     function refreshCustomAppTools() {
         setCustomAppTools(loadCustomAppChatTools());
@@ -159,6 +160,15 @@ export function ToolboxSettings() {
     function persistRest(tools: RestToolConfig[]) { setRestTools(tools); saveRestTools(tools); }
     function persistCompositePackages(packages: CompositeToolPackageConfig[]) { setCompositePackages(packages); saveCompositeToolPackages(packages); }
     function persistComposite(tools: CompositeToolConfig[]) { setCompositeTools(tools); saveCompositeTools(tools); }
+
+    function toggleCustomAppGroupExpanded(appId: string) {
+        setExpandedCustomAppGroupIds(prev => {
+            const next = new Set(prev);
+            if (next.has(appId)) next.delete(appId);
+            else next.add(appId);
+            return next;
+        });
+    }
 
     function toggleCompositePackageExpanded(id: string) {
         setExpandedCompositePackageIds(prev => {
@@ -1110,10 +1120,18 @@ export function ToolboxSettings() {
                             );
                         }
                         const groupEnabled = group.some(isCustomAppToolEnabled);
+                        const isExpanded = expandedCustomAppGroupIds.has(first.appId);
                         return (
                             <div key={first.appId} className="flex flex-col gap-1.5">
                                 <div className="ui-group-card !flex-row !items-center">
-                                    <div className="flex-1 min-w-0 py-2 px-0 flex items-center gap-2 overflow-hidden">
+                                    <button
+                                        type="button"
+                                        onClick={() => toggleCustomAppGroupExpanded(first.appId)}
+                                        aria-expanded={isExpanded}
+                                        className="flex-1 min-w-0 bg-none border-none cursor-pointer py-2 px-0 text-left flex items-center gap-2 overflow-hidden">
+                                        <span className="shrink-0 text-gray-500">
+                                            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                        </span>
                                         {first.appIconDataUrl && <img src={first.appIconDataUrl} alt="" className="w-8 h-8 rounded-[8px] object-cover shrink-0" />}
                                         <div className="flex-1 flex flex-col gap-1 min-w-0">
                                             <div className="flex items-center gap-[6px] min-w-0">
@@ -1123,11 +1141,12 @@ export function ToolboxSettings() {
                                             </div>
                                             <span className="menu-desc !mt-0 truncate">来自「{first.appName}」的自定义 APP 工具套件</span>
                                         </div>
-                                    </div>
+                                    </button>
                                     <div className="flex items-center gap-3 shrink-0">
                                         <Toggle checked={groupEnabled} onChange={v => void updateCustomAppToolGroupEnabled(group, v)} />
                                     </div>
                                 </div>
+                                {isExpanded && (
                                 <div className="ml-3 flex flex-col gap-1.5 border-l border-[var(--c-border)] pl-3">
                                     {group.map(tool => (
                                         <div key={customAppToolKey(tool)} className="ui-group-card !flex-row !items-center py-2">
@@ -1150,6 +1169,7 @@ export function ToolboxSettings() {
                                         </div>
                                     ))}
                                 </div>
+                                )}
                             </div>
                         );
                     })}

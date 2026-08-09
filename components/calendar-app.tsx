@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Clock3, Droplets, MapPin, Plus, Wand2, Trash2, Bot, Check, Palette, X, HeartPulse, MoreHorizontal } from "lucide-react";
-import { Avatar, EmptyState, GlassCard } from "./ui/primitives";
+import { Avatar, EmptyState } from "./ui/primitives";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
-import { Input, Select } from "./ui/form";
+import { Input } from "./ui/form";
 import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "@/lib/calendar-types";
 import {
+  CALENDAR_THEME_IDS,
   deleteCalendarScheduleItem,
   loadCalendarConfig,
   loadCalendarWeekPlan,
@@ -20,8 +21,6 @@ import { loadCharacters } from "@/lib/character-storage";
 import { loadChatSessions } from "@/lib/chat-storage";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import {
-  CALENDAR_HOUR_END,
-  CALENDAR_HOUR_START,
   formatIsoDate,
   formatMonthDay,
   formatWeekRangeLabel,
@@ -33,8 +32,11 @@ import {
   isSameMonth,
   parseIsoDate,
   pickScheduleColorKey,
+  sanitizeScheduleEmoji,
   timeToMinutes,
 } from "@/lib/calendar-utils";
+import { getLunarInfoByIso } from "@/lib/lunar";
+import { CalendarEventEditModal, type CalendarEventDraft } from "./calendar/event-edit-modal";
 import {
   buildMenstrualDayMap,
   cancelFinishCurrentPeriod,
@@ -64,7 +66,14 @@ type PeriodCareCharacterOption = {
   avatar?: string | null;
 };
 
-const TOTAL_MINUTES = (CALENDAR_HOUR_END - CALENDAR_HOUR_START) * 60;
+const CALENDAR_THEMES: Array<{ id: (typeof CALENDAR_THEME_IDS)[number]; name: string }> = [
+  { id: "light", name: "默认" },
+  { id: "dark", name: "深色" },
+  { id: "cream", name: "奶油" },
+  { id: "mint", name: "薄荷" },
+  { id: "mist", name: "雾紫" },
+  { id: "sakura", name: "樱粉" },
+];
 
 function buildOwnerOptions(): OwnerOption[] {
   const options: OwnerOption[] = [];
@@ -194,15 +203,9 @@ export function PhoneCalendarApp({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
   const [showAutoConfirm, setShowAutoConfirm] = useState(false);
+  const [fabMenuOpen, setFabMenuOpen] = useState(false);
   const autoAttemptedRef = useRef<Set<string>>(new Set());
-  const [editingItem, setEditingItem] = useState<{
-    id?: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    location: string;
-    title: string;
-  } | null>(null);
+  const [editingItem, setEditingItem] = useState<(CalendarEventDraft & { originalDate?: string }) | null>(null);
 
   const selectedOwner = useMemo(
     () => owners.find(owner => owner.key === selectedKey) ?? owners[0] ?? null,
@@ -223,6 +226,20 @@ export function PhoneCalendarApp({
     }
     return map;
   }, [plan]);
+  // 时间轴范围跟随事件伸缩：更早/更晚的事件自动扩展，最晚事件结束即收尾（至少展示 10 小时）
+  const [gridHourStart, gridHourEnd] = useMemo(() => {
+    let start = 8;
+    let end = 0;
+    for (const item of plan?.items ?? []) {
+      const s = timeToMinutes(item.startTime);
+      const e = timeToMinutes(item.endTime);
+      if (!Number.isNaN(s)) start = Math.min(start, Math.floor(s / 60));
+      if (!Number.isNaN(e)) end = Math.max(end, Math.ceil(e / 60));
+    }
+    end = Math.min(24, Math.max(end, start + 10));
+    return [start, end];
+  }, [plan]);
+  const gridTotalMinutes = (gridHourEnd - gridHourStart) * 60;
   const countsByDate = useMemo(() => {
     const map = new Map<string, number>();
     for (const ownerPlan of ownerPlans) {
@@ -256,6 +273,46 @@ export function PhoneCalendarApp({
   const startX = useRef(0);
   const scrollLeft = useRef(0);
   const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  // 滚动区顶/底橡皮筋回弹
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const bounceInnerRef = useRef<HTMLDivElement>(null);
+  const bounceState = useRef({ startY: 0, offset: 0, tracking: false });
+
+  const handleBounceTouchStart = (e: React.TouchEvent) => {
+    bounceState.current.startY = e.touches[0].clientY;
+    bounceState.current.offset = 0;
+    bounceState.current.tracking = true;
+  };
+
+  const handleBounceTouchMove = (e: React.TouchEvent) => {
+    const scroller = scrollAreaRef.current;
+    const inner = bounceInnerRef.current;
+    if (!scroller || !inner || !bounceState.current.tracking) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const dy = e.touches[0].clientY - bounceState.current.startY;
+    const atTop = scroller.scrollTop <= 0;
+    const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
+    if ((atTop && dy > 0) || (atBottom && dy < 0)) {
+      // 阻尼拉伸，最多 90px
+      const damped = Math.max(-90, Math.min(90, dy * 0.32));
+      bounceState.current.offset = damped;
+      inner.style.transition = "none";
+      inner.style.transform = `translateY(${damped}px)`;
+    } else if (bounceState.current.offset !== 0) {
+      bounceState.current.offset = 0;
+      inner.style.transform = "";
+    }
+  };
+
+  const handleBounceTouchEnd = () => {
+    const inner = bounceInnerRef.current;
+    bounceState.current.tracking = false;
+    if (!inner || bounceState.current.offset === 0) return;
+    bounceState.current.offset = 0;
+    inner.style.transition = "transform 0.34s cubic-bezier(0.22, 1.1, 0.36, 1)";
+    inner.style.transform = "translateY(0)";
+  };
 
   useEffect(() => {
     if (!selectedOwner) return;
@@ -299,7 +356,8 @@ export function PhoneCalendarApp({
       let minDistance = Infinity;
       let closestKey: string | null = null;
       
-      Array.from(container.children).forEach((child: any) => {
+      Array.from(container.children).forEach(node => {
+        const child = node as HTMLElement;
         // Calculate child's absolute center relative to scroll container
         const childCenter = child.offsetLeft + child.clientWidth / 2 - container.offsetLeft;
         const dist = Math.abs(childCenter - center);
@@ -331,7 +389,8 @@ export function PhoneCalendarApp({
     let closestKey: string | null = null;
     let closestChild: HTMLElement | null = null;
 
-    Array.from(container.children).forEach((child: any) => {
+    Array.from(container.children).forEach(node => {
+      const child = node as HTMLElement;
       const childCenter = child.offsetLeft + child.clientWidth / 2 - container.offsetLeft;
       const dist = Math.abs(childCenter - center);
       if (dist < minDistance) {
@@ -429,24 +488,51 @@ export function PhoneCalendarApp({
       onNotice?.(error);
       return;
     }
-    upsertCalendarScheduleItem(selectedOwner.ownerType, selectedOwner.ownerId, weekStart, {
-      id: editingItem.id,
-      date: editingItem.date,
-      startTime: editingItem.startTime,
-      endTime: editingItem.endTime,
-      location: editingItem.location,
-      title: editingItem.title,
-      source: "manual",
-      colorKey: pickScheduleColorKey(editingItem.startTime),
-    });
+    const startDate = editingItem.date;
+    const endDate = editingItem.endDate || editingItem.date;
+    if (endDate < startDate) {
+      onNotice?.("结束日期不能早于开始日期");
+      return;
+    }
+    const dayCount = Math.round((parseIsoDate(endDate).getTime() - parseIsoDate(startDate).getTime()) / 86400000) + 1;
+    if (dayCount > 31) {
+      onNotice?.("一次最多创建 31 天的日程");
+      return;
+    }
+    const firstWeekStart = getWeekStartIso(parseIsoDate(startDate));
+    // 跨周移动：先从原来的周删除
+    if (editingItem.id && editingItem.originalDate) {
+      const originalWeekStart = getWeekStartIso(parseIsoDate(editingItem.originalDate));
+      if (originalWeekStart !== firstWeekStart) {
+        deleteCalendarScheduleItem(selectedOwner.ownerType, selectedOwner.ownerId, originalWeekStart, editingItem.id);
+      }
+    }
+    // 多天：第一天沿用原 id（编辑场景），其余每天各生成一条独立日程
+    for (let offset = 0; offset < dayCount; offset++) {
+      const day = parseIsoDate(startDate);
+      day.setDate(day.getDate() + offset);
+      const dayIso = formatIsoDate(day);
+      upsertCalendarScheduleItem(selectedOwner.ownerType, selectedOwner.ownerId, getWeekStartIso(parseIsoDate(dayIso)), {
+        id: offset === 0 ? editingItem.id : undefined,
+        date: dayIso,
+        startTime: editingItem.startTime,
+        endTime: editingItem.endTime,
+        location: editingItem.location,
+        title: editingItem.title,
+        emoji: sanitizeScheduleEmoji(editingItem.emoji),
+        source: "manual",
+        colorKey: editingItem.colorKey ?? pickScheduleColorKey(editingItem.startTime),
+      });
+    }
     setEditingItem(null);
     refreshPlans();
-    onNotice?.("日程已保存");
+    onNotice?.(dayCount > 1 ? `已创建 ${dayCount} 天的日程` : "日程已保存");
   };
 
   const handleDeleteItem = () => {
     if (!selectedOwner || !editingItem?.id) return;
-    deleteCalendarScheduleItem(selectedOwner.ownerType, selectedOwner.ownerId, weekStart, editingItem.id);
+    const targetWeekStart = getWeekStartIso(parseIsoDate(editingItem.originalDate || editingItem.date));
+    deleteCalendarScheduleItem(selectedOwner.ownerType, selectedOwner.ownerId, targetWeekStart, editingItem.id);
     setEditingItem(null);
     refreshPlans();
     onNotice?.("日程已删除");
@@ -577,7 +663,15 @@ export function PhoneCalendarApp({
           </div>
         </header>
 
-        <div className="calendar-scroll hide-scrollbar">
+        <div
+          className="calendar-scroll hide-scrollbar"
+          ref={scrollAreaRef}
+          onTouchStart={handleBounceTouchStart}
+          onTouchMove={handleBounceTouchMove}
+          onTouchEnd={handleBounceTouchEnd}
+          onTouchCancel={handleBounceTouchEnd}
+        >
+          <div className="calendar-scroll-bounce" ref={bounceInnerRef}>
           <section
             ref={ownerStripRef}
             className="calendar-owner-strip hide-scrollbar"
@@ -600,6 +694,7 @@ export function PhoneCalendarApp({
                     return;
                   }
                   isClicking.current = true;
+                  setFabMenuOpen(false);
                   setSelectedKey(owner.key);
                   setWeekStart(getWeekStartIso(new Date()));
                   setSelectedDate(formatIsoDate(new Date()));
@@ -614,11 +709,8 @@ export function PhoneCalendarApp({
           <div className="calendar-week-card">
             <div className="calendar-hero">
               <div className="calendar-hero-copy">
-                <span className="calendar-hero-kicker">
-                  {selectedOwner?.ownerType === "user" ? "手动管理" : "角色周程"}
-                </span>
                 <div className="calendar-week-title">
-                  <strong>{selectedOwner?.name || "日程"}</strong>
+                  <strong>{selectedOwner?.ownerType === "user" ? "我的周程" : "角色周程"}</strong>
                   <span className="calendar-week-owner">{formatWeekRangeLabel(weekStart)}</span>
                 </div>
               </div>
@@ -666,6 +758,7 @@ export function PhoneCalendarApp({
                             }}
                           >
                             <span className="calendar-unified-date">{parseIsoDate(date).getDate()}</span>
+                            <span className="calendar-unified-lunar">{getLunarInfoByIso(date)?.cellLabel ?? ""}</span>
                             <span className="calendar-unified-indicators">
                               {menstrualState ? <i className="calendar-unified-cycle-dot" data-type={menstrualState.type} /> : null}
                               {hasItems ? <i className="calendar-unified-dot" /> : null}
@@ -680,8 +773,14 @@ export function PhoneCalendarApp({
             </div>
 
             <div className="calendar-week-header">
+              <button type="button" className="calendar-nav-btn" onClick={() => moveWeek(-1)} aria-label="上一周">
+                <ChevronLeft size={15} />
+              </button>
               <button type="button" className="calendar-month-toggle" onClick={() => setMonthExpanded(prev => !prev)} aria-label={monthExpanded ? "收起月历" : "展开月历"}>
                 <ChevronDown size={16} style={{ transform: monthExpanded ? "rotate(180deg)" : undefined, transition: "transform 0.3s" }} />
+              </button>
+              <button type="button" className="calendar-nav-btn" onClick={() => moveWeek(1)} aria-label="下一周">
+                <ChevronRight size={15} />
               </button>
             </div>
           </div>
@@ -781,7 +880,6 @@ export function PhoneCalendarApp({
             <div className="calendar-grid-header" onClick={() => setExpandedDate(null)} style={{ cursor: "pointer" }}>
               <div className="calendar-grid-heading">
                 <strong>本周安排</strong>
-                <span>{selectedOwner?.ownerType === "user" ? "手动维护你的时间表" : "像课表一样查看角色的时间块"}</span>
               </div>
               <span className="calendar-grid-counter">{weekEventCount} 项</span>
             </div>
@@ -793,7 +891,7 @@ export function PhoneCalendarApp({
                 action={selectedOwner?.ownerType === "character" ? (
                   <button
                     type="button"
-                    className="ui-btn calendar-generate-button mt-3"
+                    className="calendar-generate-button mt-3"
                     data-loading={isGenerating ? "true" : undefined}
                     onClick={() => setShowGenerateConfirm(true)}
                     disabled={isGenerating}
@@ -827,22 +925,28 @@ export function PhoneCalendarApp({
                   </div>
                 </div>
                 <div className="calendar-grid-layout">
-                  <div className="calendar-time-column">
-                    {Array.from({ length: CALENDAR_HOUR_END - CALENDAR_HOUR_START }, (_, idx) => CALENDAR_HOUR_START + idx).map(hour => (
+                  <div className="calendar-time-column" style={{ gridTemplateRows: `repeat(${gridHourEnd - gridHourStart}, 1fr)` }}>
+                    {Array.from({ length: gridHourEnd - gridHourStart }, (_, idx) => gridHourStart + idx).map(hour => (
                       <span key={hour}>{String(hour).padStart(2, "0")}:00</span>
                     ))}
                   </div>
-                  <div className="calendar-day-columns" style={expandedDate ? { gridTemplateColumns: weekDates.map(d => d === expandedDate ? "3fr" : "1fr").join(" ") } : undefined}>
+                  <div
+                    className="calendar-day-columns"
+                    style={{
+                      ...(expandedDate ? { gridTemplateColumns: weekDates.map(d => d === expandedDate ? "3fr" : "1fr").join(" ") } : null),
+                      "--calendar-grid-rows": String(gridHourEnd - gridHourStart),
+                    } as React.CSSProperties}
+                  >
                     {weekDates.map(date => (
                       <div key={date} className="calendar-day-column">
-                        {Array.from({ length: CALENDAR_HOUR_END - CALENDAR_HOUR_START }, (_, idx) => (
+                        {Array.from({ length: gridHourEnd - gridHourStart }, (_, idx) => (
                           <div key={idx} className="calendar-hour-cell" />
                         ))}
                         {(itemsByDate.get(date) || []).map(item => {
                           const start = timeToMinutes(item.startTime);
                           const end = timeToMinutes(item.endTime);
-                          const top = ((start - CALENDAR_HOUR_START * 60) / TOTAL_MINUTES) * 100;
-                          const height = Math.max(((end - start) / TOTAL_MINUTES) * 100, 5.5);
+                          const top = ((start - gridHourStart * 60) / gridTotalMinutes) * 100;
+                          const height = Math.max(((end - start) / gridTotalMinutes) * 100, 5.5);
                           return (
                             <button
                               key={item.id}
@@ -854,14 +958,18 @@ export function PhoneCalendarApp({
                                 setEditingItem({
                                   id: item.id,
                                   date: item.date,
+                                  endDate: item.date,
+                                  originalDate: item.date,
                                   startTime: item.startTime,
                                   endTime: item.endTime,
                                   location: item.location,
                                   title: item.title,
+                                  emoji: item.emoji || "",
+                                  colorKey: item.colorKey,
                                 })
                               }
                             >
-                              <strong>{item.title}</strong>
+                              <strong>{item.emoji ? `${item.emoji} ` : ""}{item.title}</strong>
                               <span><Clock3 size={12} />{item.startTime}-{item.endTime}</span>
                               <span><MapPin size={12} />{item.location || "未定"}</span>
                             </button>
@@ -875,94 +983,101 @@ export function PhoneCalendarApp({
             )}
           </div>
 
+          </div>
         </div>
 
+          {fabMenuOpen ? <div className="calendar-fab-backdrop" onClick={() => setFabMenuOpen(false)} /> : null}
           <div className="calendar-fab-stack">
-            {selectedOwner?.ownerType === "character" ? (
-              <>
+            {fabMenuOpen && selectedOwner?.ownerType === "character" ? (
+              <div className="calendar-fab-menu" role="menu">
                 <button
                   type="button"
-                  className={`calendar-fab ${autoGenerateEnabled ? 'calendar-fab-primary' : 'calendar-fab-secondary'}`}
-                  onClick={() => setShowAutoConfirm(true)}
-                  aria-label="切换自动生成"
+                  className="calendar-fab-menu-item"
+                  onClick={() => {
+                    setFabMenuOpen(false);
+                    setEditingItem(createDefaultScheduleDraft(selectedDate));
+                  }}
                 >
-                  <Bot size={18} />
+                  <Plus size={15} />
+                  新增日程
                 </button>
                 <button
                   type="button"
-                  className="calendar-fab calendar-fab-secondary"
-                  onClick={() => setShowGenerateConfirm(true)}
+                  className="calendar-fab-menu-item"
                   disabled={isGenerating}
-                  data-loading={isGenerating ? "true" : undefined}
-                  aria-label="AI 生成并覆盖本周日程"
+                  onClick={() => {
+                    setFabMenuOpen(false);
+                    setShowGenerateConfirm(true);
+                  }}
                 >
-                  <Wand2 size={18} />
+                  <Wand2 size={15} />
+                  {isGenerating ? "生成中…" : "AI 生成本周"}
                 </button>
-              </>
+                <button
+                  type="button"
+                  className="calendar-fab-menu-item"
+                  data-on={autoGenerateEnabled ? "true" : undefined}
+                  onClick={() => {
+                    setFabMenuOpen(false);
+                    setShowAutoConfirm(true);
+                  }}
+                >
+                  <Bot size={15} />
+                  每周自动生成
+                  <i className="calendar-fab-menu-state">{autoGenerateEnabled ? "已开" : "已关"}</i>
+                </button>
+              </div>
             ) : null}
             <button
               type="button"
               className="calendar-fab calendar-fab-primary"
-              onClick={() => setEditingItem(createDefaultScheduleDraft(weekDates[0]))}
-              aria-label="新增事项"
+              data-loading={isGenerating ? "true" : undefined}
+              onClick={() => {
+                if (selectedOwner?.ownerType === "character") {
+                  setFabMenuOpen(prev => !prev);
+                } else {
+                  setEditingItem(createDefaultScheduleDraft(selectedDate));
+                }
+              }}
+              aria-label={selectedOwner?.ownerType === "character" ? "日程操作菜单" : "新增事项"}
+              aria-expanded={selectedOwner?.ownerType === "character" ? fabMenuOpen : undefined}
             >
-              <Plus size={18} />
+              <Plus size={20} style={{ transform: fabMenuOpen ? "rotate(45deg)" : undefined, transition: "transform 0.2s" }} />
             </button>
           </div>
       </div>
 
       {showThemePanel && (
         <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowThemePanel(false)}>
-          <div className="calendar-edit-modal" style={{ padding: 24 }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <div className="ts-14 font-semibold text-[var(--c-calendar-text)]">主题色</div>
-              <button type="button" onClick={() => setShowThemePanel(false)} className="p-1 rounded-full" style={{ color: "var(--c-calendar-sub)" }}>
-                <X size={18} />
+          <div className="calendar-edit-modal calendar-theme-modal" onClick={e => e.stopPropagation()}>
+            <div className="calendar-theme-modal-head">
+              <strong>主题</strong>
+              <button type="button" onClick={() => setShowThemePanel(false)} className="calendar-icon-btn" aria-label="关闭">
+                <X size={16} />
               </button>
             </div>
-            <div className="flex flex-wrap gap-3 justify-start">
-              {[
-                { id: "ocean", color: "#7BC6EC", name: "海洋" },
-                { id: "orange", color: "#FF7E5F", name: "橘汽" },
-                { id: "honey", color: "#D4A373", name: "蜜糖" },
-                { id: "mint", color: "#80CBC4", name: "薄荷" },
-                { id: "mist", color: "#B399D4", name: "晨雾" },
-                { id: "melon", color: "#D1E5D0", name: "蜜瓜" }
-              ].map(t => (
+            <div className="calendar-theme-grid">
+              {CALENDAR_THEMES.map(theme => (
                 <button
-                  key={t.id}
+                  key={theme.id}
+                  type="button"
+                  className="calendar-theme-option"
+                  data-active={config.theme === theme.id ? "true" : undefined}
                   onClick={() => {
-                    const nextConfig = { ...config, theme: t.id };
+                    const nextConfig = { ...config, theme: theme.id };
                     setConfig(nextConfig);
                     saveCalendarConfig(nextConfig);
                   }}
-                  className="flex flex-col items-center gap-1"
                 >
-                  <div
-                    style={{
-                      width: 32, height: 32, borderRadius: "50%",
-                      background: t.color,
-                      border: config.theme === t.id ? "2px solid var(--c-calendar-text)" : "2px solid transparent",
-                      boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-                      transition: "all 0.2s"
-                    }}
-                  />
-                  <span className="ts-11 text-[var(--c-calendar-sub)]">{t.name}</span>
+                  <span className="calendar-theme-swatch" data-theme-id={theme.id} aria-hidden="true" />
+                  <span>{theme.name}</span>
                 </button>
               ))}
             </div>
 
-            <div className="ts-14 font-semibold text-[var(--c-calendar-text)] mt-5 mb-2">自定义 CSS</div>
+            <div className="calendar-theme-css-label">自定义 CSS</div>
             <textarea
-              className="w-full ts-12 px-3 py-2 rounded-lg"
-              style={{
-                background: "var(--c-calendar-glass-5)",
-                border: "1px solid var(--c-calendar-glass-4)",
-                color: "var(--c-calendar-text)",
-                height: 280, resize: "none",
-                fontFamily: "'SF Mono', 'Menlo', 'Monaco', monospace",
-                lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-all",
-              }}
+              className="calendar-css-textarea"
               value={calendarCustomCss}
               onChange={e => setCalendarCustomCss(e.target.value)}
               placeholder="/* 输入 CSS 覆盖日历样式... */"
@@ -970,105 +1085,44 @@ export function PhoneCalendarApp({
               autoCapitalize="off"
               autoCorrect="off"
             />
-            <div className="flex gap-1 mt-2 items-center">
-              <CSSSchemeBar target="calendar" currentCSS={calendarCustomCss} onLoad={setCalendarCustomCss} btnStyle={{
-                width: 30, height: 30,
-                border: "1px solid var(--c-calendar-border, rgba(167,139,250,0.2))",
-                background: "var(--c-calendar-glass-5, rgba(255,255,255,0.1))",
-                color: "var(--c-calendar-text, #4A6B7C)",
-              }} modalVars={{
-                panel: "var(--c-calendar-bg-top, #E8F4F8)",
-                border: "var(--c-calendar-border, rgba(167,139,250,0.2))",
-                text: "var(--c-calendar-text, #4A6B7C)",
-                textDim: "var(--c-calendar-sub, #8AA8B8)",
-                input: "var(--c-calendar-glass-5, rgba(255,255,255,0.1))",
-                inputBorder: "var(--c-calendar-border, rgba(167,139,250,0.2))",
-                accent: "var(--c-calendar-action, #5B8FB9)",
-              }} />
-              <button type="button" className="ui-btn ui-btn-outline flex-1" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={() => setCalendarCustomCss(CALENDAR_CSS_EXAMPLE)}>示例</button>
-              <button type="button" className="ui-btn ui-btn-outline flex-1" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={() => setCalendarCustomCss("")}>清空</button>
-              <button type="button" className="ui-btn ui-btn-primary flex-1" style={{ background: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={handleApplyCalendarCss}>应用</button>
+            <div className="calendar-theme-css-actions">
+              <CSSSchemeBar
+                target="calendar"
+                currentCSS={calendarCustomCss}
+                onLoad={setCalendarCustomCss}
+                btnStyle={{
+                  width: 30,
+                  height: 30,
+                  border: "none",
+                  background: "var(--c-calendar-surface)",
+                  color: "var(--c-calendar-ink)",
+                }}
+                modalVars={{
+                  panel: "var(--c-calendar-bg)",
+                  border: "var(--c-calendar-surface-2)",
+                  text: "var(--c-calendar-ink)",
+                  textDim: "var(--c-calendar-sub)",
+                  input: "var(--c-calendar-surface)",
+                  inputBorder: "var(--c-calendar-surface-2)",
+                  accent: "var(--c-calendar-today)",
+                }}
+              />
+              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setCalendarCustomCss(CALENDAR_CSS_EXAMPLE)}>示例</button>
+              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setCalendarCustomCss("")}>清空</button>
+              <button type="button" className="calendar-block-btn" data-variant="primary" onClick={handleApplyCalendarCss}>应用</button>
             </div>
           </div>
         </div>
       )}
 
       {editingItem && (
-        <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setEditingItem(null)}>
-          <div className="calendar-edit-modal" data-ui="calendar-edit-modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header" data-ui="modal-header">
-              <button onClick={() => setEditingItem(null)} className="modal-header-btn modal-header-btn-muted">
-                <ChevronLeft size={18} />
-              </button>
-              <span className="modal-header-title">{editingItem.id ? "编辑日程" : "新增日程"}</span>
-              <button onClick={handleSaveDraft} className="modal-header-btn modal-header-btn-action" aria-label="保存">
-                <Check size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body hide-scrollbar flex flex-col gap-3 pb-10" data-ui="modal-body">
-              <div className="flex flex-col gap-3">
-                {/* Row 1: Date */}
-                <div className="flex flex-col gap-1">
-                  <label className="menu-desc ml-1">日期</label>
-                  <Select
-                    value={editingItem.date}
-                    onChange={e => setEditingItem(prev => prev ? { ...prev, date: e.target.value } : prev)}
-                  >
-                    {weekDates.map(date => (
-                      <option key={date} value={date}>{date} {getWeekdayLabel(date)}</option>
-                    ))}
-                  </Select>
-                </div>
-
-                {/* Row 2: Start Time and End Time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="menu-desc ml-1">开始时间</label>
-                    <Input
-                      type="time"
-                      value={editingItem.startTime}
-                      onChange={e => setEditingItem(prev => prev ? { ...prev, startTime: e.target.value } : prev)}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="menu-desc ml-1">结束时间</label>
-                    <Input
-                      type="time"
-                      value={editingItem.endTime}
-                      onChange={e => setEditingItem(prev => prev ? { ...prev, endTime: e.target.value } : prev)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="menu-desc ml-1">地点</label>
-                <Input
-                  value={editingItem.location}
-                  onChange={e => setEditingItem(prev => prev ? { ...prev, location: e.target.value } : prev)}
-                  placeholder="例如：公司会议室 / 家里 / 商场"
-                />
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="menu-desc ml-1">事项</label>
-                <Input
-                  value={editingItem.title}
-                  onChange={e => setEditingItem(prev => prev ? { ...prev, title: e.target.value } : prev)}
-                  placeholder="例如：部门周会"
-                />
-              </div>
-
-              {editingItem.id ? (
-                <button type="button" className="ui-btn ui-btn-outline" onClick={handleDeleteItem} style={{ color: "var(--c-danger)" }}>
-                  <Trash2 size={16} />
-                  删除该事项
-                </button>
-              ) : null}
-            </div>
-          </div>
-        </div>
+        <CalendarEventEditModal
+          draft={editingItem}
+          onChange={next => setEditingItem(prev => (prev ? { ...prev, ...next } : next))}
+          onSave={handleSaveDraft}
+          onDelete={handleDeleteItem}
+          onClose={() => setEditingItem(null)}
+        />
       )}
 
       {showMenstrualSettings && (
@@ -1215,9 +1269,11 @@ export function PhoneCalendarApp({
               将为 <strong>{selectedOwner.name}</strong> 生成一周日程并覆盖当前已有安排
             </div>
             <div className="calendar-confirm-footer">
-              <button className="ui-btn ui-btn-outline" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)" }} onClick={() => setShowGenerateConfirm(false)}>取消</button>
+              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowGenerateConfirm(false)}>取消</button>
               <button
-                className="ui-btn calendar-generate-button calendar-confirm-generate-button"
+                type="button"
+                className="calendar-block-btn"
+                data-variant="primary"
                 data-loading={isGenerating ? "true" : undefined}
                 onClick={handleGenerate}
                 disabled={isGenerating}
@@ -1243,8 +1299,8 @@ export function PhoneCalendarApp({
                 : <>每周将自动为 <strong>{selectedOwner.name}</strong> 生成日程安排</>}
             </div>
             <div className="calendar-confirm-footer">
-              <button className="ui-btn ui-btn-outline" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)" }} onClick={() => setShowAutoConfirm(false)}>取消</button>
-              <button className="ui-btn ui-btn-primary" style={{ background: "var(--c-calendar-action)" }} onClick={() => {
+              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowAutoConfirm(false)}>取消</button>
+              <button type="button" className="calendar-block-btn" data-variant="primary" onClick={() => {
                 const next = !autoGenerateEnabled;
                 const nextConfig = { ...config, autoGenerateEnabled: next };
                 setConfig(nextConfig);

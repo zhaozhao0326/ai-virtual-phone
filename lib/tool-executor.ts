@@ -41,6 +41,7 @@ import {
     isCalendarTimeRangeAllowed,
     normalizeTime,
     parseIsoDate,
+    sanitizeScheduleEmoji,
     sortScheduleItems,
 } from "./calendar-utils";
 import type { NoteWallBoard, NoteWallComment, NoteWallNote, NoteWallSize } from "./notewall-types";
@@ -1803,13 +1804,14 @@ function parseCalendarDraft(args: Record<string, unknown>): CalendarDraftParseRe
     const startTime = normalizeTime(cleanToolString(args.startTime ?? args.start_time ?? args.start, 16));
     const endTime = normalizeTime(cleanToolString(args.endTime ?? args.end_time ?? args.end, 16));
     if (!startTime || !endTime || !isCalendarTimeRangeAllowed(startTime, endTime)) {
-        return { ok: false, error: "时间无效，需使用 HH:MM 且范围在 08:00-23:00", notice: "日程时间无效" };
+        return { ok: false, error: "时间无效，需使用 HH:MM 且开始时间早于结束时间", notice: "日程时间无效" };
     }
 
     const title = cleanToolString(args.title ?? args.task ?? args.content, 120);
     if (!title) return { ok: false, error: "缺少 title 参数", notice: "日程事项为空" };
 
     const location = cleanToolString(args.location ?? args.place, 80) || "无";
+    const emoji = sanitizeScheduleEmoji(cleanToolString(args.emoji ?? args.icon, 16));
     return {
         ok: true,
         item: {
@@ -1818,6 +1820,7 @@ function parseCalendarDraft(args: Record<string, unknown>): CalendarDraftParseRe
             endTime,
             location,
             title,
+            emoji,
             source: "generated",
         },
     };
@@ -1895,6 +1898,7 @@ function formatCalendarItemForTool(item: CalendarScheduleItem): Record<string, u
         endTime: item.endTime,
         location: item.location,
         title: item.title,
+        emoji: item.emoji || "",
         source: item.source,
     };
 }

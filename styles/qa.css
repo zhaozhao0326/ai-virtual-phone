@@ -278,6 +278,11 @@
 .qa-tool-row.is-fail .qa-tool-row-head {
   color: var(--qa-danger);
 }
+.qa-tool-row-sub {
+  margin-left: 7px;
+  opacity: 0.62;
+  font-weight: 400;
+}
 .qa-tool-row-summary {
   flex: 1;
   min-width: 0;
