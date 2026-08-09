@@ -1757,6 +1757,7 @@ function CharArchiveView({
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [appearanceError, setAppearanceError] = useState("");
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
+  const [testMime, setTestMime] = useState("");
   const [testBusy, setTestBusy] = useState(false);
   const [testError, setTestError] = useState("");
   const [applyBusy, setApplyBusy] = useState(false);
@@ -1947,6 +1948,7 @@ function CharArchiveView({
       if (!result) throw new Error("图像生成未返回结果。");
       const url = await blobToDataUrl(result.blob);
       setTestImageUrl(url);
+      setTestMime(result.blob.type || "");
     } catch (error) {
       setTestError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -2288,6 +2290,13 @@ function CharArchiveView({
                         >
                           设为人物形象参考图
                         </button>
+                        <a
+                          className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer no-underline hover:bg-[#222222] transition-colors inline-flex items-center"
+                          href={testImageUrl}
+                          download={`${(char.name || "character")}-appearance.${testMime ? testMime.split("/")[1].replace("+xml", "") : "png"}`}
+                        >
+                          下载原图
+                        </a>
                       </>
                     )}
                   </div>
