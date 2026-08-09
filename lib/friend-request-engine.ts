@@ -11,7 +11,6 @@ import {
     addChatContact,
     createOrGetSession,
     saveChatSessions,
-    loadChatContacts,
 } from "./chat-storage";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
 import { resolveUserIdentity } from "./settings-storage";
@@ -23,7 +22,6 @@ import {
     getLatestRequestForCharacter,
     clearRequestsForCharacter,
     dispatchFriendRequestUpdated,
-    getPendingFriendRequests,
 } from "./friend-request-storage";
 import type { ContentAppId } from "./settings-types";
 import { kvSet, registerDynamicPrefix } from "./kv-db";
@@ -130,41 +128,6 @@ export async function handleAcceptFriendRequest(
     }
 
     return session;
-}
-
-/**
- * 角色在日常 1:1 聊天中主动向用户发起好友申请（缺口①）。
- * 与「被删后挽留」不同，这是角色自主的主动社交行为。
- * 处理规则：
- *   - 若角色已经是联系人 → 不建申请（否则会被 getPendingFriendRequests 的 stale 过滤丢弃），
- *     返回 { created:false, reason:"already_contact" }，由调用方改发一条友好的系统消息。
- *   - 若已有该角色的待处理申请 → 去重，返回 { created:false, reason:"already_pending" }。
- *   - 否则创建 pending 申请并广播刷新事件，返回 { created:true }。
- */
-export function applyAIProactiveFriendRequest(
-    characterId: string,
-    reason: string,
-): { created: boolean; reason?: "already_contact" | "already_pending" | "no_character" } {
-    const chars = loadCharacters();
-    if (!chars.some(c => c.id === characterId)) {
-        return { created: false, reason: "no_character" };
-    }
-
-    // 已是联系人：好友申请无意义（会被 stale 过滤），不创建
-    const contacts = loadChatContacts();
-    if (contacts.some(c => c.characterId === characterId)) {
-        return { created: false, reason: "already_contact" };
-    }
-
-    // 已有待处理申请：去重，避免刷屏
-    const pending = getPendingFriendRequests();
-    if (pending.some(r => r.characterId === characterId)) {
-        return { created: false, reason: "already_pending" };
-    }
-
-    addFriendRequest(characterId, reason, 1);
-    dispatchFriendRequestUpdated();
-    return { created: true };
 }
 
 // ── Internal ──
