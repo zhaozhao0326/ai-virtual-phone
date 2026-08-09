@@ -1147,6 +1147,16 @@ function getWorldIdForCharacter(characterId: string): string | null {
     }
 }
 
+/** Resolve which world a group chat belongs to, by checking its member characters. */
+export function resolveWorldIdForGroup(participantIds?: string[]): string | undefined {
+    if (!participantIds || participantIds.length === 0) return undefined;
+    for (const cid of participantIds) {
+        const wid = getWorldIdForCharacter(cid);
+        if (wid) return wid;
+    }
+    return undefined;
+}
+
 /** Set (or clear, with null) the default user identity mask for a world. */
 export function setWorldUserIdentity(worldId: string, identityId: string | null): void {
     if (typeof window === "undefined") return;

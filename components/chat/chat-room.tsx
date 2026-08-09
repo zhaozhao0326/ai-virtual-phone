@@ -36,7 +36,7 @@ import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
-import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity } from "@/lib/settings-storage";
+import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
@@ -1700,7 +1700,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     );
 
     useEffect(() => {
-        setUserIdentity(resolveUserIdentity(session.contactId, "chat"));
+        const groupWorldId = session.isGroup ? resolveWorldIdForGroup(session.participantIds) : undefined;
+        setUserIdentity(resolveUserIdentity(session.contactId, session.isGroup ? "group_chat" : "chat", groupWorldId));
         setTransientMessages([]);
         setOfflineMode(kvGet(CHAT_OFFLINE_MODE_PREFIX + session.id) === "1");
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
@@ -5803,6 +5804,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                     })()}
                                                 </div>
                                             )
+                                        )}
+                                        {isSilentThought && renderMsg.innerMonologue && (
+                                            <div className="chat-msg-content-wrap flex flex-col min-w-0 max-w-[70%]">
+                                                {session.isGroup && msg.role !== "user" && (
+                                                    <span className="chat-group-sender-name">{msg.senderName || ""}{renderGroupRoleBadge(msg.senderCharacterId)}</span>
+                                                )}
+                                                <div className="chat-bubble-role-assistant chat-bubble-monologue-fallback rounded-md break-words relative">
+                                                    <span className="chat-monologue-fallback-label">心想</span>
+                                                    <span>{renderMsg.innerMonologue}</span>
+                                                </div>
+                                            </div>
                                         )}
                                         {!isSilentThought && !isEmptyBubble && <div
                                             className={`chat-msg-content-wrap flex flex-col min-w-0 max-w-[70%] ${isStandaloneHtmlPreview ? "chat-msg-content-wrap-html" : ""}`}

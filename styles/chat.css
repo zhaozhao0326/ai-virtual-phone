@@ -2579,6 +2579,27 @@
   overflow: visible;
 }
 
+/* ── Silent monologue fallback bubble (AI output only inner thought, no dialogue) ── */
+.chat-bubble-monologue-fallback {
+  padding: 6px 10px;
+  font-size: calc(13px*var(--app-text-scale,1));
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--c-text-sub);
+  background: color-mix(in srgb, var(--c-input) 70%, transparent);
+  border: 1px solid var(--c-divider);
+  max-width: 70%;
+  white-space: pre-wrap;
+}
+.chat-monologue-fallback-label {
+  display: inline-block;
+  margin-right: 6px;
+  font-style: normal;
+  font-size: calc(11px*var(--app-text-scale,1));
+  color: var(--c-text-faint);
+  letter-spacing: 0.05em;
+}
+
 /* ── Input textarea ── */
 .chat-input-textarea {
   border: none;
