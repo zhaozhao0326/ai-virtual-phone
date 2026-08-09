@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.3.1";
+export const APP_VERSION = "1.3.2";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.2",
+    date: "2026-08-09",
+    title: "用户身份页「使用此面具」入口 + 通讯录 New Friends 修复",
+    highlights: [
+      "用户身份（面具）页加「使用此面具」入口：每张身份卡多一个对勾按钮，点击后写入全局绑定 globalDefaults.userIdentityId；当前激活的身份标题旁显示 ✓ 使用中 蓝色徽章，激活后对勾按钮置灰禁用",
+      "通讯录「New Friends」按钮修复：原来仅在有待处理好友请求时才有反应，无请求时点击完全无响应；现在无论有无请求，点开都显示「新的朋友」弹窗（为空时显示「暂无好友申请」）",
+    ],
+  },
   {
     version: "1.3.1",
     date: "2026-08-09",

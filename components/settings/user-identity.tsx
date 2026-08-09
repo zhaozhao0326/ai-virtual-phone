@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useContext } from "react";
 import { Plus, User, Trash2, FileEdit, AlertCircle, Camera, Link, X, Check } from "lucide-react";
 import { SettingsContext } from "../phone-settings-app";
-import { loadUserIdentities, saveUserIdentities } from "@/lib/settings-storage";
+import { loadUserIdentities, saveUserIdentities, loadBindingConfig, saveBindingConfig } from "@/lib/settings-storage";
 import { Input } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/modal";
 
@@ -101,6 +101,41 @@ export function UserIdentitySettings() {
         setEditingId(newIdentity.id);
     }, [identities, setIdentities]);
 
+    const [activeIdentityId, setActiveIdentityId] = useState<string>("");
+
+    useEffect(() => {
+        const refreshActiveIdentity = (): void => {
+            try {
+                const cfg = loadBindingConfig();
+                const ids = loadUserIdentities();
+                const fromBinding = cfg.globalDefaults.userIdentityId;
+                const resolved = fromBinding && ids.some(i => i.id === fromBinding)
+                    ? fromBinding
+                    : (ids[0]?.id || "");
+                setActiveIdentityId(resolved);
+            } catch {
+                // 静默
+            }
+        };
+        refreshActiveIdentity();
+        window.addEventListener("settings-bindings-updated", refreshActiveIdentity);
+        return () => window.removeEventListener("settings-bindings-updated", refreshActiveIdentity);
+    }, []);
+
+    const handleUseIdentity = useCallback((id: string) => {
+        try {
+            const config = loadBindingConfig();
+            const next = {
+                ...config,
+                globalDefaults: { ...config.globalDefaults, userIdentityId: id },
+            };
+            saveBindingConfig(next);
+            setActiveIdentityId(id);
+        } catch {
+            // 静默
+        }
+    }, []);
+
     useEffect(() => {
         setSubpageRightAction("identity",
             <button
@@ -166,7 +201,17 @@ export function UserIdentitySettings() {
                             }}
                         >
                             <div className="min-w-0 flex flex-col gap-1">
-                                <span className="truncate text-[calc(14.4px*var(--app-text-scale,1))] font-bold leading-tight text-[var(--c-text-title)]">{identity.name || "未命名身份"}</span>
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="truncate text-[calc(14.4px*var(--app-text-scale,1))] font-bold leading-tight text-[var(--c-text-title)]">{identity.name || "未命名身份"}</span>
+                                    {identity.id === activeIdentityId && (
+                                        <span
+                                            className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                                            style={{ background: "var(--c-action-blue,#246bfd)" }}
+                                        >
+                                            ✓ 使用中
+                                        </span>
+                                    )}
+                                </div>
                                 <span className="menu-desc truncate">{identity.occupation || identity.bio || identity.gender || "未填写身份信息"}</span>
                             </div>
                             <div className="flex items-end justify-between gap-2">
@@ -179,6 +224,20 @@ export function UserIdentitySettings() {
                                 )}
 
                                 <div className="flex gap-2 shrink-0 items-center">
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            handleUseIdentity(identity.id);
+                                        }}
+                                        disabled={identity.id === activeIdentityId}
+                                        title={identity.id === activeIdentityId ? "当前正在使用的面具" : "使用此面具"}
+                                        aria-label={identity.id === activeIdentityId ? "当前正在使用的面具" : "使用此面具"}
+                                        className="ui-link-btn"
+                                        style={identity.id === activeIdentityId ? { color: "var(--c-action-blue,#246bfd)" } : undefined}
+                                    >
+                                        <Check size={18} />
+                                    </button>
                                     <button
                                         type="button"
                                         onClick={(event) => {
