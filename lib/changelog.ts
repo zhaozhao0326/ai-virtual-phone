@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.7";
+export const APP_VERSION = "1.4.8";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.8",
+    date: "2026-08-10",
+    title: "修复栖所生图误报「未开启」",
+    highlights: [
+      "修复：栖所（房间实景生图）的配置检查只认 OpenAI 通用接口，导致用 NovelAI / Pollinations / Google Imagen 的用户一直提示「请在设置中配置并开启图像生成」",
+      "现在按所选生图接口正确判断：NovelAI 只需填 Key、Pollinations 免费免 Key、Google Imagen 只需填 Key，配置齐全即可在栖所开启生图",
+    ],
+  },
   {
     version: "1.4.7",
     date: "2026-08-09",

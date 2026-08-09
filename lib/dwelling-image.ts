@@ -1,6 +1,7 @@
 import type { DwellingRoom } from "./dwelling-storage";
 import { loadDwellingImageEnabled } from "./dwelling-storage";
 import { loadImageGenerationSettings } from "./settings-storage";
+import type { ImageGenerationSettings } from "./settings-types";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
 
 // ── Availability ──────────────────────────────
@@ -14,9 +15,23 @@ export type DwellingImageAvailability = {
     available: boolean;
 };
 
+/**
+ * 判断当前 Provider 的配置是否齐全（与 generateImageFromConfiguredApi 的分发校验保持一致）：
+ * - openai：顶层 apiKey / baseUrl / model 都要
+ * - novelai：只需 novelai.apiKey（url 留空走内置官方地址）
+ * - pollinations：免费免 Key，只要总开关开启即可
+ * - google-imagen：需 googleImagen.apiKey
+ */
+function isProviderConfigured(s: ImageGenerationSettings): boolean {
+    if (s.provider === "novelai") return Boolean(s.novelai?.apiKey?.trim());
+    if (s.provider === "pollinations") return true;
+    if (s.provider === "google-imagen") return Boolean(s.googleImagen?.apiKey?.trim());
+    return Boolean(s.apiKey.trim() && s.baseUrl.trim() && s.model.trim());
+}
+
 export function getDwellingImageAvailability(): DwellingImageAvailability {
     const s = loadImageGenerationSettings();
-    const configured = Boolean(s.enabled && s.apiKey.trim() && s.baseUrl.trim() && s.model.trim());
+    const configured = Boolean(s.enabled && isProviderConfigured(s));
     const dwellingEnabled = loadDwellingImageEnabled();
     return { configured, dwellingEnabled, available: configured && dwellingEnabled };
 }
