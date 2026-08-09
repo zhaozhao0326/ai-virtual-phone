@@ -6846,3 +6846,198 @@
   object-fit: cover;
   display: block;
 }
+
+/* 角色主动询问用户（选项确认卡片） */
+.chat-ask-user-card {
+  max-width: 260px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+}
+.chat-ask-user-q {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.chat-ask-user-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chat-ask-user-option {
+  flex: 1 1 auto;
+  min-width: 64px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 59, 79, 0.55);
+  background: rgba(255, 255, 255, 0.9);
+  color: #ff3b4f;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.chat-ask-user-option:hover:not(:disabled) {
+  background: #ff3b4f;
+  color: #fff;
+}
+.chat-ask-user-option:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #8a8a8a;
+}
+.chat-ask-user-done {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #16a34a;
+}
+
+/* 群公告横幅（群聊顶部） */
+.chat-group-announcement {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 12px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 59, 79, 0.08);
+  border: 1px solid rgba(255, 59, 79, 0.2);
+}
+.chat-group-announcement-tag {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #ff3b4f;
+  border-radius: 6px;
+  padding: 2px 6px;
+  line-height: 1.4;
+}
+.chat-group-announcement-text {
+  font-size: 13px;
+  color: #3a3a3a;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+/* 群设置里的公告 / 待办编辑器 */
+.chat-announcement-input {
+  width: 100%;
+  resize: vertical;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #1f2329;
+  outline: none;
+}
+.chat-announcement-input:focus {
+  border-color: rgba(255, 59, 79, 0.5);
+}
+.chat-announcement-save {
+  margin-top: 8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #ff3b4f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-todo-add {
+  display: flex;
+  gap: 8px;
+}
+.chat-todo-input {
+  flex: 1 1 auto;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 7px 10px;
+  font-size: 13px;
+  color: #1f2329;
+  outline: none;
+}
+.chat-todo-input:focus {
+  border-color: rgba(255, 59, 79, 0.5);
+}
+.chat-todo-add-btn {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: none;
+  background: #ff3b4f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-todo-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chat-todo-empty {
+  font-size: 12px;
+  color: #9a9a9a;
+}
+.chat-todo-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+}
+.chat-todo-row.done .chat-todo-text {
+  text-decoration: line-through;
+  color: #9a9a9a;
+}
+.chat-todo-check {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  background: #fff;
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.chat-todo-row.done .chat-todo-check {
+  background: #16a34a;
+  color: #fff;
+  border-color: #16a34a;
+}
+.chat-todo-text {
+  flex: 1 1 auto;
+  font-size: 13px;
+  color: #1f2329;
+  cursor: pointer;
+  word-break: break-word;
+}
+.chat-todo-del {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #b0b0b0;
+  font-size: 16px;
+  cursor: pointer;
+}
+.chat-todo-del:hover {
+  color: #ff3b4f;
+}

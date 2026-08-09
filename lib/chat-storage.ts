@@ -68,6 +68,8 @@ export type ChatSession = {
     allowAdminActionsOnUser?: boolean; // characters may kick/mute the user (default off)
     isSpectator?: boolean; // 围观群：用户不在群内，只能生成/线下
     dissolved?: boolean; // 群已解散（仅标记，不删聊天历史；群主可解散，属剧情节点）
+    groupAnnouncement?: string; // 群公告（群主/管理员可设置）
+    groupTodos?: GroupTodo[]; // 群待办清单
     /** 活人感异步回复：开启后角色延迟回复，模拟真人节奏 */
     lifelikeEnabled?: boolean;
     /** 延迟最小秒数，默认 5 */
@@ -77,6 +79,14 @@ export type ChatSession = {
 };
 
 export type ChatMessageStatus = "sending" | "sent" | "read" | "failed";
+
+export type GroupTodo = {
+    id: string;
+    text: string;
+    done: boolean;
+    createdBy?: string; // characterId | "self"
+    createdAt: string;
+};
 export type ChatMessageRole = "user" | "assistant" | "system" | "tool";
 
 export type StateValue = { name: string; value: number };
@@ -115,6 +125,7 @@ export type ChatMessage = {
         | "reading_discuss"
         | "system_instruction"
         | "group_admin_notice"
+        | "ask_user"          // 角色主动询问用户并等待确认（选项卡片）
         | "media_file"
         | `plugin:${string}`; // 聊天插件自定义消息类型（由注册该 kind 的插件渲染气泡）
     origin?: "chat" | "reading_discuss" | "custom_app" | "custom_app_background";
@@ -178,12 +189,17 @@ export type ChatMessage = {
         blackMarketTheaterStartedAt?: string;
         claimer?: string;         // 领取/接受动作的执行人名
         owner?: string;           // 领取/接受动作的目标人名（谁发的红包/转账）
-        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute" | "dissolve" | "create_group"; // 群管理操作类型
+        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute" | "dissolve" | "create_group" | "rename" | "set_announcement" | "add_todo" | "complete_todo" | "remove_todo"; // 群管理操作类型
         adminActorName?: string;  // 群管理操作执行人显示名
         adminTargetName?: string; // 群管理操作目标显示名
         adminMuteMinutes?: number;// 禁言时长（分钟）
         groupName?: string;       // 群管理/建群相关：群名
         memberNames?: string;     // 角色自主建群：成员显示名（逗号/、分隔）
+        newGroupName?: string;    // 角色改群名：新群名
+        askQuestion?: string;     // 角色询问用户：问题文案
+        askOptions?: string[];    // 角色询问用户：可选项（点击即作为用户消息发出）
+        newAnnouncement?: string; // 角色设群公告：新公告内容
+        todoText?: string;        // 角色群待办：待办文本
         musicTitle?: string;      // 音乐标题
         musicArtist?: string;     // 音乐歌手
         xiaohongshuAuthor?: string;       // 小红书分享作者

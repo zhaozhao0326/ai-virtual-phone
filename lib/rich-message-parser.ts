@@ -75,6 +75,34 @@ function parseMuteMinutes(num?: string, unit?: string): number {
 export const CREATE_GROUP_TAG_RE =
     /\[([^\]]+?)\s*(?:建了(?:了)?一个?群[聊]?|拉你进(?:了)?新?群[聊]?)\s*(?:\s*[|｜]\s*群名[:：]\s*([^|｜\]]+?))?\s*(?:\s*[|｜]\s*成员[:：]\s*([^\]]+?))?\s*\]/;
 
+/**
+ * 角色改群名标签：
+ *   [A把群名改成了 周末聚餐] / [A修改群名为 周末聚餐] / [A将群名改为 周末聚餐]
+ * 捕获组：1=操作角色名 2=新群名
+ */
+export const RENAME_GROUP_TAG_RE =
+    /\[([^\]]+?)(?:把群名改成(?:了)?|修改群名为|将群名改为|改名(?:为|成)?)\s*([^\]]+?)\]/;
+
+/**
+ * 角色主动询问用户并等待确认：
+ *   [询问 | 问题: 要不要一起建个群？ | 选项: 好啊,不用了]
+ * 捕获组：1=问题 2=选项（逗号/、分隔）
+ */
+export const ASK_USER_TAG_RE =
+    /\[询问\s*[|｜]\s*问题[:：]\s*([^\]|｜]+?)\s*[|｜]\s*选项[:：]\s*([^\]]+?)\]/;
+
+/** 角色设置群公告：[A设置了群公告: 明天团建] */
+export const SET_ANNOUNCEMENT_TAG_RE = /\[([^\]]+?)设置了?群公告[:：]\s*([^\]]+?)\]/;
+
+/** 角色添加群待办：[A添加了群待办: 买饮料] */
+export const ADD_TODO_TAG_RE = /\[([^\]]+?)添加了?群待办[:：]\s*([^\]]+?)\]/;
+
+/** 角色完成群待办：[A完成了群待办: 买饮料] / [A完成群待办: 买饮料] */
+export const COMPLETE_TODO_TAG_RE = /\[([^\]]+?)完成(?:了)?群待办[:：]\s*([^\]]+?)\]/;
+
+/** 角色删除群待办：[A删除了群待办: 买饮料] */
+export const REMOVE_TODO_TAG_RE = /\[([^\]]+?)删除了?群待办[:：]\s*([^\]]+?)\]/;
+
 const RICH_PATTERNS: {
     regex: RegExp;
     build: (m: RegExpMatchArray) => ParsedMessagePart;
@@ -365,6 +393,70 @@ const RICH_PATTERNS: {
                 groupName: m[2]?.trim() || "",
                 memberNames: m[3]?.trim() || "",
             },
+        }),
+    },
+    {
+        // 角色改群名：[A把群名改成了 周末聚餐] 等
+        regex: RENAME_GROUP_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: {
+                adminAction: "rename" as const,
+                adminActorName: m[1]?.trim(),
+                newGroupName: m[2]?.trim(),
+            },
+        }),
+    },
+    {
+        // 角色主动询问用户并等待确认（选项卡片）。解析出的选项存为数组。
+        regex: ASK_USER_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "ask_user" as const,
+            mediaData: {
+                askQuestion: m[1]?.trim(),
+                askOptions: (m[2] || "")
+                    .split(/[,，、]/)
+                    .map(s => s.trim())
+                    .filter(Boolean),
+            },
+        }),
+    },
+    {
+        // 角色设置群公告：[A设置了群公告: 明天团建]
+        regex: SET_ANNOUNCEMENT_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim(), newAnnouncement: m[2]?.trim() },
+        }),
+    },
+    {
+        // 角色添加群待办：[A添加了群待办: 买饮料]
+        regex: ADD_TODO_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
+        }),
+    },
+    {
+        // 角色完成群待办：[A完成了群待办: 买饮料]
+        regex: COMPLETE_TODO_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
+        }),
+    },
+    {
+        // 角色删除群待办：[A删除了群待办: 买饮料]
+        regex: REMOVE_TODO_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
         }),
     },
     // 1:1 简单格式（兼容）

@@ -2310,14 +2310,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const actorKey = resolveGroupMemberKeyByName(session, data.adminActorName || "", userN);
         // 执行人必须是输出该标签的角色本人
         if (!actorKey || actorKey !== actorCharacterId) return null;
+        // 改群名是对群本身操作，执行人即目标，无需解析成员名
         const targetKey = action === "dissolve"
             ? GROUP_SELF_KEY
-            : resolveGroupMemberKeyByName(session, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
+            : (action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo")
+                ? actorKey
+                : resolveGroupMemberKeyByName(session, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
         if (!targetKey) return null;
         if (!canGroupAdminAct(session, actorKey, action, targetKey)) return null;
-        applyGroupAdminAction(session, action, actorKey, targetKey, data.adminMuteMinutes);
+        applyGroupAdminAction(session, action, actorKey, targetKey, data.adminMuteMinutes, data.newGroupName, data.newAnnouncement, data.todoText);
         const actorDisplay = getGroupMemberDisplayName(actorKey, userN);
-        const targetDisplay = getGroupMemberDisplayName(targetKey, userN);
+        const targetDisplay = action === "rename"
+            ? (data.newGroupName || session.groupName || "")
+            : (data.newAnnouncement || data.todoText || session.groupName || "");
         return {
             content: buildGroupAdminNoticeText(action, actorDisplay, targetDisplay, data.adminMuteMinutes),
             mediaData: {
@@ -2325,6 +2330,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 adminActorName: actorDisplay,
                 adminTargetName: targetDisplay,
                 ...(action === "mute" ? { adminMuteMinutes: data.adminMuteMinutes || 10 } : {}),
+                ...(action === "rename" ? { newGroupName: data.newGroupName } : {}),
+                ...(action === "set_announcement" ? { newAnnouncement: data.newAnnouncement } : {}),
+                ...(action === "add_todo" || action === "complete_todo" || action === "remove_todo" ? { todoText: data.todoText } : {}),
             } as ChatMessage["mediaData"],
             senderName: actorDisplay,
         };
@@ -5321,6 +5329,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 slotProps={{ sessionId: session.id, isGroup: !!session.isGroup }}
                 className="chat-plugin-header chat-room-main-pane"
             />
+
+            {session.isGroup && session.groupAnnouncement ? (
+                <div className="chat-group-announcement">
+                    <span className="chat-group-announcement-tag">群公告</span>
+                    <span className="chat-group-announcement-text">{session.groupAnnouncement}</span>
+                </div>
+            ) : null}
 
             {/* Message List */}
             <div
