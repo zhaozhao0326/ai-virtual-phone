@@ -10,6 +10,7 @@ import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { Input } from "./ui/form";
 import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "@/lib/calendar-types";
 import {
+  CALENDAR_DAYS_PER_PAGE_OPTIONS,
   CALENDAR_THEME_IDS,
   deleteCalendarScheduleItem,
   loadCalendarConfig,
@@ -141,6 +142,7 @@ export function PhoneCalendarApp({
   const [menstrualConfig, setMenstrualConfig] = useState(() => loadMenstrualConfig());
   const [menstrualRecords, setMenstrualRecords] = useState<MenstrualRecord[]>(() => loadMenstrualRecords());
   const [showThemePanel, setShowThemePanel] = useState(false);
+  const [showDaysPanel, setShowDaysPanel] = useState(false);
   const [showMenstrualSettings, setShowMenstrualSettings] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
@@ -541,6 +543,8 @@ export function PhoneCalendarApp({
             itemsByDate={itemsByDate}
             cycleMap={cycleMap}
             cyclePanel={cyclePanel}
+            daysPerPage={config.daysPerPage}
+            onOpenDaysPicker={() => setShowDaysPanel(true)}
             onOpenCycleSettings={selectedOwner?.ownerType === "user" ? openMenstrualSettings : null}
             onBack={() => setView("month")}
             onSelectedChange={setSelectedDate}
@@ -672,6 +676,38 @@ export function PhoneCalendarApp({
               <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setCalendarCustomCss(CALENDAR_CSS_EXAMPLE)}>示例</button>
               <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setCalendarCustomCss("")}>清空</button>
               <button type="button" className="calendar-block-btn" data-variant="primary" onClick={handleApplyCalendarCss}>应用</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDaysPanel && (
+        <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowDaysPanel(false)}>
+          <div className="calendar-edit-modal calendar-days-modal" onClick={e => e.stopPropagation()}>
+            <div className="calendar-theme-modal-head">
+              <strong>每页天数</strong>
+              <button type="button" onClick={() => setShowDaysPanel(false)} className="calendar-icon-btn" aria-label="关闭">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="calendar-days-options">
+              {CALENDAR_DAYS_PER_PAGE_OPTIONS.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  className="calendar-days-option"
+                  data-active={config.daysPerPage === n ? "true" : undefined}
+                  onClick={() => {
+                    const nextConfig = { ...config, daysPerPage: n };
+                    setConfig(nextConfig);
+                    saveCalendarConfig(nextConfig);
+                    setShowDaysPanel(false);
+                  }}
+                >
+                  <b>{n}</b>
+                  <span>{n === 1 ? "单日" : `${n} 天`}</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>

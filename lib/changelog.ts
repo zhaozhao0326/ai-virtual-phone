@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.5";
+export const APP_VERSION = "1.4.6";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.6",
+    date: "2026-08-09",
+    title: "日历升级：每页天数切换 + 融合原仓库最新日历更新",
+    highlights: [
+      "日历详情页新增「每页天数」切换：右上角按钮可选 1/2/3/5/7 天，时间轴按所选天数分页显示（5 天起列头紧凑化，时间轴范围扩至 ±21 天），选择持久化保存",
+      "融合原仓库最新日历更新（commit f17aaf9）：保留本机全部既有更新，仅吸收每页天数相关改动",
+      "保留本机无壳化全屏布局（上游本次将壳改回固定 390px，本机维持 100vw 自适应铺满，晨昏线壁纸不受影响）",
+    ],
+  },
   {
     version: "1.4.5",
     date: "2026-08-09",

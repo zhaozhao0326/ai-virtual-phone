@@ -27,12 +27,24 @@ type PersistedCalendarStore = {
 export type CalendarConfig = {
   autoGenerateEnabled: boolean;
   theme: string;
+  /** 详情页时间轴一页显示的天数（1/2/3/5/7），默认 2 */
+  daysPerPage: number;
 };
 
 const DEFAULT_CALENDAR_CONFIG: CalendarConfig = {
   autoGenerateEnabled: false,
   theme: "light",
+  daysPerPage: 2,
 };
+
+export const CALENDAR_DAYS_PER_PAGE_OPTIONS = [1, 2, 3, 5, 7] as const;
+
+export function normalizeCalendarDaysPerPage(value: unknown): number {
+  const num = typeof value === "number" ? Math.round(value) : NaN;
+  return (CALENDAR_DAYS_PER_PAGE_OPTIONS as readonly number[]).includes(num)
+    ? num
+    : DEFAULT_CALENDAR_CONFIG.daysPerPage;
+}
 
 /** 旧版主题 id → 新版主题 id（v2 改版后主题全部重定义） */
 const LEGACY_THEME_MAP: Record<string, string> = {
@@ -74,6 +86,7 @@ export function loadCalendarConfig(): CalendarConfig {
     if (!raw) return { ...DEFAULT_CALENDAR_CONFIG };
     const parsed = { ...DEFAULT_CALENDAR_CONFIG, ...JSON.parse(raw) } as CalendarConfig;
     parsed.theme = normalizeCalendarTheme(parsed.theme);
+    parsed.daysPerPage = normalizeCalendarDaysPerPage(parsed.daysPerPage);
     return parsed;
   } catch {
     return { ...DEFAULT_CALENDAR_CONFIG };

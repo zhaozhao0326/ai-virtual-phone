@@ -606,7 +606,7 @@
 }
 
 .calendar-tl-day {
-  flex: 0 0 50%;
+  flex: 0 0 var(--tl-day-w, 50%);
   scroll-snap-align: start;
   border-left: 1px solid var(--c-calendar-hair);
   position: relative;
@@ -1082,6 +1082,53 @@
 .calendar-theme-modal-head strong {
   font-size: calc(15px * var(--app-text-scale, 1));
   font-weight: 700;
+}
+
+/* ── 每页天数选择弹窗 ── */
+.calendar-days-modal {
+  max-width: 320px;
+  padding: 18px;
+}
+
+.calendar-days-options {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.calendar-days-option {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 14px;
+  padding: 12px 0 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  background: var(--c-calendar-surface);
+  color: var(--c-calendar-sub);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.calendar-days-option b {
+  font-size: calc(19px * var(--app-text-scale, 1));
+  font-weight: 700;
+  color: var(--c-calendar-ink);
+}
+
+.calendar-days-option span {
+  font-size: calc(11px * var(--app-text-scale, 1));
+}
+
+.calendar-days-option[data-active="true"] {
+  background: var(--c-calendar-sel-bg);
+}
+
+.calendar-days-option[data-active="true"] b,
+.calendar-days-option[data-active="true"] span {
+  color: var(--c-calendar-sel-fg);
 }
 
 .calendar-theme-grid {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Settings2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Columns2, Settings2 } from "lucide-react";
 import type { CalendarScheduleItem } from "@/lib/calendar-types";
 import type { MenstrualDayState } from "@/lib/menstrual-storage";
 import { formatIsoDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
@@ -12,7 +12,7 @@ const WEEK_LABEL = ["周日", "周一", "周二", "周三", "周四", "周五", 
 const HOUR_H = 48;
 const DAY_MS = 86400000;
 const STRIP_RADIUS = 8;   // 周条 ±8 周
-const DAY_RADIUS = 15;    // 时间轴 ±15 天
+const DAY_RADIUS = 21;    // 时间轴 ±21 天（7 天/页时也够滑三页，且整周对齐）
 
 const addDaysIso = (iso: string, n: number) => formatIsoDate(new Date(parseIsoDate(iso).getTime() + n * DAY_MS));
 const sundayStartOf = (iso: string) => {
@@ -84,6 +84,8 @@ export function CalendarDetailPage({
   itemsByDate,
   cycleMap,
   cyclePanel,
+  daysPerPage,
+  onOpenDaysPicker,
   onOpenCycleSettings,
   onBack,
   onSelectedChange,
@@ -95,6 +97,10 @@ export function CalendarDetailPage({
   cycleMap: Map<string, MenstrualDayState> | null;
   /** 经期打卡行（仅用户视图传入），渲染在周条下方 */
   cyclePanel: ReactNode;
+  /** 时间轴一页显示的天数（1/2/3/5/7） */
+  daysPerPage: number;
+  /** 打开“每页天数”选择弹窗 */
+  onOpenDaysPicker: () => void;
   /** 周期设置入口（仅用户视图传入），渲染在右上角 */
   onOpenCycleSettings: (() => void) | null;
   onBack: () => void;
@@ -125,6 +131,8 @@ export function CalendarDetailPage({
   );
   const daysRef = useRef(days);
   daysRef.current = days;
+  const dppRef = useRef(daysPerPage);
+  dppRef.current = daysPerPage;
 
   // ── 选中高亮（黑/红圆 + 双日灰胶囊），命令式定位 ──
   const paintSelection = (animate: boolean, prevIso?: string) => {
@@ -185,7 +193,7 @@ export function CalendarDetailPage({
     if (!pill) return;
     const cellW = panel.clientWidth / 7;
     pill.style.display = "block";
-    pill.style.width = `${cellW * 2}px`;
+    pill.style.width = `${cellW * dppRef.current}px`;
     pill.style.transform = `translateX(${(parseIsoDate(d0).getDay() + frac) * cellW}px)`;
   };
 
@@ -203,7 +211,7 @@ export function CalendarDetailPage({
     const idx = daysRef.current.indexOf(iso);
     if (idx < 0) return;
     suppressRef.current = true;
-    tl.scrollTo({ left: idx * (tl.clientWidth / 2), behavior: smooth ? "smooth" : "auto" });
+    tl.scrollTo({ left: idx * (tl.clientWidth / dppRef.current), behavior: smooth ? "smooth" : "auto" });
     window.setTimeout(() => { suppressRef.current = false; }, smooth ? 420 : 60);
   };
 
@@ -241,11 +249,25 @@ export function CalendarDetailPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center]);
 
+  // 每页天数变化后：按新列宽重新对齐选中日
+  const didMountDppRef = useRef(false);
+  useEffect(() => {
+    if (!didMountDppRef.current) {
+      didMountDppRef.current = true;
+      return;
+    }
+    requestAnimationFrame(() => {
+      snapTimelineTo(selectedRef.current, false);
+      updateRangePill(daysRef.current.indexOf(selectedRef.current));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [daysPerPage]);
+
   // 时间轴横向滚动：灰胶囊逐帧跟随；索引变化立即联动选中
   const handleTimelineScroll = () => {
     const tl = tlHRef.current;
     if (!tl) return;
-    const colW = tl.clientWidth / 2;
+    const colW = tl.clientWidth / dppRef.current;
     if (colW <= 0) return;
     const fIdx = tl.scrollLeft / colW;
     updateRangePill(fIdx);
@@ -298,6 +320,9 @@ export function CalendarDetailPage({
           <span aria-hidden="true">‹</span> {backLabel}
         </button>
         <span className="calendar-topbar-space" />
+        <button type="button" className="calendar-icon-btn" onClick={onOpenDaysPicker} aria-label="每页天数">
+          <Columns2 size={17} />
+        </button>
         {onOpenCycleSettings ? (
           <button type="button" className="calendar-icon-btn" onClick={onOpenCycleSettings} aria-label="周期设置">
             <Settings2 size={17} />
@@ -351,7 +376,12 @@ export function CalendarDetailPage({
             ))}
             <i className="calendar-now-badge" style={{ top: `${50 + nowTop}px` }}>{nowLabel}</i>
           </div>
-          <div className="calendar-tl-hscroll hide-scrollbar" ref={tlHRef} onScroll={handleTimelineScroll}>
+          <div
+            className="calendar-tl-hscroll hide-scrollbar"
+            ref={tlHRef}
+            onScroll={handleTimelineScroll}
+            style={{ "--tl-day-w": `${100 / daysPerPage}%` } as CSSProperties}
+          >
             {days.map(iso => {
               const d = parseIsoDate(iso);
               const lunar = getLunarInfoByIso(iso);
@@ -359,8 +389,17 @@ export function CalendarDetailPage({
               return (
                 <div key={iso} className="calendar-tl-day" data-today={iso === todayIso ? "true" : undefined}>
                   <header>
-                    <b>{d.getMonth() + 1}月{d.getDate()}日 – {WEEK_LABEL[d.getDay()]}</b>
-                    <span>{lunar ? `${lunar.monthLabel}${lunar.isFirstDay ? "" : lunar.dayLabel}` : ""}</span>
+                    {daysPerPage >= 5 ? (
+                      <>
+                        <b>{d.getDate()}日</b>
+                        <span>{WEEK_LABEL[d.getDay()]}</span>
+                      </>
+                    ) : (
+                      <>
+                        <b>{d.getMonth() + 1}月{d.getDate()}日 – {WEEK_LABEL[d.getDay()]}</b>
+                        <span>{lunar ? `${lunar.monthLabel}${lunar.isFirstDay ? "" : lunar.dayLabel}` : ""}</span>
+                      </>
+                    )}
                   </header>
                   <div className="calendar-tl-body">
                     {iso === todayIso ? (
