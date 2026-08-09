@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.6";
+export const APP_VERSION = "1.4.7";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.7",
+    date: "2026-08-09",
+    title: "朋友圈生图：角色生图关键词兜底锁定形象",
+    highlights: [
+      "朋友圈发照片时，自动把角色档案里的「生图关键词」（外貌描述）注入生图提示词：有锁脸参考图时靠图锁定，没有参考图时靠这段描述让画面贴近角色设定",
+      "修复「发帖人未锁定」：之前朋友圈生图只带角色名、不带外貌描述，脸容易跑偏；现在与相册同一套机制，形象更稳",
+    ],
+  },
   {
     version: "1.4.6",
     date: "2026-08-09",

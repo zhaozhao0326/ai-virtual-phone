@@ -1244,16 +1244,23 @@ export async function generateMomentPhotoUrl(
         // 朋友圈主角锚定：把发帖角色的名字写进提示词（仅当原描述未含该名字时），
         // 让生图画面明确是「谁」在场景里，配合 {char1} 锁脸锚点使用。
         let finalDescription = description;
+        let participantAppearance: string | undefined;
         try {
             const author = loadCharacters().find(c => c.id === characterId);
             if (author?.name && !description.includes(author.name)) {
                 finalDescription = `${author.name}，${description}`;
+            }
+            // 生图关键词兜底：角色档案里的 appearance 作为参与者外观描述注入提示词，
+            // 有锁脸参考图时靠图锁定，没有参考图时靠这段描述让形象贴近角色设定。
+            if (author?.appearance?.trim()) {
+                participantAppearance = `${author.name}：${author.appearance.trim()}`;
             }
         } catch { /* 取不到角色名时退回原描述 */ }
         const generated = await generateImageFromConfiguredApi({
             description: finalDescription,
             characterId,
             useReferenceImage,
+            participantAppearance,
             signal,
         });
         throwIfAborted(signal);
