@@ -2342,12 +2342,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     /**
-     * 角色主动发好友申请（1:1 场景）。
+     * 角色主动发好友申请（1:1 与群聊通用）。
      * 拦截 AI 回复里的 [加好友] 类标签后调用：已是好友/已有待处理申请则跳过去重；
      * 否则写入本地待处理申请、刷新通讯录红点、弹 toast、在聊天里留一条系统消息。
      */
     const applyAIProactiveFriendRequest = (actorCharacterId: string, message: string) => {
-        if (session.isGroup) return;
         // 已是好友：不再发申请
         const contacts = loadChatContacts();
         if (contacts.some(c => c.characterId === actorCharacterId)) return;
@@ -2528,6 +2527,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         isGroup: true,
                     });
                     continue;
+                }
+                // 群聊里角色也能主动加好友：拦截 [加好友] 类标签 → 发起申请 + 从气泡文本剥离
+                const fg = ADD_FRIEND_TAG_RE.exec(part.content);
+                if (fg) {
+                    applyAIProactiveFriendRequest(r.characterId, fg[1] || "");
+                    part.content = part.content.replace(ADD_FRIEND_TAG_RE, "").trim();
+                    if (!part.content) continue; // 整条消息只有标签：不发空气泡
                 }
                 if (!isFirst) await abortableDelay(800, guard?.signal);
                 throwIfGenerationStopped(guard);
