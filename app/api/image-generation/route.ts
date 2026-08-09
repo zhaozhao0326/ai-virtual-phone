@@ -185,8 +185,9 @@ function buildNaiPrompt(prompt: string, input: ImageGenerationRequest): string {
 // 这样无论哪个 provider，提示词都是「谁是谁 + 在哪 + 什么光 + 在做什么」的统一格式。
 function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
     const parts: string[] = [];
-    if (input.sceneBackground?.trim()) parts.push(input.sceneBackground.trim());
-    if (input.sceneLighting?.trim()) parts.push(input.sceneLighting.trim());
+    // 用户原文优先：这是画面主体，必须排在最前、作为主导指令，避免被场景/角色背景盖掉
+    if (input.prompt?.trim()) parts.push(input.prompt.trim());
+    // 参与者（谁在画面里），仅作身份锚定，不抢主体
     if (input.participants?.length) {
         for (const p of input.participants) {
             const name = (p.name || "").trim();
@@ -199,8 +200,9 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             parts.push(clause);
         }
     }
-    // 用户原文（[照片:] 内容 = 动作 / 场景描述）；OAI 路径里此处已含 extraPrompt 质量标签
-    if (input.prompt?.trim()) parts.push(input.prompt.trim());
+    // 场景/光线仅作“背景参考”，明确降级，避免盖过用户主体描述
+    if (input.sceneBackground?.trim()) parts.push(`背景参考：${input.sceneBackground.trim()}`);
+    if (input.sceneLighting?.trim()) parts.push(`光线参考：${input.sceneLighting.trim()}`);
     // 兼容旧字段 participantAppearance（未传结构化 participants 时）
     if ((!input.participants || input.participants.length === 0) && input.participantAppearance?.trim()) {
         parts.push(input.participantAppearance.trim());

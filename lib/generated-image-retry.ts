@@ -167,6 +167,15 @@ export async function generateAndApplyChatGeneratedImage(
             participantCount: specs.length,
             referenceImageCount: referenceImages.length,
         });
+        console.log("[IMG-CHAT] 发送生图输入", {
+            description: description.slice(0, 160),
+            participantAppearance: (participantAppearance || "").slice(0, 160),
+            sceneBackground: (settings.sceneBackground || "").slice(0, 160),
+            sceneLighting: (settings.sceneLighting || "").slice(0, 160),
+            referenceImageCount: referenceImages.length,
+            useReferenceImage: message.mediaData?.useReferenceImage === true,
+            provider: settings.provider,
+        });
         const generated = await generateImageFromConfiguredApi({
             description,
             characterId,
