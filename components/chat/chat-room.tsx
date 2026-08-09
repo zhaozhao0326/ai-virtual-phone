@@ -672,7 +672,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
         return () => window.clearInterval(timer);
     }, [muteUntilMs]);
     const muteRemainingMs = muteUntilMs > muteNowTick ? muteUntilMs - muteNowTick : 0;
-    const inputLocked = isSpectator || muteRemainingMs > 0;
+    const inputLocked = isSpectator || muteRemainingMs > 0 || session.dissolved === true;
 
     const resetTextareaHeight = () => {
         if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -789,7 +789,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 className="chat-input-textarea"
                 disabled={inputLocked}
                 placeholder={inputLocked
-                    ? (isSpectator ? "围观中，你不在这个群里" : `禁言中，剩余${Math.ceil(muteRemainingMs / 60000)}分钟`)
+                    ? (session.dissolved ? "该群已解散，聊天记录已保留" : isSpectator ? "围观中，你不在这个群里" : `禁言中，剩余${Math.ceil(muteRemainingMs / 60000)}分钟`)
                     : (theaterMode ? "写下番外指令..." : undefined)}
             />
 
@@ -2300,7 +2300,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const actorKey = resolveGroupMemberKeyByName(session, data.adminActorName || "", userN);
         // 执行人必须是输出该标签的角色本人
         if (!actorKey || actorKey !== actorCharacterId) return null;
-        const targetKey = resolveGroupMemberKeyByName(session, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
+        const targetKey = action === "dissolve"
+            ? GROUP_SELF_KEY
+            : resolveGroupMemberKeyByName(session, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
         if (!targetKey) return null;
         if (!canGroupAdminAct(session, actorKey, action, targetKey)) return null;
         applyGroupAdminAction(session, action, actorKey, targetKey, data.adminMuteMinutes);

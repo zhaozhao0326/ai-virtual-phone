@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.3.5";
+export const APP_VERSION = "1.3.6";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.6",
+    date: "2026-08-09",
+    title: "群解散：群主（用户或角色）可解散群聊，记忆全保留",
+    highlights: [
+      "新增群解散能力：群主（无论是用户本人还是角色群主）都能解散群聊。按你要求，解散只是「标记 dissolved」，聊天历史全部保留，绝不删除（解决兄弟群把人踢光变空壳、却没出口的问题）",
+      "用户侧：群设置面板新增「解散群聊」按钮（仅群主可见），二次确认后执行",
+      "剧情侧：角色群主在对话里输出 [A解散了群聊] 标签即自动解散，与现有的踢人 / 禁言走同一套群管机制",
+      "解散后群聊输入框锁定、占位提示「该群已解散，聊天记录已保留」；群仍留在会话列表，点进去可回看全部历史",
+      "解散是剧情节点：底层派发 group-dissolved 事件（detail 含 sessionId / ownerKey / remainingMemberKeys），为后续「群里其他角色就此事私聊用户、讨论」的自主社交引擎预留消费点",
+    ],
+  },
   {
     version: "1.3.5",
     date: "2026-08-09",

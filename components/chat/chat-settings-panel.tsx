@@ -306,6 +306,7 @@ export function ChatSettingsPanel({
     const [memberActionKey, setMemberActionKey] = useState<string | null>(null);
     const [mutePickerKey, setMutePickerKey] = useState<string | null>(null);
     const [showInvitePicker, setShowInvitePicker] = useState(false);
+    const [showDissolveConfirm, setShowDissolveConfirm] = useState(false);
     const [allowAdminOnUser, setAllowAdminOnUser] = useState(session.allowAdminActionsOnUser === true);
     if (session.isGroup) pruneExpiredGroupMutes(session);
     const userName = userIdentity?.name || "用户";
@@ -683,6 +684,15 @@ export function ChatSettingsPanel({
                                 <div className="menu-label-group">
                                     <span className="menu-label menu-label-danger">收回群主身份</span>
                                     <span className="menu-desc">上帝操作：无视群规则直接拿回群主</span>
+                                </div>
+                            </button>
+                        )}
+                        {!session.isSpectator && ownerKey === GROUP_SELF_KEY && !session.dissolved && (
+                            <button className="menu-item" onClick={() => setShowDissolveConfirm(true)}>
+                                <ChatInfoIcon icon={Users} color="var(--c-danger)" />
+                                <div className="menu-label-group">
+                                    <span className="menu-label menu-label-danger">解散群聊</span>
+                                    <span className="menu-desc">解散后聊天记录会保留，但群聊不可再发言（剧情节点）</span>
                                 </div>
                             </button>
                         )}
@@ -1201,6 +1211,23 @@ export function ChatSettingsPanel({
                     cancelLabel="取消"
                     onConfirm={handleClearToolHistory}
                     onCancel={() => setShowConfirmClearTools(false)}
+                />
+            )}
+
+            {/* Modal: Confirm Dissolve Group */}
+            {showDissolveConfirm && (
+                <ConfirmDialog
+                    title="解散群聊"
+                    message={`确定要解散「${session.groupName || "该群"}」吗？聊天记录会保留，但群聊将不可再发言（这是一个剧情节点，群里的其他角色可能对此有反应）。`}
+                    icon={AlertCircle}
+                    variant="danger"
+                    confirmLabel="解散"
+                    cancelLabel="取消"
+                    onConfirm={() => {
+                        setShowDissolveConfirm(false);
+                        performAdminAction("dissolve", GROUP_SELF_KEY);
+                    }}
+                    onCancel={() => setShowDissolveConfirm(false)}
                 />
             )}
 

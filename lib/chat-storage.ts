@@ -67,6 +67,7 @@ export type ChatSession = {
     groupMutes?: Record<string, string>; // (characterId | "self") → mute expiry ISO
     allowAdminActionsOnUser?: boolean; // characters may kick/mute the user (default off)
     isSpectator?: boolean; // 围观群：用户不在群内，只能生成/线下
+    dissolved?: boolean; // 群已解散（仅标记，不删聊天历史；群主可解散，属剧情节点）
     /** 活人感异步回复：开启后角色延迟回复，模拟真人节奏 */
     lifelikeEnabled?: boolean;
     /** 延迟最小秒数，默认 5 */

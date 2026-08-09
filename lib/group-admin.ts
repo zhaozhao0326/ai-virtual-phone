@@ -15,7 +15,8 @@ export type GroupAdminAction =
     | "kick"
     | "invite"
     | "mute"
-    | "unmute";
+    | "unmute"
+    | "dissolve";
 
 export type GroupRole = "owner" | "admin" | "member";
 
@@ -85,6 +86,8 @@ export function canGroupAdminAct(
     if (!isGroupMemberKey(session, actorKey)) return false;
     const actorRole = getGroupRole(session, actorKey);
     if (actorRole === "member") return false;
+    // 解散群不针对某个成员，仅群主可执行
+    if (action === "dissolve") return actorRole === "owner";
     if (actorKey === targetKey && action !== "unmute") return false;
 
     // Characters targeting the user: kicking is never allowed (the session
@@ -180,6 +183,7 @@ export function buildGroupAdminNoticeText(
         case "invite": return `${actorName}邀请${targetName}加入了群聊`;
         case "mute": return `${actorName}将${targetName}禁言${formatMuteDurationLabel(muteMinutes || 10)}`;
         case "unmute": return `${actorName}解除了${targetName}的禁言`;
+        case "dissolve": return `${actorName}解散了群聊`;
     }
 }
 
@@ -205,6 +209,7 @@ export function buildGroupAdminBracketText(
         case "invite": return `[${actorName}邀请${targetName}加入了群聊]`;
         case "mute": return `[${actorName}禁言了${targetName}:${formatMuteDurationLabel(muteMinutes || 10)}]`;
         case "unmute": return `[${actorName}解除了${targetName}的禁言]`;
+        case "dissolve": return `[${actorName}解散了群聊]`;
     }
 }
 
@@ -267,6 +272,22 @@ export function applyGroupAdminAction(
             delete mutes[targetKey];
             updates.groupMutes = mutes;
             break;
+        }
+        case "dissolve": {
+            updates.dissolved = true;
+            break;
+        }
+    }
+
+    if (action === "dissolve") {
+        // 解散是剧情节点：广播事件供角色社交引擎消费（如群里其他角色私聊用户讨论此事）。
+        // 群聊历史全部保留，仅标记 dissolved，不调用 deleteChatSession。
+        const ownerKey = getGroupOwnerKey(session);
+        const remainingMemberKeys = (session.participantIds || []).filter(id => id !== ownerKey);
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("group-dissolved", {
+                detail: { sessionId: session.id, ownerKey, remainingMemberKeys },
+            }));
         }
     }
 
