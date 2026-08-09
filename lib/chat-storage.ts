@@ -178,10 +178,12 @@ export type ChatMessage = {
         blackMarketTheaterStartedAt?: string;
         claimer?: string;         // 领取/接受动作的执行人名
         owner?: string;           // 领取/接受动作的目标人名（谁发的红包/转账）
-        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute"; // 群管理操作类型
+        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute" | "dissolve" | "create_group"; // 群管理操作类型
         adminActorName?: string;  // 群管理操作执行人显示名
         adminTargetName?: string; // 群管理操作目标显示名
         adminMuteMinutes?: number;// 禁言时长（分钟）
+        groupName?: string;       // 群管理/建群相关：群名
+        memberNames?: string;     // 角色自主建群：成员显示名（逗号/、分隔）
         musicTitle?: string;      // 音乐标题
         musicArtist?: string;     // 音乐歌手
         xiaohongshuAuthor?: string;       // 小红书分享作者
