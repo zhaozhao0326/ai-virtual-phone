@@ -686,8 +686,13 @@ function SessionItem({ session, onSelect, isPinned }: { session: ChatSession, on
                     <span className="ts-16 font-medium text-[var(--c-text-title)] truncate">
                         {isGroup ? (session.groupName || "群聊") : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}
                     </span>
-                    <span className="ts-12 text-[var(--c-icon)] font-medium">
-                        {formatChatUiTime(displayTime)}
+                    <span className="flex items-center gap-1 shrink-0">
+                        {session.unreadCount > 0 && (
+                            <span className="minimal-unread-count">{session.unreadCount > 99 ? "99+" : session.unreadCount}</span>
+                        )}
+                        <span className="ts-12 text-[var(--c-icon)] font-medium">
+                            {formatChatUiTime(displayTime)}
+                        </span>
                     </span>
                 </div>
                 <div className="flex justify-between items-center gap-2">

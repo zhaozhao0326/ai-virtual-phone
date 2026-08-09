@@ -987,6 +987,15 @@ export function saveChatSessions(sessions: ChatSession[]) {
     else dbPutSessions(refreshed.items);
 }
 
+/** 累加某个会话的未读计数（角色主动私聊等场景使用），并写回存储。 */
+export function bumpSessionUnread(sessionId: string, by = 1): void {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx === -1) return;
+    sessions[idx] = { ...sessions[idx], unreadCount: (sessions[idx].unreadCount || 0) + by };
+    saveChatSessions(sessions);
+}
+
 export function createOrGetSession(contactId: string): ChatSession {
     const sessions = loadChatSessions();
     const existing = sessions.find(s => s.contactId === contactId);

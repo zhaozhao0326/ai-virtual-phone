@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.3.6";
+export const APP_VERSION = "1.3.7";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.3.7",
+    date: "2026-08-09",
+    title: "角色主动私聊：群解散后，幸存的角色会主动来找你",
+    highlights: [
+      "新增「角色主动私聊」能力（lib/character-proactive-chat.ts）：角色可基于社交事件主动向用户发起 1:1 私聊，由 AI 以该角色口吻生成开场白并落为一条助手气泡，复用与被删后挽留同构的链路",
+      "首个触发场景：群被解散后，群里幸存的第一个角色会主动给用户发私聊，自然地聊起「群没了」这件事或顺着关系是说点什么（之前留的 group-dissolved 事件消费点正式打通）",
+      "未读红点：会话列表新增未读计数红点（>99 显示 99+）；角色主动发的消息会自动累加未读并让该会话置顶，打开会话即清零",
+      "通用事件框架已就绪：group_dissolved / friend_deleted / friend_rejected / generic 四类事件各有专属提示词与兜底文案，后续「角色主动发好友申请 / 自主建群」可直接复用 triggerProactiveDM",
+    ],
+  },
   {
     version: "1.3.6",
     date: "2026-08-09",

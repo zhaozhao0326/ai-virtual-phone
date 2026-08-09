@@ -1702,6 +1702,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     useEffect(() => {
         const groupWorldId = session.isGroup ? resolveWorldIdForGroup(session.participantIds) : undefined;
         setUserIdentity(resolveUserIdentity(session.contactId, session.isGroup ? "group_chat" : "chat", groupWorldId));
+        // 打开会话即视为已读：清零该会话未读红点（角色主动私聊等场景累加）
+        {
+            const sessList = loadChatSessions();
+            const sIdx = sessList.findIndex(s => s.id === session.id);
+            if (sIdx !== -1 && sessList[sIdx].unreadCount) {
+                sessList[sIdx] = { ...sessList[sIdx], unreadCount: 0 };
+                saveChatSessions(sessList);
+                window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: session.id } }));
+            }
+        }
         setTransientMessages([]);
         setOfflineMode(kvGet(CHAT_OFFLINE_MODE_PREFIX + session.id) === "1");
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);

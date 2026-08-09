@@ -8,6 +8,9 @@ import { loadCharacters } from "./character-storage";
 
 export const GROUP_SELF_KEY = "self";
 
+// 防止同一群解散重复触发角色主动私聊（applyGroupAdminAction 单次调用即生效，此为额外保险）
+const _dissolvedProactiveFired = new Set<string>();
+
 export type GroupAdminAction =
     | "transfer_owner"
     | "set_admin"
@@ -288,6 +291,20 @@ export function applyGroupAdminAction(
             window.dispatchEvent(new CustomEvent("group-dissolved", {
                 detail: { sessionId: session.id, ownerKey, remainingMemberKeys },
             }));
+            // 角色自主社交：让群里剩余的第一个角色在解散后主动向用户发私聊。
+            // 动态 import 以避免与 chat-engine 形成静态循环依赖；同一解散仅触发一次。
+            if (remainingMemberKeys.length > 0) {
+                const targetKey = remainingMemberKeys[0];
+                if (!_dissolvedProactiveFired.has(session.id)) {
+                    _dissolvedProactiveFired.add(session.id);
+                    void import("./character-proactive-chat")
+                        .then(mod => mod.triggerProactiveDM(targetKey, {
+                            event: "group_dissolved",
+                            context: `群「${session.groupName || "未命名群"}」被${getGroupMemberDisplayName(ownerKey, "你")}解散了`,
+                        }))
+                        .catch(err => console.warn("[GroupAdmin] 解散后主动私聊触发失败：", err));
+                }
+            }
         }
     }
 
