@@ -3,7 +3,7 @@
 // action application and the {{groupRoster}} prompt macro.
 // Member keys: "self" = the user, otherwise characterId.
 
-import { ChatSession, loadChatSessions, saveChatSessions, createGroupSession, pushChatMessage, bumpSessionUnread } from "./chat-storage";
+import { ChatSession, GroupTodo, loadChatSessions, saveChatSessions, createGroupSession, pushChatMessage, bumpSessionUnread } from "./chat-storage";
 import { loadCharacters } from "./character-storage";
 
 export const GROUP_SELF_KEY = "self";
@@ -20,7 +20,12 @@ export type GroupAdminAction =
     | "mute"
     | "unmute"
     | "dissolve"
-    | "create_group";
+    | "create_group"
+    | "rename"
+    | "set_announcement"
+    | "add_todo"
+    | "complete_todo"
+    | "remove_todo";
 
 export type GroupRole = "owner" | "admin" | "member";
 
@@ -92,6 +97,12 @@ export function canGroupAdminAct(
     if (actorRole === "member") return false;
     // 解散群不针对某个成员，仅群主可执行
     if (action === "dissolve") return actorRole === "owner";
+    // 改群名不针对某个成员（对群本身操作），群主/管理员均可，且 actor 即执行人
+    if (action === "rename") return actorRole === "owner" || actorRole === "admin";
+    // 群公告 / 群待办：群主/管理员均可操作，actor 即执行人
+    if (action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo") {
+        return actorRole === "owner" || actorRole === "admin";
+    }
     if (actorKey === targetKey && action !== "unmute") return false;
 
     // Characters targeting the user: kicking is never allowed (the session
@@ -189,6 +200,11 @@ export function buildGroupAdminNoticeText(
         case "unmute": return `${actorName}解除了${targetName}的禁言`;
         case "dissolve": return `${actorName}解散了群聊`;
         case "create_group": return `${actorName}创建了群聊`;
+        case "rename": return `${actorName}将群名改为了「${targetName}」`;
+        case "set_announcement": return `${actorName}设置了群公告：${targetName}`;
+        case "add_todo": return `${actorName}添加了群待办：${targetName}`;
+        case "complete_todo": return `${actorName}完成了群待办：${targetName}`;
+        case "remove_todo": return `${actorName}删除了群待办：${targetName}`;
     }
 }
 
@@ -216,6 +232,11 @@ export function buildGroupAdminBracketText(
         case "unmute": return `[${actorName}解除了${targetName}的禁言]`;
         case "dissolve": return `[${actorName}解散了群聊]`;
         case "create_group": return `[${actorName}创建了群聊]`;
+        case "rename": return `[${actorName}将群名改为了「${targetName}」]`;
+        case "set_announcement": return `[${actorName}设置了群公告：${targetName}]`;
+        case "add_todo": return `[${actorName}添加了群待办：${targetName}]`;
+        case "complete_todo": return `[${actorName}完成了群待办：${targetName}]`;
+        case "remove_todo": return `[${actorName}删除了群待办：${targetName}]`;
     }
 }
 
@@ -232,6 +253,9 @@ export function applyGroupAdminAction(
     actorKey: string,
     targetKey: string,
     muteMinutes?: number,
+    newGroupName?: string,
+    newAnnouncement?: string,
+    todoText?: string,
 ): Partial<ChatSession> {
     const updates: Partial<ChatSession> = {};
     switch (action) {
@@ -281,6 +305,47 @@ export function applyGroupAdminAction(
         }
         case "dissolve": {
             updates.dissolved = true;
+            break;
+        }
+        case "rename": {
+            const name = (newGroupName || "").trim();
+            if (name) updates.groupName = name;
+            break;
+        }
+        case "set_announcement": {
+            updates.groupAnnouncement = (newAnnouncement || "").trim();
+            break;
+        }
+        case "add_todo": {
+            const text = (todoText || "").trim();
+            if (text) {
+                const todo: GroupTodo = {
+                    id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                    text,
+                    done: false,
+                    createdBy: actorKey,
+                    createdAt: new Date().toISOString(),
+                };
+                updates.groupTodos = [...(session.groupTodos || []), todo];
+            }
+            break;
+        }
+        case "complete_todo": {
+            const text = (todoText || "").trim().toLowerCase();
+            if (text) {
+                updates.groupTodos = (session.groupTodos || []).map(t =>
+                    t.text.trim().toLowerCase() === text ? { ...t, done: true } : t,
+                );
+            }
+            break;
+        }
+        case "remove_todo": {
+            const text = (todoText || "").trim().toLowerCase();
+            if (text) {
+                updates.groupTodos = (session.groupTodos || []).filter(
+                    t => t.text.trim().toLowerCase() !== text,
+                );
+            }
             break;
         }
     }

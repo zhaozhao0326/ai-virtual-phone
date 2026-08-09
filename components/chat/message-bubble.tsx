@@ -4,7 +4,7 @@ import { type ReactNode, useState, useEffect, useCallback, useRef, useMemo, memo
 import { findCustomStickerByName, resolveCustomStickerUrl } from "@/lib/custom-sticker-storage";
 import { isMediaStoreRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
-import { ChatMessage, createOrGetSession, updateMessageMediaStatus, updateMessageMediaData, updateMessageMediaUrl } from "@/lib/chat-storage";
+import { ChatMessage, createOrGetSession, updateMessageMediaStatus, updateMessageMediaData, updateMessageMediaUrl, pushChatMessage, CHAT_REQUEST_REPLY_EVENT } from "@/lib/chat-storage";
 import { resolveContactCard } from "@/lib/contact-card";
 import { loadCharacters } from "@/lib/character-storage";
 import { CHAT_OPEN_SESSION_EVENT, dispatchOpenAddContact } from "@/lib/chat-notification-events";
@@ -92,6 +92,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <GiftBubble msg={msg} />;
         case "contact_card":
             return <ContactCardBubble msg={msg} characterId={characterId} />;
+        case "ask_user":
+            return <AskUserBubble msg={msg} />;
         case "payment_request":
             return <PaymentRequestBubble msg={msg} charName={charName} userName={userName} onShowDetail={onShowDetail} />;
         case "app_card":
@@ -1073,6 +1075,44 @@ function ContactCardBubble({ msg, characterId }: { msg: ChatMessage; characterId
                 document.body,
             )}
         </>
+    );
+}
+
+/**
+ * 角色主动询问用户并等待确认：渲染问题 + 选项按钮。
+ * 点击选项即把该选项作为一条用户消息发出，并请求角色继续回复（复用 CHAT_REQUEST_REPLY_EVENT）。
+ */
+function AskUserBubble({ msg }: { msg: ChatMessage }) {
+    const [answered, setAnswered] = useState(false);
+    const question = msg.mediaData?.askQuestion || "想问你点事";
+    const options = msg.mediaData?.askOptions || [];
+    const handleChoose = (opt: string) => {
+        if (answered) return;
+        setAnswered(true);
+        const sessionId = msg.sessionId;
+        pushChatMessage({ sessionId, role: "user", content: opt });
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent(CHAT_REQUEST_REPLY_EVENT, { detail: { sessionId } }));
+        }
+    };
+    return (
+        <div className="chat-ask-user-card">
+            <div className="chat-ask-user-q">{question}</div>
+            <div className="chat-ask-user-options">
+                {options.map((opt, i) => (
+                    <button
+                        key={i}
+                        type="button"
+                        className="chat-ask-user-option"
+                        disabled={answered}
+                        onClick={() => handleChoose(opt)}
+                    >
+                        {opt}
+                    </button>
+                ))}
+            </div>
+            {answered && <div className="chat-ask-user-done">已回复</div>}
+        </div>
     );
 }
 

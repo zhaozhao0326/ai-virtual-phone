@@ -5,6 +5,7 @@ import {
     CHAT_INITIAL_VISIBLE_MESSAGE_COUNT,
     CHAT_LOAD_MORE_MESSAGE_COUNT,
     ChatSession,
+    GroupTodo,
     clearChatSessionMessages,
     clearChatSessionToolHistory,
     saveChatSessions,
@@ -308,6 +309,9 @@ export function ChatSettingsPanel({
     const [showInvitePicker, setShowInvitePicker] = useState(false);
     const [showDissolveConfirm, setShowDissolveConfirm] = useState(false);
     const [allowAdminOnUser, setAllowAdminOnUser] = useState(session.allowAdminActionsOnUser === true);
+    const [announcement, setAnnouncement] = useState(session.groupAnnouncement || "");
+    const [todos, setTodos] = useState<GroupTodo[]>(session.groupTodos || []);
+    const [todoInput, setTodoInput] = useState("");
     if (session.isGroup) pruneExpiredGroupMutes(session);
     const userName = userIdentity?.name || "用户";
     const ownerKey = session.isGroup ? getGroupOwnerKey(session) : "";
@@ -405,6 +409,32 @@ export function ChatSettingsPanel({
             saveChatSessions(sessions);
             Object.assign(session, updates);
         }
+    };
+    const saveAnnouncement = () => updateSession({ groupAnnouncement: announcement.trim() });
+    const addTodo = () => {
+        const text = todoInput.trim();
+        if (!text) return;
+        const t: GroupTodo = {
+            id: `todo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            text,
+            done: false,
+            createdBy: GROUP_SELF_KEY,
+            createdAt: new Date().toISOString(),
+        };
+        const next = [...todos, t];
+        setTodos(next);
+        setTodoInput("");
+        updateSession({ groupTodos: next });
+    };
+    const toggleTodo = (id: string) => {
+        const next = todos.map(t => (t.id === id ? { ...t, done: !t.done } : t));
+        setTodos(next);
+        updateSession({ groupTodos: next });
+    };
+    const removeTodo = (id: string) => {
+        const next = todos.filter(t => t.id !== id);
+        setTodos(next);
+        updateSession({ groupTodos: next });
     };
 
     const handleClearHistory = () => {
@@ -696,6 +726,57 @@ export function ChatSettingsPanel({
                                 </div>
                             </button>
                         )}
+                    </div>
+                )}
+
+                {/* 群公告 + 群待办 */}
+                {session.isGroup && !session.isSpectator && (
+                    <div className="menu-group">
+                        <div className="menu-item" style={{ cursor: "default", display: "block" }}>
+                            <ChatInfoIcon icon={MessageSquare} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group" style={{ marginBottom: 8 }}>
+                                <span className="menu-label">群公告</span>
+                                <span className="menu-desc">群主/管理员或角色都可设置，会显示在群聊顶部</span>
+                            </div>
+                            <textarea
+                                className="chat-announcement-input"
+                                value={announcement}
+                                placeholder="写点群公告…"
+                                rows={2}
+                                onChange={e => setAnnouncement(e.target.value)}
+                                onBlur={saveAnnouncement}
+                            />
+                            <button className="chat-announcement-save" onClick={saveAnnouncement}>保存公告</button>
+                        </div>
+                        <div className="menu-item" style={{ cursor: "default", display: "block" }}>
+                            <ChatInfoIcon icon={AlertCircle} color={BINDING_ACCENTS.memory} />
+                            <div className="menu-label-group" style={{ marginBottom: 8 }}>
+                                <span className="menu-label">群待办</span>
+                                <span className="menu-desc">角色也能添加/完成待办，点击可勾掉</span>
+                            </div>
+                            <div className="chat-todo-add">
+                                <input
+                                    className="chat-todo-input"
+                                    value={todoInput}
+                                    placeholder="添加一项待办…"
+                                    onChange={e => setTodoInput(e.target.value)}
+                                    onKeyDown={e => { if (e.key === "Enter") addTodo(); }}
+                                />
+                                <button className="chat-todo-add-btn" onClick={addTodo}>添加</button>
+                            </div>
+                            <div className="chat-todo-list">
+                                {todos.length === 0 && <div className="chat-todo-empty">还没有待办</div>}
+                                {todos.map(t => (
+                                    <div key={t.id} className={`chat-todo-row${t.done ? " done" : ""}`}>
+                                        <button className="chat-todo-check" onClick={() => toggleTodo(t.id)}>
+                                            {t.done ? "✓" : ""}
+                                        </button>
+                                        <span className="chat-todo-text" onClick={() => toggleTodo(t.id)}>{t.text}</span>
+                                        <button className="chat-todo-del" onClick={() => removeTodo(t.id)}>×</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 )}
 
