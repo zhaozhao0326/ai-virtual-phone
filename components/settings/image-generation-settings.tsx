@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { AlertCircle, Camera, ChevronDown, HelpCircle, Image, RefreshCw, Sparkles, Trash2, Upload, X, BookOpen, Plus, Save } from "lucide-react";
+import { AlertCircle, Camera, ChevronDown, Download, HelpCircle, Image, RefreshCw, Sparkles, Trash2, Upload, X, BookOpen, Plus, Save } from "lucide-react";
 import type { ImageGenerationSettings as ImageGenerationSettingsType, NaiPreset, NaiPresetGroup } from "@/lib/settings-types";
 import {
     DEFAULT_IMAGE_GENERATION_SETTINGS,
@@ -253,14 +253,30 @@ function TestGenCard({
     onTest,
     status,
     testPreviewUrl,
+    testMime,
     isTesting,
 }: {
     onTest: (prompt: string) => void;
     status: Status | null;
     testPreviewUrl: string | null;
+    testMime: string;
     isTesting: boolean;
 }) {
     const [prompt, setPrompt] = useState(DEFAULT_TEST_PROMPT);
+    // 根据 MIME 推断下载文件扩展名
+    const ext = (() => {
+        switch (testMime) {
+            case "image/jpeg":
+                return "jpg";
+            case "image/webp":
+                return "webp";
+            case "image/gif":
+                return "gif";
+            case "image/png":
+            default:
+                return "png";
+        }
+    })();
     return (
         <div className="menu-group p-4 flex flex-col gap-3">
             <div className="flex flex-col gap-1">
@@ -292,11 +308,21 @@ function TestGenCard({
             )}
             <div className="flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-[var(--c-card-border)] bg-[var(--c-card-bg)]/40 p-4">
                 {testPreviewUrl ? (
-                    <img
-                        src={testPreviewUrl}
-                        alt="测试生图结果"
-                        className="max-h-[300px] max-w-full rounded-lg object-contain"
-                    />
+                    <div className="flex w-full flex-col items-center gap-3">
+                        <img
+                            src={testPreviewUrl}
+                            alt="测试生图结果"
+                            className="max-h-[300px] max-w-full rounded-lg object-contain"
+                        />
+                        <a
+                            href={testPreviewUrl}
+                            download={`test-image.${ext}`}
+                            className="ui-btn ui-btn-ghost flex items-center gap-1.5 text-sm"
+                        >
+                            <Download size={16} />
+                            下载原图
+                        </a>
+                    </div>
                 ) : (
                     <span className="menu-desc text-center text-sm opacity-50">测试生图结果将显示在此</span>
                 )}
@@ -320,6 +346,7 @@ export function ImageGenerationSettings() {
     const [isTesting, setIsTesting] = useState(false);
     const [status, setStatus] = useState<Status | null>(null);
     const [testPreviewUrl, setTestPreviewUrl] = useState<string | null>(null);
+    const [testMime, setTestMime] = useState<string>("image/png");
 
     // ---- NAI 弹窗状态 ----
     const [showNaiModal, setShowNaiModal] = useState(false);
@@ -492,6 +519,7 @@ export function ImageGenerationSettings() {
             });
             if (!result) throw new Error("图像生成未返回结果。");
             if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
+            setTestMime(result.blob.type || "image/png");
             setTestPreviewUrl(URL.createObjectURL(result.blob));
             setStatus({ success: true, message: "测试生图成功。" });
         } catch (err) {
@@ -1342,6 +1370,7 @@ export function ImageGenerationSettings() {
                     onTest={(p) => testGeneration(p)}
                     status={status}
                     testPreviewUrl={testPreviewUrl}
+                    testMime={testMime}
                     isTesting={isTesting}
                 />
             </div>
