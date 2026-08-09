@@ -3,7 +3,7 @@
 // action application and the {{groupRoster}} prompt macro.
 // Member keys: "self" = the user, otherwise characterId.
 
-import { ChatSession, loadChatSessions, saveChatSessions } from "./chat-storage";
+import { ChatSession, loadChatSessions, saveChatSessions, createGroupSession, pushChatMessage, bumpSessionUnread } from "./chat-storage";
 import { loadCharacters } from "./character-storage";
 
 export const GROUP_SELF_KEY = "self";
@@ -19,7 +19,8 @@ export type GroupAdminAction =
     | "invite"
     | "mute"
     | "unmute"
-    | "dissolve";
+    | "dissolve"
+    | "create_group";
 
 export type GroupRole = "owner" | "admin" | "member";
 
@@ -187,6 +188,7 @@ export function buildGroupAdminNoticeText(
         case "mute": return `${actorName}将${targetName}禁言${formatMuteDurationLabel(muteMinutes || 10)}`;
         case "unmute": return `${actorName}解除了${targetName}的禁言`;
         case "dissolve": return `${actorName}解散了群聊`;
+        case "create_group": return `${actorName}创建了群聊`;
     }
 }
 
@@ -213,6 +215,7 @@ export function buildGroupAdminBracketText(
         case "mute": return `[${actorName}禁言了${targetName}:${formatMuteDurationLabel(muteMinutes || 10)}]`;
         case "unmute": return `[${actorName}解除了${targetName}的禁言]`;
         case "dissolve": return `[${actorName}解散了群聊]`;
+        case "create_group": return `[${actorName}创建了群聊]`;
     }
 }
 
@@ -316,6 +319,76 @@ export function applyGroupAdminAction(
     }
     Object.assign(session, updates);
     return updates;
+}
+
+// ── 角色自主建群（消费 [X建了一个群 | 群名: ... | 成员: ...] 标签） ──
+
+export interface CreateGroupResult {
+    sessionId: string;
+    groupName: string;
+}
+
+// 防止同一标签在一次生成里被分块/双路径重复触发建多个群
+const _createGroupFired = new Set<string>();
+
+/**
+ * 角色主动创建一个新群并把用户拉进去。
+ * - 发起角色成为群主（groupOwnerId = actorCharacterId）
+ * - 用户在群内（被拉入）
+ * - 标签里点名的其他角色也加入
+ * 返回新群会话信息；标签非法或重复触发时返回 null。
+ */
+export function applyAIProactiveGroupCreate(
+    actorCharacterId: string,
+    data: { adminActorName?: string; groupName?: string; memberNames?: string },
+): CreateGroupResult | null {
+    if (!actorCharacterId || actorCharacterId === GROUP_SELF_KEY) return null;
+    const chars = loadCharacters();
+    const actorChar = chars.find(c => c.id === actorCharacterId);
+    const actorName = (data.adminActorName || "").trim() || actorChar?.name || "有人";
+    const groupName = (data.groupName || "").trim() || `${actorName}的群聊`;
+
+    // 解析成员名 → 角色 ID（"你"/"我"/"用户" 跳过，用户单独加入）
+    const memberIds: string[] = [];
+    const rawNames = (data.memberNames || "")
+        .split(/[,，、]/)
+        .map(s => s.trim())
+        .filter(Boolean);
+    for (const nm of rawNames) {
+        if (nm === "你" || nm === "我" || nm === "用户") continue;
+        const char = chars.find(c => c.name === nm);
+        if (char && !memberIds.includes(char.id)) memberIds.push(char.id);
+    }
+
+    // 去重：同一（发起者 + 群名 + 成员）在一次生成内不重复建群
+    const dedupeKey = `${actorCharacterId}|${groupName}|${memberIds.join(",")}`;
+    if (_createGroupFired.has(dedupeKey)) return null;
+
+    const participantIds = [actorCharacterId, ...memberIds, GROUP_SELF_KEY];
+    const newSession = createGroupSession(groupName, participantIds, {
+        isSpectator: false,
+        ownerId: actorCharacterId,
+    });
+
+    // 系统提示：谁创建了群、把你拉了进去
+    pushChatMessage({
+        sessionId: newSession.id,
+        role: "system",
+        content: `${actorName} 创建了群聊「${groupName}」并把你拉了进来`,
+    });
+
+    // 会话列表刷新 + 新群红点
+    bumpSessionUnread(newSession.id);
+    if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: newSession.id } }));
+        window.dispatchEvent(new CustomEvent("weixin-messages-updated", { detail: { sessionId: newSession.id } }));
+    }
+
+    _createGroupFired.add(dedupeKey);
+    // 短延时清理去重键，避免后续剧情真要建同名群被永久挡住
+    setTimeout(() => _createGroupFired.delete(dedupeKey), 60000);
+
+    return { sessionId: newSession.id, groupName };
 }
 
 /** Drop expired mute entries from storage (passive expiry). */

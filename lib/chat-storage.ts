@@ -1015,9 +1015,10 @@ export function createOrGetSession(contactId: string): ChatSession {
     return newSession;
 }
 
-export function createGroupSession(groupName: string, participantIds: string[], options?: { isSpectator?: boolean }): ChatSession {
+export function createGroupSession(groupName: string, participantIds: string[], options?: { isSpectator?: boolean; ownerId?: string }): ChatSession {
     const sessions = loadChatSessions();
     const isSpectator = options?.isSpectator === true;
+    const ownerId = options?.ownerId;
     const newSession: ChatSession = {
         id: `sess_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         contactId: `group_${Date.now()}`, // synthetic contactId for group
@@ -1030,8 +1031,9 @@ export function createGroupSession(groupName: string, participantIds: string[], 
         isGroup: true,
         groupName,
         participantIds,
-        // 围观群用户不在群内，群主落在第一位成员头上
-        groupOwnerId: isSpectator ? participantIds[0] : "self",
+        // 围观群用户不在群内，群主落在第一位成员头上；否则默认用户为群主，
+        // 但角色自主建群时可显式指定群主为发起角色
+        groupOwnerId: ownerId || (isSpectator ? participantIds[0] : "self"),
         ...(isSpectator ? { isSpectator: true } : {}),
     };
     saveChatSessions([newSession, ...sessions]);

@@ -4,7 +4,7 @@ import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
-import { parseAIResponse, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { parseAIResponse, CREATE_GROUP_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
@@ -74,7 +74,7 @@ import {
     rollChatDiceFace,
 } from "@/lib/chat-screen-effects";
 import { abortableDelay, throwIfAborted } from "@/lib/abort-utils";
-import { GROUP_SELF_KEY, canGroupAdminAct, applyGroupAdminAction, buildGroupAdminNoticeText, getGroupMemberDisplayName, getGroupMuteRemainingMs, getGroupRole, isGroupMuted, formatMuteRemainingLabel, resolveGroupMemberKeyByName, type GroupAdminAction } from "@/lib/group-admin";
+import { GROUP_SELF_KEY, canGroupAdminAct, applyGroupAdminAction, applyAIProactiveGroupCreate, buildGroupAdminNoticeText, getGroupMemberDisplayName, getGroupMuteRemainingMs, getGroupRole, isGroupMuted, formatMuteRemainingLabel, resolveGroupMemberKeyByName, type GroupAdminAction } from "@/lib/group-admin";
 import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
@@ -2431,6 +2431,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if (part.mediaType === "group_admin_notice") {
                     if (!isFirst) await abortableDelay(800, guard?.signal);
                     throwIfGenerationStopped(guard);
+                    // 角色自主建群：单独分支（新建一个会话，不走「对现有群应用动作」逻辑）
+                    if (part.mediaData?.adminAction === "create_group") {
+                        const created = applyAIProactiveGroupCreate(r.characterId, part.mediaData);
+                        if (created) {
+                            showChatToast(`${part.mediaData.adminActorName || r.characterName} 创建了群聊「${created.groupName}」并把你拉了进去`);
+                        }
+                        continue;
+                    }
                     const applied = applyAIGroupAdminAction(r.characterId, part.mediaData);
                     if (!applied) continue; // 无权限/名字不合法：整个标签静默丢弃
                     isFirst = false;
@@ -3654,6 +3662,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     onTextPart: async (text, _senderInfo, options) => {
                         if (!isCurrentGeneration()) return;
                         if (text.trim()) {
+                            // 角色自主建群标签拦截（1:1 场景）：建群 + 把用户拉进去，再从文本里剥掉标签
+                            const cg = CREATE_GROUP_TAG_RE.exec(text);
+                            if (cg) {
+                                const created = applyAIProactiveGroupCreate(session.contactId, {
+                                    adminActorName: (cg[1] || "").trim(),
+                                    groupName: (cg[2] || "").trim(),
+                                    memberNames: (cg[3] || "").trim(),
+                                });
+                                if (created) {
+                                    showChatToast(`${cg[1]?.trim() || ""} 创建了群聊「${created.groupName}」并把你拉了进去`);
+                                }
+                                text = text.replace(CREATE_GROUP_TAG_RE, "");
+                            }
                             const reasoningText = pendingReasoning;
                             pendingReasoning = undefined;
                             lastSendResult = await splitAndSaveAIMessages(text, { ...options, ...generationGuard, reasoningText });

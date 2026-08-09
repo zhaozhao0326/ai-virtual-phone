@@ -65,6 +65,16 @@ function parseMuteMinutes(num?: string, unit?: string): number {
     return n;
 }
 
+/**
+ * 角色自主建群标签：
+ *   [A建了一个群 | 群名: 周末聚餐 | 成员: 李四,王五]
+ *   [A拉你进了群 | 群名: 周末聚餐]
+ *   [A建了一个群]（无群名/成员时取默认）
+ * 捕获组：1=发起角色名 2=群名(可选) 3=成员名(逗号/、分隔，可选)
+ */
+export const CREATE_GROUP_TAG_RE =
+    /\[([^\]]+?)\s*(?:建了(?:了)?一个?群[聊]?|拉你进(?:了)?新?群[聊]?)\s*(?:\s*[|｜]\s*群名[:：]\s*([^|｜\]]+?))?\s*(?:\s*[|｜]\s*成员[:：]\s*([^\]]+?))?\s*\]/;
+
 const RICH_PATTERNS: {
     regex: RegExp;
     build: (m: RegExpMatchArray) => ParsedMessagePart;
@@ -342,6 +352,20 @@ const RICH_PATTERNS: {
         // [A解散了群聊] / [A解散了群] / [A解散群] —— 群主主动解散，属剧情节点
         regex: /\[([^\]]+?)解散了?群聊?\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "dissolve" as const, adminActorName: m[1]?.trim() } }),
+    },
+    {
+        // 角色自主建群（pull 用户+指定成员进新群）。群名/成员可选。
+        regex: CREATE_GROUP_TAG_RE,
+        build: (m) => ({
+            content: "",
+            mediaType: "group_admin_notice" as const,
+            mediaData: {
+                adminAction: "create_group" as const,
+                adminActorName: m[1]?.trim(),
+                groupName: m[2]?.trim() || "",
+                memberNames: m[3]?.trim() || "",
+            },
+        }),
     },
     // 1:1 简单格式（兼容）
     {
