@@ -231,40 +231,193 @@ export function LocationInputModal({ onSend, onClose }: LocationInputModalProps)
     );
 }
 
-// ── Text Photo Modal ─────────────────────────────
+// ── Text Photo Modal (棉花糖机风格：用户自选画面人物 → 前端直接生图 → 以用户身份发图) ─────────────────────────────
+
+export interface TextPhotoParticipant {
+    id: string;                    // "user" 表示当前用户；其他为角色 id
+    name: string;
+    hasReference: boolean;         // UI 提示：是否有锁脸参考图
+    appearance?: string | null;
+    gender?: string | null;
+}
 
 interface TextPhotoModalProps {
-    onSend: (text: string) => void;
+    participants: TextPhotoParticipant[];
+    defaultSelected?: string[];
+    /** 前端直接调生图 API，返回生成后的 data URL（不含 data: 前缀 MIME 也行，函数内会自适配） */
+    onGenerate: (prompt: string, selectedIds: string[]) => Promise<string | null>;
+    /** 拿到 data URL 后由父组件把图作为用户消息发出 */
+    onSend: (prompt: string, dataUrl: string) => void;
     onClose: () => void;
 }
 
-export function TextPhotoModal({ onSend, onClose }: TextPhotoModalProps) {
+export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSend, onClose }: TextPhotoModalProps) {
     const [text, setText] = useState("");
+    const [selected, setSelected] = useState<Record<string, boolean>>(() => {
+        const init: Record<string, boolean> = {};
+        const seed = defaultSelected && defaultSelected.length ? defaultSelected : participants.slice(0, 2).map(p => p.id);
+        seed.forEach((id) => { if (participants.some(p => p.id === id)) init[id] = true; });
+        return init;
+    });
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+    const [errorText, setErrorText] = useState<string | null>(null);
+
+    const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+    const selectedCount = selectedIds.length;
+    const canAct = text.trim().length > 0 && selectedCount > 0 && selectedCount <= 4 && !busy;
+
+    const toggle = (id: string) => {
+        setSelected((prev) => {
+            const next = { ...prev };
+            if (next[id]) {
+                delete next[id];
+            } else {
+                const cur = Object.values(next).filter(Boolean).length;
+                if (cur >= 4) return prev; // 超过 4 人不允许再开
+                next[id] = true;
+            }
+            return next;
+        });
+    };
+
+    const runGenerate = async (): Promise<string | null> => {
+        const trimmed = text.trim();
+        if (!trimmed || busy) return null;
+        if (selectedCount === 0) {
+            setErrorText("请至少选择 1 位画面人物");
+            return null;
+        }
+        if (selectedCount > 4) {
+            setErrorText("画面人物最多 4 人");
+            return null;
+        }
+        setBusy(true);
+        setErrorText(null);
+        try {
+            const url = await onGenerate(trimmed, selectedIds);
+            if (url) {
+                setPreviewUrl(url);
+                return url;
+            }
+            setErrorText("生图失败，请检查生图配置或稍后重试");
+            return null;
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            setErrorText(msg || "生图失败");
+            return null;
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleGenerate = () => { void runGenerate(); };
+    const handleSend = async () => {
+        const url = previewUrl || await runGenerate();
+        if (url) onSend(text.trim(), url);
+    };
 
     return (
-        <div className="modal-overlay" onClick={onClose}>
-            <div onClick={e => e.stopPropagation()} className="modal-dialog">
-                <div className="ts-16 font-semibold text-center text-[var(--c-text)]">文字图片</div>
-                <div className="w-full h-[100px] rounded-xl flex items-center justify-center ui-placeholder-gradient">
-                    <span className="ts-13 text-[var(--c-text)] opacity-60 px-4 text-center leading-relaxed">
-                        {text.trim() || "输入文字，生成图片"}
-                    </span>
-                </div>
+        <div className="modal-overlay" onClick={busy ? undefined : onClose}>
+            <div onClick={(e) => e.stopPropagation()} className="modal-dialog" style={{ maxWidth: "340px", width: "calc(100vw - 32px)" }}>
+                <div className="ts-16 font-semibold text-center text-[var(--c-text)] w-full">生图</div>
+
+                <label className="ts-12 text-[var(--c-icon)] w-full">提示词</label>
                 <textarea
                     value={text}
-                    onChange={e => setText(e.target.value)}
-                    placeholder="描述图片内容..."
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="正面，微笑，半身照..."
                     className="ui-input w-full"
                     rows={3}
                     style={{ resize: "none" }}
                 />
-                <div className="flex gap-3 w-full">
-                    <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1">取消</button>
+
+                <label className="ts-12 text-[var(--c-icon)] w-full mt-1">画面人物（最多 4 人）</label>
+                <div className="w-full flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+                    {participants.length === 0 && (
+                        <span className="ts-12 text-[var(--c-icon)] py-2 text-center">没有可选人物</span>
+                    )}
+                    {participants.map((p) => {
+                        const on = !!selected[p.id];
+                        return (
+                            <div
+                                key={p.id}
+                                className="w-full flex items-center justify-between px-3 py-2 rounded-lg"
+                                style={{ background: on ? "rgba(255,90,90,0.08)" : "var(--c-input)", border: on ? "1px solid rgba(255,90,90,0.25)" : "1px solid transparent" }}
+                            >
+                                <div className="flex flex-col">
+                                    <span className="ts-13 text-[var(--c-text)]">{p.name}</span>
+                                    {p.hasReference && (
+                                        <span className="ts-11 text-[var(--c-icon)]">有参考图，将锁定脸</span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={on}
+                                    aria-label={`切换 ${p.name}`}
+                                    onClick={() => toggle(p.id)}
+                                    className="relative inline-flex items-center"
+                                    style={{ width: 36, height: 20, borderRadius: 999, background: on ? "var(--c-redpacket)" : "var(--c-icon-bg, #d8d8d8)", transition: "background 0.15s" }}
+                                >
+                                    <span
+                                        style={{
+                                            position: "absolute",
+                                            top: 2,
+                                            left: on ? 18 : 2,
+                                            width: 16,
+                                            height: 16,
+                                            borderRadius: 999,
+                                            background: "#fff",
+                                            transition: "left 0.15s",
+                                            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                                        }}
+                                    />
+                                </button>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <p className="ts-11 text-[var(--c-icon)] leading-relaxed w-full mt-1">
+                    生成后按普通图片发送；角色侧会当成你发的图，不会识别成 AI 协议生图。
+                </p>
+
+                <div
+                    className="w-full rounded-xl flex items-center justify-center overflow-hidden ui-placeholder-gradient"
+                    style={{ minHeight: 140, border: "1px dashed var(--c-icon-bg, #e0e0e0)" }}
+                >
+                    {previewUrl ? (
+                        <img
+                            src={previewUrl}
+                            alt="预览"
+                            className="w-full h-auto"
+                            style={{ maxHeight: 220, objectFit: "contain" }}
+                        />
+                    ) : (
+                        <span className="ts-12 text-[var(--c-icon)]">
+                            {busy ? "生成中..." : "预览区"}
+                        </span>
+                    )}
+                </div>
+
+                {errorText && (
+                    <span className="ts-11 text-[var(--c-danger)] w-full text-center">{errorText}</span>
+                )}
+
+                <div className="flex gap-3 w-full mt-1">
                     <button
-                        onClick={() => { if (text.trim()) onSend(text.trim()); }}
-                        disabled={!text.trim()}
+                        type="button"
+                        onClick={handleGenerate}
+                        disabled={!canAct}
+                        className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1"
+                    >+ 生成</button>
+                    <button
+                        type="button"
+                        onClick={handleSend}
+                        disabled={!canAct}
                         className="ui-btn ui-btn-success flex-1"
-                    >发送</button>
+                    >发送到聊天</button>
                 </div>
             </div>
         </div>

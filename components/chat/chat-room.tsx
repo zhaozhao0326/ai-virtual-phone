@@ -9,7 +9,7 @@ import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
-import { PhotoInputModal, TextPhotoModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
+import { PhotoInputModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
 import { StateValuesPanel } from "./state-values-panel";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
@@ -66,6 +66,10 @@ import {
     generateAndApplyChatGeneratedImage,
     isPendingChatGeneratedImageMessage,
 } from "@/lib/generated-image-retry";
+import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
+import { loadImageGenerationSettings } from "@/lib/settings-storage";
+import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
+import { TextPhotoModal, type TextPhotoParticipant } from "./rich-input-modals";
 import { scrollElementWithinContainer } from "@/lib/dom-scroll";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 import { ChatScreenEffectOverlay, type ActiveScreenEffect } from "./chat-screen-effect";
@@ -1095,6 +1099,39 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
         </div>
     );
 }));
+// ── 文字图片生图：把用户/角色脸图压到 768px JPEG（减小 base64 体积、避开 Vercel 中转 4.5MB 上限）──
+function compressImageDataUrlForChat(dataUrl: string, maxSize = 768): Promise<string | null> {
+    return new Promise((resolve) => {
+        if (typeof window === "undefined" || typeof document === "undefined") { resolve(null); return; }
+        try {
+            const img = new Image();
+            img.onload = () => {
+                const w0 = img.naturalWidth || img.width;
+                const h0 = img.naturalHeight || img.height;
+                if (!w0 || !h0) { resolve(null); return; }
+                const scale = Math.min(1, maxSize / Math.max(w0, h0));
+                const w = Math.max(1, Math.round(w0 * scale));
+                const h = Math.max(1, Math.round(h0 * scale));
+                const canvas = document.createElement("canvas");
+                canvas.width = w; canvas.height = h;
+                const ctx = canvas.getContext("2d");
+                if (!ctx) { resolve(null); return; }
+                ctx.drawImage(img, 0, 0, w, h);
+                try {
+                    const out = canvas.toDataURL("image/jpeg", 0.85);
+                    // 压完反而更大就保留原图（极少见：原图已很小或已是 PNG 小图）
+                    resolve(out.length < dataUrl.length ? out : dataUrl);
+                } catch {
+                    resolve(null);
+                }
+            };
+            img.onerror = () => resolve(null);
+            img.src = dataUrl;
+        } catch {
+            resolve(null);
+        }
+    });
+}
 
 export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
@@ -3418,6 +3455,123 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setPendingGenerate(true);
         return true;
     };
+
+    // ── 文字图片：棉花糖机风格（用户自选画面人物 → 前端直接生图 → 以用户身份发图）───────────
+    const textPhotoParticipantIds = useMemo(() => {
+        if (session.isGroup) return (session.participantIds ?? []).slice();
+        return session.contactId ? [session.contactId] : [];
+    }, [session.isGroup, session.contactId, session.participantIds?.join("|")]);
+
+    const textPhotoParticipants = useMemo<TextPhotoParticipant[]>(() => {
+        const list: TextPhotoParticipant[] = [];
+        const u = resolveUserIdentity();
+        if (u) {
+            list.push({
+                id: "user",
+                name: u.name?.trim() || "你",
+                hasReference: !!u.faceLockUrl?.trim(),
+                appearance: u.appearance?.trim() || null,
+                gender: u.gender || null,
+            });
+        }
+        const chars = loadCharacters();
+        const charRefs = loadImageGenerationSettings().characterReferences ?? {};
+        textPhotoParticipantIds.forEach((cid) => {
+            const c = chars.find((x) => x.id === cid);
+            if (!c) return;
+            const ref = charRefs[cid];
+            list.push({
+                id: c.id,
+                name: c.name,
+                hasReference: !!ref?.assetId,
+                appearance: c.appearance?.trim() || null,
+                gender: null,
+            });
+        });
+        return list;
+    }, [textPhotoParticipantIds]);
+
+    const textPhotoDefaultSelected = useMemo<string[]>(() => {
+        const ids: string[] = [];
+        if (textPhotoParticipants.some((p) => p.id === "user")) ids.push("user");
+        textPhotoParticipantIds.forEach((cid) => {
+            if (textPhotoParticipants.some((p) => p.id === cid)) ids.push(cid);
+        });
+        return ids.slice(0, 2);
+    }, [textPhotoParticipants, textPhotoParticipantIds]);
+
+    const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[]): Promise<string | null> => {
+        if (!prompt.trim() || selectedIds.length === 0) return null;
+        const u = resolveUserIdentity();
+        const chars = loadCharacters();
+        const charRefs = loadImageGenerationSettings().characterReferences ?? {};
+
+        const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null }[] = [];
+        for (const id of selectedIds) {
+            if (id === "user") {
+                const bits: string[] = [];
+                if (u?.gender && u.gender !== "保密") bits.push(u.gender === "女" ? "女生" : u.gender === "男" ? "男生" : u.gender);
+                if (u?.appearance?.trim()) bits.push(u.appearance.trim());
+                specList.push({
+                    id,
+                    name: u?.name?.trim() || "你",
+                    anchor: bits.length ? bits.join("，") : undefined,
+                    faceLockSource: u?.faceLockUrl?.trim() || null,
+                });
+            } else {
+                const c = chars.find((x) => x.id === id);
+                if (!c) continue;
+                const ref = charRefs[c.id];
+                specList.push({
+                    id,
+                    name: c.name,
+                    anchor: c.appearance?.trim() || undefined,
+                    faceLockSource: ref?.assetId || null,
+                });
+            }
+        }
+        if (specList.length === 0) return null;
+
+        const refImages: string[] = [];
+        for (const s of specList) {
+            if (!s.faceLockSource) continue;
+            let raw: string | null = null;
+            if (s.id === "user") {
+                raw = s.faceLockSource;
+            } else {
+                try {
+                    raw = await getChatImageFromIndexedDB(s.faceLockSource);
+                } catch {
+                    raw = null;
+                }
+            }
+            if (!raw) continue;
+            const compressed = await compressImageDataUrlForChat(raw, 768);
+            if (compressed) refImages.push(compressed);
+        }
+
+        const appearanceText = specList.length
+            ? `画面中的人物设定：${specList.map((s) => s.anchor ? `${s.name}（${s.anchor}）` : s.name).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
+            : "";
+
+        const settings = { ...loadImageGenerationSettings(), enabled: true };
+        const generated = await generateImageFromConfiguredApi({
+            description: prompt,
+            participantAppearance: appearanceText || undefined,
+            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
+            referenceImages: refImages.length ? refImages : undefined,
+            sceneBackground: settings.sceneBackground?.trim() || undefined,
+            sceneLighting: settings.sceneLighting?.trim() || undefined,
+            useReferenceImage: refImages.length > 0,
+            settings,
+        });
+        return generated?.dataUrl ?? null;
+    }, []);
+
+    const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {
+        setRichModal(null);
+        sendRichMessage("image", { label: prompt }, "", dataUrl);
+    }, [sendRichMessage]);
 
     const sendSystemInstruction = (content: string): boolean => {
         if (isGenerating) {
@@ -6266,7 +6420,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             )}
             {richModal === "text_photo" && (
                 <TextPhotoModal
-                    onSend={(text) => { setRichModal(null); sendRichMessage("image", { label: text }); }}
+                    participants={textPhotoParticipants}
+                    defaultSelected={textPhotoDefaultSelected}
+                    onGenerate={handleTextPhotoGenerate}
+                    onSend={handleTextPhotoSend}
                     onClose={() => setRichModal(null)}
                 />
             )}

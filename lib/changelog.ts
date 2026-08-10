@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.6";
+export const APP_VERSION = "1.5.7";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.7",
+    date: "2026-08-10",
+    title: "重构：文字图片生图接入棉花糖机风格（用户自选画面人物 → 前端直接生图 → 以用户身份发图）",
+    highlights: [
+      "+→文字图片 弹窗重做：仿棉花糖机，加「画面人物（最多4人）」多选开关列表，默认勾选「你」+ 当前聊天对象",
+      "前端直接调 generateImageFromConfiguredApi 跳过 AI 一轮，角色侧把这条图当成「你发的图」而不是 AI 协议生图",
+      "锁脸按所选人物分流：你 → userIdentity.faceLockUrl；角色 → IndexedDB 里的 characterReferences[id].assetId；无参考图自动走 appearance 关键词",
+      "锁脸图客户端现场压 768px JPEG 后再发给 Vercel 中转，避免多张高清图触发 4.5MB 413",
+    ],
+  },
   {
     version: "1.5.6",
     date: "2026-08-10",
