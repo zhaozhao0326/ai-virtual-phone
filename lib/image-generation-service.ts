@@ -804,6 +804,13 @@ async function generateImageViaServer(params: {
       }
     }
     return { b64: data.b64, mimeType: data.mimeType, revisedPrompt: data.revisedPrompt };
+  } catch (error) {
+    // v1.5.8：兜住 fetch("/api/image-generation") 网络层 TypeError("fetch failed")，
+    // 翻译成中文 + 提示原因，避免 UI 裸显示 "fetch failed"。
+    if (error instanceof TypeError) {
+      throw new Error("生图中转连接失败：网络问题或服务暂不可达，请检查网络或稍后重试。");
+    }
+    throw error;
   } finally {
     clearTimeout(totalTimer);
     if (signal) signal.removeEventListener("abort", onOuterAbort);

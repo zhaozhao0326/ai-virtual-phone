@@ -3555,17 +3555,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
-        const generated = await generateImageFromConfiguredApi({
-            description: prompt,
-            participantAppearance: appearanceText || undefined,
-            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
-            referenceImages: refImages.length ? refImages : undefined,
-            sceneBackground: settings.sceneBackground?.trim() || undefined,
-            sceneLighting: settings.sceneLighting?.trim() || undefined,
-            useReferenceImage: refImages.length > 0,
-            settings,
-        });
-        return generated?.dataUrl ?? null;
+        try {
+            const generated = await generateImageFromConfiguredApi({
+                description: prompt,
+                participantAppearance: appearanceText || undefined,
+                participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
+                referenceImages: refImages.length ? refImages : undefined,
+                sceneBackground: settings.sceneBackground?.trim() || undefined,
+                sceneLighting: settings.sceneLighting?.trim() || undefined,
+                useReferenceImage: refImages.length > 0,
+                settings,
+            });
+            return generated?.dataUrl ?? null;
+        } catch (error) {
+            // v1.5.8：兜底包装生图错误，UI 至少显示"文字生图失败：xxx"而不是裸 fetch failed
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(`文字生图失败：${message}`);
+        }
     }, []);
 
     const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {

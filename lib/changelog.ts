@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.7";
+export const APP_VERSION = "1.5.8";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.8",
+    date: "2026-08-10",
+    title: "修复：生图中转 TypeError 兜底（裸「fetch failed」→ 中文可读错误）",
+    highlights: [
+      "generateImageViaServer 的 fetch(\"/api/image-generation\") 外层补 catch：网络层 TypeError 翻译成「生图中转连接失败：网络问题或服务暂不可达，请检查网络或稍后重试」",
+      "根因：generateImageViaServer 整段只有 try-finally 没有 catch，浏览器 fetch 抛 TypeError 会一路冒到 UI 裸显示英文 fetch failed，用户根本看不懂发生了什么",
+      "修复普适：朋友圈 / 栖所 / 文字生图等所有走 /api/image-generation 中转的生图路径，失败时都会显示这条可读中文（不再裸 fetch failed）",
+      "chat-room 文字生图 handleTextPhotoGenerate 加 try-catch 兜底：任何生图错误统一包装成「文字生图失败：xxx」，明确告诉用户是这条路径挂了、不是聊天崩了",
+    ],
+  },
   {
     version: "1.5.7",
     date: "2026-08-10",
