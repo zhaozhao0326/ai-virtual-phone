@@ -861,6 +861,8 @@ export async function sendLLMRequest(
         followUpCount?: number;
         debugSessionId?: string;
         signal?: AbortSignal;
+        /** true 时改走 Vercel 服务端中转（/api/chat），浏览器只连国内 Vercel，由服务器调上游；用于海外不可直连 Cli 代理的设备 */
+        useRelay?: boolean;
     },
 ): Promise<string> {
     const pluginPurpose = options?.appId ?? "chat";
@@ -899,12 +901,27 @@ export async function sendLLMRequest(
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {
-        const response = await fetch(request.url, {
-            method: "POST",
-            headers: request.headers,
-            body: requestBodyJson,
-            signal: llmAbort.signal,
-        });
+        let response: Response;
+        if (options?.useRelay) {
+            // 服务端中转：浏览器只连国内 Vercel，由 /api/chat 去调上游（海外可达）
+            response = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    targetUrl: request.url,
+                    headers: request.headers,
+                    body: requestBodyJson,
+                }),
+                signal: llmAbort.signal,
+            });
+        } else {
+            response = await fetch(request.url, {
+                method: "POST",
+                headers: request.headers,
+                body: requestBodyJson,
+                signal: llmAbort.signal,
+            });
+        }
 
         if (!response.ok) {
             const errorText = await response.text();

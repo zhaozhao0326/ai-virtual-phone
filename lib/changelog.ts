@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.3";
+export const APP_VERSION = "1.5.4";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.4",
+    date: "2026-08-10",
+    title: "修复：栖所「更新物品/生成全栖所」在直连失败的设备上报错",
+    highlights: [
+      "新增 Vercel 服务端聊天/文本生成中转：栖所的文字生成（刷新房间物品、生成全栖所）改走 /api/chat，由部署在海外 Vercel 的函数去调你的上游 API",
+      "原来栖所文字生成是浏览器直连你的 API 代理（Cli 代理），在连不上该代理的设备（如小米手机）上会 Failed to fetch；现在浏览器只连国内 Vercel，跨海转发由服务器做，跟房间生图走同一条中转机制",
+      "栖所房间图（生图）原本就走中转，本次不动；聊天主路径仍保持直连（OPPO 等正常设备不受影响）",
+    ],
+  },
   {
     version: "1.5.3",
     date: "2026-08-10",

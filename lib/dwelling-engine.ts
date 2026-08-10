@@ -244,6 +244,7 @@ export async function generateDwellingLayout(
         }, {
             appId: "dwelling",
             appTags,
+            useRelay: true,
         });
 
         if (!rawOutput) return { layout: null, error: "LLM 返回为空" };
@@ -320,6 +321,7 @@ export async function generateItemHtml(
         }, {
             appId: "dwelling",
             appTags,
+            useRelay: true,
         });
 
         return { html: rawOutput || null };
