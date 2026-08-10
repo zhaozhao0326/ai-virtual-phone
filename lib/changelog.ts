@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.13";
+export const APP_VERSION = "1.5.14";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.14",
+    date: "2026-08-10",
+    title: "OAI 文字生图多脸锁定修复",
+    highlights: [
+      "gpt-image-2 / gpt-image-1.5+ 的 edits 接口新增 input_fidelity=high 参数：让模型尽力保留输入参考图的人脸/主体特征（官方文档明确 high 适合'换背景/微调衣着'场景，正好对应'你+C 新场景但锁脸'）",
+      "修复此前 OAI 生成'两个陌生人'的根因：未设 input_fidelity 时默认 low，模型把参考图当风格参考、不锁脸",
+      "同步优化 OAI 提示词：明确'背景/姿势/衣服跟随文字描述、不照搬参考图、禁止左右拼贴'，与 high 保真度互补",
+      "gpt-image-1-mini / dall-e 系列不支持该参数，自动跳过以避免报错",
+    ],
+  },
   {
     version: "1.5.13",
     date: "2026-08-10",

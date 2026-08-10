@@ -669,11 +669,12 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     })();
     if (hasReference) {
       // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
-      // 但同时要禁止模型把多张参考图当拼贴左右粘贴，也不许照搬原背景/姿势/衣服——
-      // 场景、动作、构图必须由下方文字描述主导。
+      // 场景、动作、构图必须由下方文字描述主导，禁止照搬参考图原背景/姿势/衣服，也禁止左右拼贴。
+      // v1.5.14：配合下方 form 里设的 input_fidelity=high（gpt-image-2/1.5+ 专属），
+      // 让模型「保人脸 + 换场景」——官方文档明确 high 适合"换背景/微调衣着"场景，正好对应"你+C 新场景但锁脸"。
       const refNote = refCount > 1
-        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent scene that strictly follows the description below. Do NOT collage or paste the reference images side-by-side; do NOT copy their original backgrounds, poses, or outfits.`
-        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit.`;
+        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.`
+        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.`;
       finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
     console.log("[OAI-PROMPT] final:", {
@@ -703,6 +704,13 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       form.set("prompt", finalPrompt);
       if (input.size && input.size !== "auto") form.set("size", input.size);
       if (input.quality && input.quality !== "auto") form.set("quality", input.quality);
+      // v1.5.14 关键修复：gpt-image-2 / gpt-image-1.5+ 支持 input_fidelity 参数。
+      // high = 尽力保留输入图的人脸/主体特征（官方文档：适合"换背景/微调衣着"场景），
+      // 正好对应"你+C 在新场景但锁脸"的需求。不设则默认 low → 模型把参考图当风格参考、
+      // 不锁脸，生成两个陌生人。gpt-image-1-mini / dall-e 不支持该参数，必须跳过避免报错。
+      if (/^gpt-image-(?!mini)/i.test(model || "")) {
+        form.set("input_fidelity", "high");
+      }
       for (const ref of refImages) {
         const converted = dataUrlToBlob(ref);
         if (!converted) continue;
