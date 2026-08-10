@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.11";
+export const APP_VERSION = "1.5.12";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.12",
+    date: "2026-08-10",
+    title: "修复：文字生图多参考图锁脸张冠李戴（画出一男一女但不是你和他）。NAI 锚点 {charN} 绑定到对应人物 + char_caption 填人物名",
+    highlights: [
+      "根因：NAI V4.5 锁脸靠 {charN} 锚点 token + character_reference 数组，但原代码把 {char1} {char2} 只挂在 prompt 末尾、char_caption 全空 → NAI 不知道 char1=用户/char2=角色 → 两张脸当全局风格参考乱分配 → 「不是我跟他」",
+      "玩家 participants（你、季言浅）与 referenceImages（你的脸、季言浅的脸）在前端 specList 顺序里本就对齐，但路由端从没利用这个对齐",
+      "buildStructuredChinesePrompt：该人物有对应锁脸图时，把 {charN} 锚点直接绑到人物名前 → 例：\"{char1} 你（女生...）。{char2} 季言浅（男生...）\"",
+      "char_caption[charN] 填对应人物名+锚点（如 \"季言浅（男生...）\"），帮 NAI 精确理解每张参考图是谁",
+      "纯服务端改动（app/api/image-generation/route.ts）；依赖前端已对齐的 participants/referenceImages 同序，不动前端",
+      "注：OAI(gpt-image) 多参考图是平台限制（不识别 {charN}、image[] 上传顺序不保证对应），若用户用 OAI 仍乱则走 OAI 专属补丁",
+    ],
+  },
   {
     version: "1.5.11",
     date: "2026-08-10",

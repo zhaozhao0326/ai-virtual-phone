@@ -189,16 +189,22 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
     if (input.prompt?.trim()) parts.push(input.prompt.trim());
     // 参与者（谁在画面里），仅作身份锚定，不抢主体
     if (input.participants?.length) {
-        for (const p of input.participants) {
+        // v1.5.12：参与者与 referenceImages 同序（前端 specList 顺序 = refImages 顺序）。
+        // 该人物有对应锁脸参考图时，把 {charN} 锚点直接绑到人物名前，让 NAI 精确对应"哪张脸=哪个人"。
+        const refList = (input.referenceImages || [])
+            .filter((d) => typeof d === "string" && d.startsWith("data:"))
+            .slice(0, 4);
+        input.participants.forEach((p, idx) => {
             const name = (p.name || "").trim();
             const anchor = (p.anchor || "").trim();
             const action = (p.action || "").trim();
             if (!name && !anchor && !action) continue;
-            let clause = name || "某人";
+            const hasRef = Boolean(refList[idx]);
+            let clause = hasRef ? `{char${idx + 1}} ${name || "某人"}` : (name || "某人");
             if (anchor) clause += `（${anchor}）`;
             if (action) clause += ` ${action}`;
             parts.push(clause);
-        }
+        });
     }
     // 场景/光线仅作“背景参考”，明确降级，避免盖过用户主体描述
     if (input.sceneBackground?.trim()) parts.push(`背景参考：${input.sceneBackground.trim()}`);
@@ -310,7 +316,11 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
         if (dataUrls.length) {
             const charKeys = dataUrls.map((_, i) => `char${i + 1}`);
             const charCaption: Record<string, string> = {};
-            charKeys.forEach((k) => (charCaption[k] = ""));
+            // v1.5.12：每张参考图的 caption 写对应人物名+锚点，帮 NAI 精确理解"charN=谁"
+            charKeys.forEach((k, i) => {
+                const p = input.participants?.[i];
+                charCaption[k] = p ? `${p.name}${p.anchor ? "（" + p.anchor + "）" : ""}` : "";
+            });
             naiCharRef = {
                 char_caption: charCaption,
                 char_guidance: 1,
