@@ -432,7 +432,9 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     console.log("[NAI-DIAG] request:", JSON.stringify(diag));
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 300_000); // 5min
+    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时 Vercel 在 120s 杀函数，
+    // Promise 永不 settle → 流式 .finally 不跑 → 客户端只收到心跳 → “流式响应中断”。
+    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
     let res: Response;
     try {
       res = await externalFetch(url, {
@@ -567,7 +569,8 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
     if (input.googlePersonGeneration?.trim()) body.person_generation = input.googlePersonGeneration.trim();
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 180_000);
+    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时被 Vercel 杀函数 → 流式标记丢失。
+    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
     let res: Response;
     try {
       res = await externalFetch(GOOGLE_IMAGEN_ENDPOINT, {
@@ -695,7 +698,8 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120_000);
+    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时被 Vercel 杀函数 → 流式标记丢失。
+    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
     let res: Response;
     try {
       res = await externalFetch(url, { method: "POST", headers, body, signal: controller.signal });

@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.9";
+export const APP_VERSION = "1.5.10";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.10",
+    date: "2026-08-10",
+    title: "修复：生图服务端内部超时 > Vercel maxDuration(120s) 导致「流式响应中断」",
+    highlights: [
+      "根因溯源：对比原仓库 StoryPhone(Poemnarapk) 文生图——它浏览器直连 API（一次 fetch().json()，无服务端 / 无流式 / 无心跳），所以永远不会出现「流式响应中断」",
+      "我们为让小米直连上游改走 Vercel 中转 + 流式心跳；但 NAI/Google/通用三处内部 AbortController 超时分别是 300s/180s/120s，全部 ≥ Vercel 硬上限 120s",
+      "上游一慢或一卡时 Vercel 在 120s 杀函数 → 生图 Promise 永不 settle → 流式 .finally 不跑 → controller.close() 不调用 → 客户端只收到心跳空格 → 报「流式响应中断, 未收到结果」",
+      "修复：三处内部超时统一压到 100s（< maxDuration）。上游卡住时我们自 abort → 返回 502/504 错误标记 → 客户端拿到可读错误 → v1.5.9 自动重试 1 次，不再无声掐断",
+      "纯服务端改动（app/api/image-generation/route.ts），不动前端、不动转发逻辑",
+    ],
+  },
   {
     version: "1.5.9",
     date: "2026-08-10",
