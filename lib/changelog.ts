@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.2";
+export const APP_VERSION = "1.5.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.3",
+    date: "2026-08-10",
+    title: "修复：生成今日日程会清掉本周其他天的日程",
+    highlights: [
+      "修复：生成本周后再单独「生成今日」，原来本周其他天的 AI 日程被误清空、只剩一天的问题",
+      "现在「生成今日」只覆盖你选中的那一天，本周其他天的日程原样保留",
+    ],
+  },
   {
     version: "1.5.2",
     date: "2026-08-10",

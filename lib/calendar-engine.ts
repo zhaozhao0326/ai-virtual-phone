@@ -20,7 +20,7 @@ import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { prepareShortTermContext } from "./short-term-assembler";
 import { getCustomStickerExample, getCustomStickerNames } from "./custom-sticker-storage";
 import { previewMessagesForApi, sendLLMRequest, type ChatEngineError } from "./chat-engine";
-import { buildCalendarScheduleMarker, clearGeneratedWeekItems, cloneWeekPlanWithManualEdits, normalizeGeneratedScheduleItems, restoreCalendarWeekItems } from "./calendar-storage";
+import { buildCalendarScheduleMarker, clearGeneratedItemsForDates, clearGeneratedWeekItems, cloneWeekPlanWithManualEdits, normalizeGeneratedScheduleItems, restoreCalendarWeekItems } from "./calendar-storage";
 import {
   getWeekDates,
   getWeekStartIso,
@@ -263,13 +263,17 @@ async function generateScheduleForRange(
     if (ownerType !== "character") {
         return { success: false, error: "用户日程不支持 AI 生成，请手动填写。" };
     }
-    // 先清掉本周旧的 AI 生成条目（保留手动条目），让随后的 marker 组装读不到旧结果——
+    // 「生成今日」= 只覆盖目标日期（focusDates 不全为 7 天）：只清目标日期的旧 AI 条目，
+    // 保留其他日期的 AI 条目；「生成本周」= 清整周旧 AI 条目。
     // 否则旧日程会进提示词被模型原样照抄，"重新生成"永远一字不差。失败时恢复。
-    const removedGenerated = clearGeneratedWeekItems(ownerType, ownerId, weekStart);
+    const allWeekDates = getWeekDates(weekStart);
+    const isPartial = focusDates && focusDates.size > 0 && focusDates.size < allWeekDates.length;
+    const removedGenerated = isPartial
+        ? clearGeneratedItemsForDates(ownerType, ownerId, weekStart, allWeekDates.filter(d => focusDates!.has(d)))
+        : clearGeneratedWeekItems(ownerType, ownerId, weekStart);
     const restoreRemoved = () => restoreCalendarWeekItems(ownerType, ownerId, weekStart, removedGenerated);
     try {
         const resolved = await resolveCalendarAssemblerInput(ownerType, ownerId, weekStart);
-        const allWeekDates = getWeekDates(weekStart);
         const targetDates = (focusDates && focusDates.size > 0)
             ? allWeekDates.filter(d => focusDates.has(d))
             : allWeekDates.slice(0, days);
@@ -306,7 +310,11 @@ async function generateScheduleForRange(
             return { success: false, error: "日历生成结果为空，或格式无法解析。" };
         }
 
-        cloneWeekPlanWithManualEdits(ownerType, ownerId, weekStart, items);
+        // 生成今日：保留其他日期的旧 AI 条目，只把目标日期的旧条目替换成新生成的
+        const keepGeneratedDates = isPartial
+            ? new Set(allWeekDates.filter(d => !focusDates!.has(d)))
+            : undefined;
+        cloneWeekPlanWithManualEdits(ownerType, ownerId, weekStart, items, keepGeneratedDates);
         return { success: true, items };
     } catch (error) {
         restoreRemoved();

@@ -317,6 +317,25 @@ export function clearCalendarWeekItems(
     return items;
 }
 
+/**
+ * 只清掉指定日期内的 AI 生成条目（其他日期的 AI 条目与全部手动条目保留）。
+ * 用于「生成今日」：只重生成目标日期，不碰本周其他日期。
+ */
+export function clearGeneratedItemsForDates(
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    weekStart: string,
+    dates: string[],
+): CalendarScheduleItem[] {
+    const target = new Set(dates);
+    const existing = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
+    const items = existing?.items ?? [];
+    const removed = items.filter(item => item.source !== "manual" && target.has(item.date));
+    if (removed.length === 0) return [];
+    replaceCalendarWeekItems(ownerType, ownerId, weekStart, items.filter(item => !removed.includes(item)));
+    return removed;
+}
+
 export function buildCalendarScheduleMarker(
   ownerType: CalendarOwnerType,
   ownerId: string,
@@ -419,10 +438,15 @@ export function cloneWeekPlanWithManualEdits(
   ownerId: string,
   weekStart: string,
   generatedItems: CalendarScheduleItem[],
+  keepGeneratedDates?: Set<string>,
 ): CalendarWeekPlan {
   const existing = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
   const manualItems = (existing?.items ?? []).filter(item => item.source === "manual");
-  const nextItems = [...generatedItems.filter(item => item.source !== "manual")];
+  // 「生成今日」场景：保留其他日期的旧 AI 条目（keepGeneratedDates = 需要保留的日期集合）
+  const keptGenerated = keepGeneratedDates && keepGeneratedDates.size > 0
+    ? (existing?.items ?? []).filter(item => item.source !== "manual" && keepGeneratedDates.has(item.date))
+    : [];
+  const nextItems = [...keptGenerated, ...generatedItems.filter(item => item.source !== "manual")];
   for (const item of manualItems) {
     const collides = nextItems.find(
       entry =>
