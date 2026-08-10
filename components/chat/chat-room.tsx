@@ -3555,21 +3555,34 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
+        const requestBody = {
+            description: prompt,
+            participantAppearance: appearanceText || undefined,
+            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
+            referenceImages: refImages.length ? refImages : undefined,
+            sceneBackground: settings.sceneBackground?.trim() || undefined,
+            sceneLighting: settings.sceneLighting?.trim() || undefined,
+            useReferenceImage: refImages.length > 0,
+            settings,
+        };
         try {
-            const generated = await generateImageFromConfiguredApi({
-                description: prompt,
-                participantAppearance: appearanceText || undefined,
-                participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
-                referenceImages: refImages.length ? refImages : undefined,
-                sceneBackground: settings.sceneBackground?.trim() || undefined,
-                sceneLighting: settings.sceneLighting?.trim() || undefined,
-                useReferenceImage: refImages.length > 0,
-                settings,
-            });
+            const generated = await generateImageFromConfiguredApi(requestBody);
             return generated?.dataUrl ?? null;
         } catch (error) {
             // v1.5.8：兜底包装生图错误，UI 至少显示"文字生图失败：xxx"而不是裸 fetch failed
             const message = error instanceof Error ? error.message : String(error);
+            // v1.5.9：NAI 流式中断是偶发性（SDE 异常 / Vercel 边缘函数把流掐了），
+            // 仅对"流式响应中断"这类瞬时错误重试 1 次（1.5s 后），其他错误（401/余额不足/upstream 异常）维持原样抛错
+            if (message.includes("流式响应中断")) {
+                await new Promise((resolve) => setTimeout(resolve, 1500));
+                try {
+                    const retry = await generateImageFromConfiguredApi(requestBody);
+                    return retry?.dataUrl ?? null;
+                } catch (retryError) {
+                    const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+                    throw new Error(`文字生图失败：${retryMessage}`);
+                }
+            }
             throw new Error(`文字生图失败：${message}`);
         }
     }, []);
