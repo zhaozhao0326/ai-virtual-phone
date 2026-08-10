@@ -817,30 +817,39 @@ async function generateImageViaServer(params: {
   }
 }
 
-// ── 全局单飞锁（仅 NovelAI）──
-// NAI 普通账号同一时刻只允许 1 张生图，聊天自动生图 / 测试按钮 / 🔄重roll
-// 只要同时发起就会触发 429 "Concurrent generation is locked"。
-// 用一个模块级串行队列，保证整个 app（同一标签页）任意时刻最多 1 个 NAI 生图在飞，
+// ── 全局单飞锁（按 provider 分桶）──
+// 触发场景：
+//   - NAI：普通账号同一时刻只允许 1 张生图，并发即触发 429 "Concurrent generation is locked"
+//   - OAI：gpt-image-2 账户有并发上限（典型 5~10），超过即 429 "Concurrency limit exceeded"
+// 用一个模块级串行队列，保证整个 app（同一标签页）任意时刻最多 1 个对应 provider 的生图在飞，
 // 后续请求排队而非并发撞车。两个标签页各有一份模块状态，故跨标签仍需服务端兜底。
-let naiGenChain: Promise<unknown> = Promise.resolve();
-function serializeNai<T>(task: () => Promise<T>): Promise<T> {
-  const run = naiGenChain.catch(() => undefined).then(task);
+type SerializeProvider = "novelai" | "openai";
+const providerGenChain: Record<SerializeProvider, Promise<unknown>> = {
+  novelai: Promise.resolve(),
+  openai: Promise.resolve(),
+};
+function serializeProvider<T>(provider: SerializeProvider, task: () => Promise<T>): Promise<T> {
+  const run = providerGenChain[provider].catch(() => undefined).then(task);
   // 无论前一个成功或失败，都让它从链上脱离，避免 reject 传导到后续
-  naiGenChain = run.then(() => undefined, () => undefined);
+  providerGenChain[provider] = run.then(() => undefined, () => undefined);
   return run;
 }
 
-// 把服务端透传的生图错误转成中文友好提示
-function humanizeImageError(raw: string): string {
-  if (/concurrent generation|429/i.test(raw)) {
+// 把服务端透传的生图错误转成中文友好提示；按 provider 区分文案
+// 注意：这是"重试耗尽后"给用户看的最终话术，所以只说结论，不说"正在重试"之类的进行态
+function humanizeImageError(raw: string, provider?: string): string {
+  if (/concurrent generation|429|concurrency limit exceeded/i.test(raw)) {
+    if (provider === "openai") {
+      return "OpenAI 账户并发已达上限（gpt-image-2 账户级并发约 5–10），多次自动等待仍未恢复。请稍后再试，或减少同时生成请求的次数。";
+    }
     return "NovelAI 同一时间只能生成 1 张，请等当前这张完成后再试（约 10–30 秒）。";
   }
   return raw;
 }
 
-// 把服务端错误转成抛出的 Error；若为 NAI 并发锁，加 CONCURRENT_LOCK 标记便于上层自动重试
+// 把服务端错误转成抛出的 Error；若为并发锁（含 NAI/OAI），加 CONCURRENT_LOCK 标记便于上层自动重试
 function imageErrorToThrow(raw: string): never {
-  if (/concurrent generation|429/i.test(raw)) {
+  if (/concurrent generation|429|concurrency limit exceeded/i.test(raw)) {
     throw new Error("CONCURRENT_LOCK:" + raw);
   }
   throw new Error(humanizeImageError(raw));
@@ -865,32 +874,46 @@ export function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> 
   });
 }
 
-// NAI 并发锁自动重试：上一张生图在 NAI 服务端仍「在飞」时会返回 429 Concurrent generation is locked。
-// 这通常是因为上一次生图被中断/关页面，但 NAI 任务还没跑完（锁约 10–30s）。
-// 这里自动等待锁释放后重试，用户无需手动反复点；被 abort 则立即放弃。
+// 并发锁自动重试：429（NAI/OAI）触发后等待锁释放再重试。
+//   - NAI：本地串行锁 + 服务端 Concurrent generation is locked，~10-30s 释放
+//   - OAI：账户并发上限 ~5-10，触发 Concurrency limit exceeded，约 22-60s 恢复
+// 用户无需手动反复点；被 abort 则立即放弃。
+type ImageTransport = (params: Parameters<typeof generateImageViaServer>[0]) => Promise<ImageGenerationApiResponse>;
 async function generateImageViaServerWithRetry(
-  params: Parameters<typeof generateImageViaServer>[0] & { onStage?: (text: string) => void },
+  params: Parameters<typeof generateImageViaServer>[0] & {
+    onStage?: (text: string) => void;
+    provider: SerializeProvider;
+    /** 自定义传输函数（默认走 Vercel 中转）。OAI 路径可换成 proxy-or-server 中转。 */
+    transport?: ImageTransport;
+  },
 ): Promise<ImageGenerationApiResponse> {
-  const { onStage, ...rest } = params;
+  const { onStage, provider, transport, ...rest } = params;
+  const effectiveTransport: ImageTransport = transport ?? generateImageViaServer;
   const MAX_ATTEMPTS = 4;
+  // OAI 限流恢复窗口比 NAI 长；NAI 慢了反而让用户等更久
+  const baseWaitMs = provider === "openai" ? 22_000 : 12_000;
+  const waitLabel =
+    provider === "openai"
+      ? "OpenAI 账户并发已达上限，自动等待中（约 {} 秒）…"
+      : "NovelAI 正在处理上一张，自动等待中（约 {} 秒）…";
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       onStage?.(attempt === 0 ? "正在生成图片…" : "正在重试生成图片…");
-      return await generateImageViaServer(rest);
+      return await effectiveTransport(rest);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       const isLock = /CONCURRENT_LOCK/.test(msg);
       if (isLock && attempt < MAX_ATTEMPTS - 1 && !params.signal?.aborted) {
-        const waitMs = 12_000 + attempt * 8_000; // 12s → 20s → 28s
+        const waitMs = baseWaitMs + attempt * 8_000; // NAI: 12s→20s→28s; OAI: 22s→30s→38s
         const waitSec = Math.round(waitMs / 1000);
-        console.warn("[IMG-SVC] NAI 并发锁，自动等待后重试", { attempt: attempt + 1, message: msg });
-        onStage?.(`NovelAI 正在处理上一张，自动等待中（约 ${waitSec} 秒）…`);
+        console.warn("[IMG-SVC] 并发锁，自动等待后重试", { provider, attempt: attempt + 1, message: msg });
+        onStage?.(waitLabel.replace("{}", String(waitSec)));
         await sleepWithAbort(waitMs, params.signal);
         continue;
       }
       if (isLock) {
-        throw new Error(humanizeImageError(msg.replace(/^CONCURRENT_LOCK:/, "")));
+        throw new Error(humanizeImageError(msg.replace(/^CONCURRENT_LOCK:/, ""), provider));
       }
       throw err;
     }
@@ -984,7 +1007,7 @@ export async function generateImageFromConfiguredApi(params: {
     // 走服务端中转：浏览器只连我们自己 Vercel 服务器（国内合法），
     // 由 Vercel 海外服务器调 image.novelai.net（正确域名），
     // 解决浏览器 CORS + 境外网络双重拦截。
-    const data = await serializeNai(() => generateImageViaServerWithRetry({
+    const data = await serializeProvider("novelai", () => generateImageViaServerWithRetry({
       settings,
       prompt: description,
       participantAppearance: params.participantAppearance,
@@ -995,6 +1018,7 @@ export async function generateImageFromConfiguredApi(params: {
       referenceImageDataUrl: null,
       signal: params.signal,
       onStage: params.onStage,
+      provider: "novelai",
     }));
     throwIfAborted(params.signal);
     const mimeType = data.mimeType || "image/png";
@@ -1068,7 +1092,8 @@ export async function generateImageFromConfiguredApi(params: {
   // 由海外服务器调 api.openai.com，避免国内网络直连被墙（"不能跨境"）。
   // 仅当用户显式配置了通用代理(IMAGE_GEN_PROXY_URL)时走代理，否则走服务端路由。
   // v19：与 NAI 对等 —— 透传 participants/场景/锁脸参考图，让 OAI 也享结构化提示词+参考图锁脸。
-  const data = await generateImageViaServerOrProxy({
+  // v1.5.15：与 NAI 对等 —— 加并发锁 + 429 自动重试，OAI 账户并发超限会被自动消化
+  const data = await serializeProvider("openai", () => generateImageViaServerWithRetry({
     settings,
     prompt,
     referenceImageDataUrl: compressedReferenceImageDataUrl,
@@ -1077,7 +1102,10 @@ export async function generateImageFromConfiguredApi(params: {
     sceneBackground: params.sceneBackground,
     sceneLighting: params.sceneLighting,
     signal: params.signal,
-  });
+    onStage: params.onStage,
+    provider: "openai",
+    transport: generateImageViaServerOrProxy,
+  }));
 
   throwIfAborted(params.signal);
   const mimeType = data.mimeType || "image/png";

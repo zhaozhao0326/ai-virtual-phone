@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.14";
+export const APP_VERSION = "1.5.15";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.15",
+    date: "2026-08-10",
+    title: "修复：OAI 文字生图 429 Concurrency limit exceeded 不再冒错误（并发锁 + 自动重试）",
+    highlights: [
+      "根因：gpt-image-2 账户有并发上限（典型 5~10），连续点击/跨标签页/其他应用共用同一 API key 则触发 HTTP 429 'Concurrency limit exceeded for account, please retry later'。之前 OAI 路径没有重试也没有串行锁，错误直接冒到 UI 还带着 'CONCURRENT_LOCK:' 这种内部标记",
+      "修复1 — OAI 路径加全局串行锁（serializeProvider('openai', ...)）：同标签页任意时刻最多 1 个 OAI 生图在飞，新请求自动排队而非并发撞车",
+      "修复2 — OAI 路径加 429 自动重试：OAI 限流恢复窗口比 NAI 长，baseWait 22s，递增 8s，重试 3 次（22s→30s→38s），UI 通过 onStage 显示「OpenAI 账户并发已达上限，自动等待中（约 X 秒）…」",
+      "修复3 — 错误信息 provider 感知：重试耗尽后 OAI 提示「OpenAI 账户并发已达上限（gpt-image-2 账户级并发约 5–10），多次自动等待仍未恢复。请稍后再试，或减少同时生成请求的次数」；NAI 提示保持原样",
+      "修复4 — imageErrorToThrow 识别 'concurrency limit exceeded' 文本（之前正则只匹配 'concurrent generation|429'，已扩展覆盖 OAI 错误）",
+      "修复5 — 重试后彻底剥掉 CONCURRENT_LOCK 内部标记，UI 不会看到裸冒 'CONCURRENT_LOCK:...'",
+      "副作用：NAI 路径同步换用通用 serializeProvider('novelai', ...) + 给 retry 函数注入 provider/provider-aware 文案，统一抽象",
+    ],
+  },
   {
     version: "1.5.14",
     date: "2026-08-10",
