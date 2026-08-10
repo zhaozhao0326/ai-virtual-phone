@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.10";
+export const APP_VERSION = "1.5.11";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.11",
+    date: "2026-08-10",
+    title: "修复：文字生图角色锁脸被参考图反推带偏（季言浅变形女）。角色侧 anchor 强制前置性别词 + 显式说明\"人设优先级 > 锁脸参考图\"",
+    highlights: [
+      "Character 类型没有独立 gender 字段，v1.5.7 起角色侧 anchor 拼装只用了 appearance，碰到锁脸图是非自身性别时被反推覆盖（例如季言浅是男生但锁脸图是女生，画完直接变形）",
+      "新增 extractGenderHintFromPersona：从 persona/briefPersona 文本里扫\"男生/男性/男生感/他\"或\"女生/女性/少女/她\"作性别 hint，顶到角色 anchor 最前",
+      "appearancePrompt 显式钉死\"若参考图与上述人设的性别或外貌冲突，以上述人设为准，参考图仅用于贴合画质与风格\"，双保险",
+      "只动 chat-room.tsx + lib/changelog.ts，前端补丁，不增加任何字段、不动 UI，零侵入",
+    ],
+  },
   {
     version: "1.5.10",
     date: "2026-08-10",

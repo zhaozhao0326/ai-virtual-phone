@@ -86,6 +86,16 @@ import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } fro
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
 
+// ── v1.5.11 性别词提取：Character 没有独立 gender 字段，从 persona/briefPersona 里捞"男生/女生/男性/女性"作 anchor 前缀
+function extractGenderHintFromPersona(persona?: string | null, briefPersona?: string | null): string | null {
+    const text = `${persona ?? ""}\n${briefPersona ?? ""}`;
+    if (!text.trim()) return null;
+    // 优先级：男性类词 > 女性类词（避免"她和姐姐一起"误判）
+    if (/(男生|男性|男\)|少年|男士|公子|先生|他(?![和跟与给])|少年感)/.test(text)) return "男生";
+    if (/(女生|女性|女\)|少女|女士|小姐|姑娘|她(?![和跟与给]))/.test(text)) return "女生";
+    return null;
+}
+
 // ── Call system message detection ──────────────────────────
 // Call messages are stored with user/assistant role for correct prompt alternation,
 // but should render as centered system notifications in the UI.
@@ -3522,10 +3532,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const c = chars.find((x) => x.id === id);
                 if (!c) continue;
                 const ref = charRefs[c.id];
+                const roleBits: string[] = [];
+                // v1.5.11：角色侧 anchor 拼装先把性别词顶到最前，避免被锁脸图反推"带偏"
+                const roleGender = extractGenderHintFromPersona(c.persona, c.briefPersona);
+                if (roleGender) roleBits.push(roleGender);
+                if (c.appearance?.trim()) roleBits.push(c.appearance.trim());
                 specList.push({
                     id,
                     name: c.name,
-                    anchor: c.appearance?.trim() || undefined,
+                    anchor: roleBits.length ? roleBits.join("，") : undefined,
                     faceLockSource: ref?.assetId || null,
                 });
             }
@@ -3553,11 +3568,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const appearanceText = specList.length
             ? `画面中的人物设定：${specList.map((s) => s.anchor ? `${s.name}（${s.anchor}）` : s.name).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
             : "";
+        // v1.5.11：明确告知 API "人设的性别/外貌优先级 > 锁脸参考图"，防止参考图反推覆盖人设
+        const appearancePrompt = appearanceText
+            ? `${appearanceText}\n\n重要：若锁脸参考图与上述人设的性别或外貌特征冲突，以上述人设为准，参考图仅用于贴合画质与风格，不改变人物的性别、年龄段与核心特征。`
+            : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
         const requestBody = {
             description: prompt,
-            participantAppearance: appearanceText || undefined,
+            participantAppearance: appearancePrompt || undefined,
             participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
             referenceImages: refImages.length ? refImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
