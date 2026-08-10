@@ -1972,11 +1972,19 @@ function CharArchiveView({
   }
 
   // 把测试生成的图挂为该角色的形象参考图（锁脸图）
+  // 压到 768px PNG 存入 IndexedDB：
+  //   - 768 是因为 gpt-image-1 内部对参考图本来就只取 ~1024px，768 足够清晰
+  //   - 保留 PNG 不丢透明（立绘常见透明背景）
+  //   - 把压缩放在"设为参考图"这一刻 → 资料里直接是小图，省空间、
+  //     后续生图取出就是小的，避开 Vercel 4.5MB 请求体上限（413）
+  //   - v1.5.5 的运行时压缩（image-generation-service.ts）保留作为兜底
+  //     兼容 v1.5.5 之前已存的旧大图
   async function handleSetReference() {
     if (!testImageUrl) return;
     setApplyBusy(true);
     try {
-      await setCharacterReferenceFromDataUrl(char.id, testImageUrl);
+      const downscaled = await downscaleDataUrl(testImageUrl, 768);
+      await setCharacterReferenceFromDataUrl(char.id, downscaled);
     } finally {
       setApplyBusy(false);
     }

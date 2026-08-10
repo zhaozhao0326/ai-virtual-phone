@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.5";
+export const APP_VERSION = "1.5.6";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.6",
+    date: "2026-08-10",
+    title: "优化：参考图压缩从「生图发送时」前移到「设为参考图时」",
+    highlights: [
+      "在绝密档案「设为人设形象参考图」按钮的 handler 里加 768px PNG 压缩 → 资料里存的就是小图，更省空间、生图取出直接是小的",
+      "v1.5.5 的「运行时压缩」保留作为兜底：兼容本版本前已存的旧大图（用户重设一次即被压缩）",
+      "透明背景立绘仍保留 PNG 格式（不丢透明），gpt-image-1 内部对参考图本来也只取 ~1024px，锁脸效果不受影响",
+    ],
+  },
   {
     version: "1.5.5",
     date: "2026-08-10",
