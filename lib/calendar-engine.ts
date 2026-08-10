@@ -27,6 +27,7 @@ import {
   getWeekdayLabel,
   isCalendarTimeRangeAllowed,
   normalizeTime,
+  parseIsoDate,
   sanitizeScheduleEmoji,
 } from "./calendar-utils";
 
@@ -59,13 +60,20 @@ function buildSyntheticUserCharacter(identity: UserIdentity | null): Character {
   };
 }
 
-function buildCalendarTriggerInstruction(ownerName: string, weekDates: string[]): string {
-  return [
-    `请为${ownerName}生成 ${weekDates[0]} 到 ${weekDates[6]} 这一周的日程安排。`,
-    "请参考已有日程，生成这一周的完整日程安排。",
-    "每行一条，格式：YYYY-MM-DD|周几|开始时间|结束时间|地点|emoji|事项。emoji 段填一个最贴合该事项的表情符号。",
-    "作息时间不受限制（早起、夜跑、通宵都可以安排），但每一天最多 5 条日程，宁缺毋滥。",
-  ].join("\n");
+function buildCalendarTriggerInstruction(ownerName: string, dates: string[]): string {
+    if (dates.length === 1) {
+        return [
+            `请为${ownerName}生成 ${dates[0]} 这一天的日程安排。`,
+            "每行一条，格式：YYYY-MM-DD|周几|开始时间|结束时间|地点|emoji|事项。emoji 段填一个最贴合该事项的表情符号。",
+            "作息时间不受限制（早起、夜跑、通宵都可以安排），但最多 5 条日程，宁缺毋滥。",
+        ].join("\n");
+    }
+    return [
+        `请为${ownerName}生成 ${dates[0]} 到 ${dates[dates.length - 1]} 这一周的日程安排。`,
+        "请参考已有日程，生成这一周的完整日程安排。",
+        "每行一条，格式：YYYY-MM-DD|周几|开始时间|结束时间|地点|emoji|事项。emoji 段填一个最贴合该事项的表情符号。",
+        "作息时间不受限制（早起、夜跑、通宵都可以安排），但每一天最多 5 条日程，宁缺毋滥。",
+    ].join("\n");
 }
 
 function stripCodeFences(text: string): string {
@@ -75,66 +83,67 @@ function stripCodeFences(text: string): string {
     .trim();
 }
 
-function parseScheduleLines(rawText: string, weekStart: string): CalendarScheduleItem[] {
-  const weekDates = new Set(getWeekDates(weekStart));
-  const lines = stripCodeFences(rawText)
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
+function parseScheduleLines(rawText: string, weekStart: string, focusDates?: Set<string>): CalendarScheduleItem[] {
+    const weekDates = new Set(getWeekDates(weekStart));
+    const lines = stripCodeFences(rawText)
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
 
-  const parsed: Array<{
-    date: string;
-    startTime: string;
-    endTime: string;
-    location: string;
-    title: string;
-    emoji?: string;
-  }> = [];
+    const parsed: Array<{
+        date: string;
+        startTime: string;
+        endTime: string;
+        location: string;
+        title: string;
+        emoji?: string;
+    }> = [];
 
-  for (const rawLine of lines) {
-    const line = rawLine
-      .replace(/^[-*]\s*/, "")
-      .replace(/^\d+[.)、]\s*/, "")
-      .trim();
-    if (!line.includes("|")) continue;
-    const parts = line.split("|").map(part => part.trim());
-    if (parts.length < 6) continue;
+    for (const rawLine of lines) {
+        const line = rawLine
+            .replace(/^[-*]\s*/, "")
+            .replace(/^\d+[.)、]\s*/, "")
+            .trim();
+        if (!line.includes("|")) continue;
+        const parts = line.split("|").map(part => part.trim());
+        if (parts.length < 6) continue;
 
-    const date = parts[0];
-    const startTime = normalizeTime(parts[2]);
-    const endTime = normalizeTime(parts[3]);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !weekDates.has(date)) continue;
-    if (!startTime || !endTime || !isCalendarTimeRangeAllowed(startTime, endTime)) continue;
+        const date = parts[0];
+        const startTime = normalizeTime(parts[2]);
+        const endTime = normalizeTime(parts[3]);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !weekDates.has(date)) continue;
+        if (focusDates && !focusDates.has(date)) continue;
+        if (!startTime || !endTime || !isCalendarTimeRangeAllowed(startTime, endTime)) continue;
 
-    const location = parts[4] === "无" ? "" : parts[4];
-    // 新格式第 6 段为 emoji（YYYY-MM-DD|周几|开始|结束|地点|emoji|事项）；
-    // 兼容旧格式（第 6 段直接是事项）：仅当该段确实是 emoji 时才按新格式取。
-    let emoji = "";
-    let title: string;
-    if (parts.length >= 7) {
-      const candidate = sanitizeScheduleEmoji(parts[5]);
-      if (candidate && Array.from(parts[5]).length <= 3) {
-        emoji = candidate;
-        title = parts.slice(6).join("|");
-      } else {
-        title = parts.slice(5).join("|");
-      }
-    } else {
-      title = parts[5];
+        const location = parts[4] === "无" ? "" : parts[4];
+        // 新格式第 6 段为 emoji（YYYY-MM-DD|周几|开始|结束|地点|emoji|事项）；
+        // 兼容旧格式（第 6 段直接是事项）：仅当该段确实是 emoji 时才按新格式取。
+        let emoji = "";
+        let title: string;
+        if (parts.length >= 7) {
+            const candidate = sanitizeScheduleEmoji(parts[5]);
+            if (candidate && Array.from(parts[5]).length <= 3) {
+                emoji = candidate;
+                title = parts.slice(6).join("|");
+            } else {
+                title = parts.slice(5).join("|");
+            }
+        } else {
+            title = parts[5];
+        }
+        if (!title.trim()) continue;
+
+        parsed.push({
+            date,
+            startTime,
+            endTime,
+            location,
+            title,
+            emoji,
+        });
     }
-    if (!title.trim()) continue;
 
-    parsed.push({
-      date,
-      startTime,
-      endTime,
-      location,
-      title,
-      emoji,
-    });
-  }
-
-  return normalizeGeneratedScheduleItems(parsed);
+    return normalizeGeneratedScheduleItems(parsed);
 }
 
 async function resolveCalendarAssemblerInput(
@@ -227,54 +236,89 @@ async function resolveCalendarAssemblerInput(
   };
 }
 
-export async function generateWeeklyCalendarSchedule(
-  ownerType: CalendarOwnerType,
-  ownerId: string,
-  weekStart: string,
+/**
+ * 内部：按日期范围生成日程。days=7 为周日程，days=1 为单日日程。
+ * focusDates：限定生成结果保留的日期集合（默认取 weekStart 起 days 天）。
+ * 失败时自动回滚已移除的旧 AI 生成条目。
+ */
+async function generateScheduleForRange(
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    weekStart: string,
+    days: number,
+    focusDates?: Set<string>,
 ): Promise<{ success: boolean; error?: string; items?: CalendarScheduleItem[] }> {
-  if (ownerType !== "character") {
-    return { success: false, error: "用户日程不支持 AI 生成，请手动填写。" };
-  }
-  // 先清掉本周旧的 AI 生成条目（保留手动条目），让随后的 marker 组装读不到旧结果——
-  // 否则旧日程会进提示词被模型原样照抄，"重新生成"永远一字不差。失败时恢复。
-  const removedGenerated = clearGeneratedWeekItems(ownerType, ownerId, weekStart);
-  const restoreRemoved = () => restoreCalendarWeekItems(ownerType, ownerId, weekStart, removedGenerated);
-  try {
-    const resolved = await resolveCalendarAssemblerInput(ownerType, ownerId, weekStart);
-    const weekDates = getWeekDates(weekStart);
-    const triggerInstruction = buildCalendarTriggerInstruction(resolved.ownerName, weekDates);
-
-    const messages: LLMMessage[] = [
-      ...resolved.llmMessages,
-      {
-        role: "user",
-        content: triggerInstruction,
-        _debugMeta: { marker: "calendar_trigger" },
-      },
-    ];
-
-    const rawText = await sendLLMRequest(
-      resolved.apiConfig,
-      resolved.preset,
-      messages,
-      resolved.regexes,
-      { characterName: `日历:${resolved.ownerName}` },
-      { appId: "calendar", appTags: ["calendar"] },
-    );
-
-    const items = parseScheduleLines(rawText, weekStart);
-    if (items.length === 0) {
-      restoreRemoved();
-      return { success: false, error: "日历生成结果为空，或格式无法解析。" };
+    if (ownerType !== "character") {
+        return { success: false, error: "用户日程不支持 AI 生成，请手动填写。" };
     }
+    // 先清掉本周旧的 AI 生成条目（保留手动条目），让随后的 marker 组装读不到旧结果——
+    // 否则旧日程会进提示词被模型原样照抄，"重新生成"永远一字不差。失败时恢复。
+    const removedGenerated = clearGeneratedWeekItems(ownerType, ownerId, weekStart);
+    const restoreRemoved = () => restoreCalendarWeekItems(ownerType, ownerId, weekStart, removedGenerated);
+    try {
+        const resolved = await resolveCalendarAssemblerInput(ownerType, ownerId, weekStart);
+        const allWeekDates = getWeekDates(weekStart);
+        const targetDates = (focusDates && focusDates.size > 0)
+            ? allWeekDates.filter(d => focusDates.has(d))
+            : allWeekDates.slice(0, days);
+        if (targetDates.length === 0) {
+            restoreRemoved();
+            return { success: false, error: "没有有效的目标日期。" };
+        }
+        const triggerInstruction = buildCalendarTriggerInstruction(resolved.ownerName, targetDates);
 
-    cloneWeekPlanWithManualEdits(ownerType, ownerId, weekStart, items);
-    return { success: true, items };
-  } catch (error) {
-    restoreRemoved();
-    const err = error as ChatEngineError | Error;
-    return { success: false, error: err?.message || "生成日历失败" };
-  }
+        const messages: LLMMessage[] = [
+            ...resolved.llmMessages,
+            {
+                role: "user",
+                content: triggerInstruction,
+                _debugMeta: { marker: "calendar_trigger" },
+            },
+        ];
+
+        const rawText = await sendLLMRequest(
+            resolved.apiConfig,
+            resolved.preset,
+            messages,
+            resolved.regexes,
+            { characterName: `日历:${resolved.ownerName}` },
+            { appId: "calendar", appTags: ["calendar"] },
+        );
+
+        const items = parseScheduleLines(rawText, weekStart, new Set(targetDates));
+        if (items.length === 0) {
+            restoreRemoved();
+            return { success: false, error: "日历生成结果为空，或格式无法解析。" };
+        }
+
+        cloneWeekPlanWithManualEdits(ownerType, ownerId, weekStart, items);
+        return { success: true, items };
+    } catch (error) {
+        restoreRemoved();
+        const err = error as ChatEngineError | Error;
+        return { success: false, error: err?.message || "生成日历失败" };
+    }
+}
+
+export async function generateWeeklyCalendarSchedule(
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    weekStart: string,
+): Promise<{ success: boolean; error?: string; items?: CalendarScheduleItem[] }> {
+    return generateScheduleForRange(ownerType, ownerId, weekStart, 7);
+}
+
+/** 生成指定一天的角色日程（保持本周其他日期不变，仅覆盖该日） */
+export async function generateDailyCalendarSchedule(
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    date: string, // YYYY-MM-DD
+): Promise<{ success: boolean; error?: string; items?: CalendarScheduleItem[] }> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return { success: false, error: "日期格式无效。" };
+    }
+    const weekStart = getWeekStartIso(parseIsoDate(date));
+    return generateScheduleForRange(ownerType, ownerId, weekStart, 1, new Set([date]));
 }
 
 export async function previewCalendarPromptPayload(

@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.9";
+export const APP_VERSION = "1.5.0";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.0",
+    date: "2026-08-10",
+    title: "日历升级：角色日程「生成今日 / 清空本周」+ 详情页角色切换",
+    highlights: [
+      "日历新增「生成今日日程」：只给选中角色生成某一天（当前查看的那天）的行程，其他日期不受影响",
+      "日历新增「清空本周日程」：一键清掉选中角色本周全部日程（含手动添加，需二次确认）",
+      "详情页（时间轴）顶部也露出角色切换器：月历/详情页都能随时切换用户或某个角色查看日程",
+      "角色日程继续遵循角色人设与记忆自动生成（无需手动输入，与棉花糖机思路一致）",
+    ],
+  },
   {
     version: "1.4.9",
     date: "2026-08-10",

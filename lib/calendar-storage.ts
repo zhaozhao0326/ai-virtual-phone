@@ -287,17 +287,33 @@ export function clearGeneratedWeekItems(
 
 /** 生成失败时，把 clearGeneratedWeekItems 移除的条目加回本周计划。 */
 export function restoreCalendarWeekItems(
-  ownerType: CalendarOwnerType,
-  ownerId: string,
-  weekStart: string,
-  itemsToRestore: CalendarScheduleItem[],
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    weekStart: string,
+    itemsToRestore: CalendarScheduleItem[],
 ): void {
-  if (itemsToRestore.length === 0) return;
-  const existing = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
-  replaceCalendarWeekItems(ownerType, ownerId, weekStart, sortScheduleItems([
-    ...(existing?.items ?? []),
-    ...itemsToRestore,
-  ]));
+    if (itemsToRestore.length === 0) return;
+    const existing = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
+    replaceCalendarWeekItems(ownerType, ownerId, weekStart, sortScheduleItems([
+        ...(existing?.items ?? []),
+        ...itemsToRestore,
+    ]));
+}
+
+/**
+ * 清空整周所有日程（含手动条目），用于"清空日程"按钮。返回被移除的列表。
+ * 生成失败时可用 restoreCalendarWeekItems 整体回滚。
+ */
+export function clearCalendarWeekItems(
+    ownerType: CalendarOwnerType,
+    ownerId: string,
+    weekStart: string,
+): CalendarScheduleItem[] {
+    const existing = loadCalendarWeekPlan(ownerType, ownerId, weekStart);
+    const items = existing?.items ?? [];
+    if (items.length === 0) return [];
+    replaceCalendarWeekItems(ownerType, ownerId, weekStart, []);
+    return items;
 }
 
 export function buildCalendarScheduleMarker(

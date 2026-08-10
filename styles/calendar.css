@@ -872,6 +872,26 @@
   color: var(--c-calendar-ev-green-fg);
 }
 
+/* FAB 菜单分隔线 */
+.calendar-fab-menu-divider {
+  height: 1px;
+  margin: 3px 6px;
+  background: var(--c-calendar-surface-2);
+}
+
+/* FAB 菜单危险项（清空本周） */
+.calendar-fab-menu-item[data-variant="danger"] {
+  color: var(--c-danger);
+}
+
+.calendar-fab-menu-item[data-variant="danger"]:hover {
+  background: color-mix(in srgb, var(--c-danger) 10%, transparent);
+}
+
+.calendar-fab-menu-item[data-variant="danger"] svg {
+  color: var(--c-danger);
+}
+
 /* ── 色块按钮（弹窗通用） ── */
 .calendar-block-btn {
   flex: 1;
@@ -903,6 +923,15 @@
 .calendar-block-btn[data-variant="ghost"]:hover {
   background: var(--c-calendar-surface-2);
   color: var(--c-calendar-ink);
+}
+
+.calendar-block-btn[data-variant="danger"] {
+  background: var(--c-danger);
+  color: #fff;
+}
+
+.calendar-block-btn[data-variant="danger"]:hover {
+  opacity: 0.88;
 }
 
 .calendar-block-btn:disabled {
