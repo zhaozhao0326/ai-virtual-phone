@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.8";
+export const APP_VERSION = "1.5.9";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.9",
+    date: "2026-08-10",
+    title: "修复：文字生图流式响应中断自动重试一次（NAI SDE 偶发掐流）",
+    highlights: [
+      "仅在「流式响应中断」（NAI SDE 异常 / Vercel 边缘函数把流掐了）这一类偶发性错误触发重试，sleep 1.5s 后重试 1 次",
+      "其他错误（401 / 余额不足 / 客户端 4xx / 真异常）维持原样立即报错，不掩盖真因",
+      "根因：客户端服务端虽然 catch 里把错误 enqueue 进 @@RESULT@@ 标记，但若流已关闭 controller.enqueue 静默吞错 → 客户端只能拿到一堆心跳空格搜不到 @@RESULT@@ → 抛 idx<0 即\"流式响应中断\"",
+      "只动了 chat-room.tsx 一个文件，不动中转 / 不动服务端，最大化保稳",
+    ],
+  },
   {
     version: "1.5.8",
     date: "2026-08-10",
