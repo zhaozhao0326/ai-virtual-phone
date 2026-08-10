@@ -1837,7 +1837,8 @@ export function MediaImageWithPreview({
     sideActionPlacement?: "left" | "right";
 }) {
     const [preview, setPreview] = useState(false);
-    const saveName = filename || title;
+    // 保存文件名：显式 filename 优先（如朋友圈 moment-{id}），否则用时间戳，避免拿提示词/长文本当文件名
+    const saveName = filename || timestampImageName();
     return (
         <>
             <div className="chat-media-file-wrap" data-action-placement={sideActionPlacement}>
@@ -1903,6 +1904,13 @@ function ensureExtension(name: string, fileType: string): string {
     if (!name) return `file${DEFAULT_EXT[fileType] || ""}`;
     if (/\.\w{2,5}$/.test(name)) return name;
     return `${name}${DEFAULT_EXT[fileType] || ""}`;
+}
+
+/** 生成时间戳文件名（无扩展名，由 ensureExtension 补）：IMG_YYYYMMDD_HHMMSS */
+function timestampImageName(): string {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `IMG_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function MediaFileBubble({
@@ -2068,6 +2076,8 @@ function MediaFileBubble({
 
     if (fileType === "image" && url) {
         const displayTitle = msg.mediaData?.imageGenerationPrompt ? "" : title;
+        // AI 生成的图：保存名用时间戳（不传 filename，避免提示词命名）；用户上传的图保留原文件名
+        const isAIGeneratedImage = Boolean(msg.mediaData?.imageGenerationPrompt || (msg.mediaData?.label && msg.mediaData.imageGenerationStatus === "generated"));
         const canRegenerateImage = Boolean(msg.mediaData?.label?.trim())
             && (msg.mediaData?.imageGenerationStatus === "generated" || Boolean(msg.mediaData?.imageGenerationPrompt));
         return (
@@ -2075,7 +2085,7 @@ function MediaFileBubble({
                 <MediaImageWithPreview
                     url={url}
                     title={displayTitle}
-                    filename={title}
+                    filename={isAIGeneratedImage ? undefined : title}
                     sideActionPlacement={msg.role === "user" ? "left" : "right"}
                     sideAction={canRegenerateImage ? (
                         <button

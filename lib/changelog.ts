@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.4.8";
+export const APP_VERSION = "1.4.9";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.4.9",
+    date: "2026-08-10",
+    title: "生图图片保存改用时间戳命名",
+    highlights: [
+      "修复：聊天里 AI 生成的图片，「保存图片」下载时文件名是一长串生图提示词，在相册里难辨认",
+      "现在 AI 生成的图片保存为 IMG_年月日_时分秒.png 时间戳命名；自己上传的图片仍保留原文件名",
+    ],
+  },
   {
     version: "1.4.8",
     date: "2026-08-10",
