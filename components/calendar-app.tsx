@@ -205,6 +205,11 @@ export function PhoneCalendarApp({
     () => owners.find(owner => owner.key === selectedKey) ?? owners[0] ?? null,
     [owners, selectedKey],
   );
+  // 选中角色的生日（MM-DD），供月历/详情页做生日提示
+  const selectedBirthday = useMemo(() => {
+    if (selectedOwner?.ownerType !== "character") return undefined;
+    return loadCharacters().find(c => c.id === selectedOwner.ownerId)?.birthday || undefined;
+  }, [selectedOwner]);
   const weekStart = useMemo(() => getWeekStartIso(parseIsoDate(selectedDate)), [selectedDate]);
 
   const itemsByDate = useMemo(() => {
@@ -564,6 +569,7 @@ export function PhoneCalendarApp({
             itemsByDate={itemsByDate}
             cycleMap={cycleMap}
             ownerStrip={ownerStrip}
+            birthday={selectedBirthday}
             onPickDay={openDetail}
             onClose={onClose}
             onOpenTheme={() => setShowThemePanel(true)}
@@ -585,6 +591,8 @@ export function PhoneCalendarApp({
               onBack={() => setView("month")}
               onSelectedChange={setSelectedDate}
               onEditItem={openEditItem}
+              ownerName={selectedOwner?.name}
+              birthday={selectedBirthday}
             />
           </>
         )}

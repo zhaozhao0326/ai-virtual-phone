@@ -1755,6 +1755,7 @@ function CharArchiveView({
   const [persona, setPersona] = useState(char.persona || "");
   const [personality, setPersonality] = useState(char.personality || "");
   const [appearance, setAppearance] = useState(char.appearance || "");
+  const [birthday, setBirthday] = useState(char.birthday || "");
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [appearanceError, setAppearanceError] = useState("");
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
@@ -1890,6 +1891,7 @@ function CharArchiveView({
           : undefined,
         timeZone: normalizedTimeZone,
         tags,
+        birthday: birthday.trim() || undefined,
         avatar: avatar ?? null
       });
     }
@@ -2124,6 +2126,22 @@ function CharArchiveView({
                 <span className="char-archive-val select-text cursor-text tracking-[-0.5px]">
                   {char.wechatID || "N/A"}
                 </span>
+              </div>
+              <div className="char-archive-cell" style={{ flex: 1 }}>
+                <span className="char-archive-label">Birthday</span>
+                {isEditing ? (
+                  <input
+                    className="char-archive-input ts-16 font-mono w-full text-left bg-[var(--c-input)]/50 border border-dashed border-[#666]"
+                    placeholder="MM-DD（如 03-15）"
+                    value={birthday}
+                    onChange={(e) => setBirthday(e.target.value)}
+                    style={{ padding: "2px 4px" }}
+                  />
+                ) : (
+                  <span className="char-archive-val select-text cursor-text tracking-[-0.5px]">
+                    {birthday || "N/A"}
+                  </span>
+                )}
               </div>
               <div className="char-archive-cell" style={{ flex: 1.1 }}>
                 <span className="char-archive-label">Update</span>

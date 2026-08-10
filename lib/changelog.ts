@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.1";
+export const APP_VERSION = "1.5.2";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.2",
+    date: "2026-08-10",
+    title: "角色生日接入日历：档案可设生日，日历生日当天提示",
+    highlights: [
+      "角色档案（绝密档案）新增「生日」栏（MM-DD 格式，如 03-15）",
+      "日历月历：角色生日那天显示 🎂 小标记",
+      "日历详情页：当天是角色生日时顶部显示生日横幅提示",
+      "设置生日后，后续生成的角色日程也会围绕生日安排（生日当天会有特殊日程）",
+    ],
+  },
   {
     version: "1.5.1",
     date: "2026-08-10",

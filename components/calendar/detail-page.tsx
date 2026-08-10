@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Columns2, Settings2 } from "lucide-react";
 import type { CalendarScheduleItem } from "@/lib/calendar-types";
 import type { MenstrualDayState } from "@/lib/menstrual-storage";
-import { formatIsoDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
+import { formatIsoDate, isBirthdayOnDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
 import { getLunarInfoByIso } from "@/lib/lunar";
 
 const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"];
@@ -90,6 +90,8 @@ export function CalendarDetailPage({
   onBack,
   onSelectedChange,
   onEditItem,
+  ownerName,
+  birthday,
 }: {
   initialDate: string;
   todayIso: string;
@@ -106,6 +108,10 @@ export function CalendarDetailPage({
   onBack: () => void;
   onSelectedChange: (iso: string) => void;
   onEditItem: (item: CalendarScheduleItem) => void;
+  /** 当前查看者名字（生日横幅用） */
+  ownerName?: string;
+  /** 当前查看者的生日 MM-DD（生日横幅用） */
+  birthday?: string;
 }) {
   const [center, setCenter] = useState(initialDate);
   const [selectedIso, setSelectedIso] = useState(initialDate);
@@ -367,6 +373,15 @@ export function CalendarDetailPage({
       </div>
 
       {cyclePanel}
+
+      {ownerName && birthday && isBirthdayOnDate(birthday, selectedIso) && (
+        <div className="calendar-birthday-banner">
+          <span className="calendar-birthday-cake" aria-hidden="true">🎂</span>
+          <span className="calendar-birthday-text">
+            今天是 <strong>{ownerName}</strong> 的生日！
+          </span>
+        </div>
+      )}
 
       <div className="calendar-tl-vscroll hide-scrollbar" ref={tlVRef}>
         <div className="calendar-tl-row">

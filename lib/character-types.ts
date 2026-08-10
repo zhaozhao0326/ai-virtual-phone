@@ -7,6 +7,7 @@ export type Character = {
   briefPersona?: string; // 简量版人设：注入到同世界有关系角色的「角色关系」marker，供对方了解 TA（防 OOC）
   briefPersonaUpdatedAt?: string; // 简介生成时间；早于 updatedAt 时编辑器提示「设定已更新，建议重新生成」
   wechatID?: string;     // 手机号格式的微信号
+  birthday?: string;     // 生日 MM-DD（如 "03-15"）；日历在生日当天显示提示
   personality?: string;    // 角色性格
   timeZone?: string;       // IANA 时区，例如 America/New_York；空值表示跟随系统时间
   tags?: string[];

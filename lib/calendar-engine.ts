@@ -60,20 +60,32 @@ function buildSyntheticUserCharacter(identity: UserIdentity | null): Character {
   };
 }
 
-function buildCalendarTriggerInstruction(ownerName: string, dates: string[]): string {
+function buildCalendarTriggerInstruction(ownerName: string, dates: string[], birthday?: string): string {
+    const birthdayLine = (() => {
+        if (!birthday) return "";
+        const b = birthday.trim();
+        if (!/^\d{1,2}-\d{1,2}$/.test(b)) return "";
+        const [m, d] = b.split("-").map(Number);
+        const bIso = `${new Date().getFullYear()}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        return dates.includes(bIso)
+            ? `注意：${bIso} 是 ${ownerName} 的生日，这一天请安排生日相关的事项（如庆祝、聚餐、收到祝福等）。`
+            : "";
+    })();
     if (dates.length === 1) {
         return [
             `请为${ownerName}生成 ${dates[0]} 这一天的日程安排。`,
+            birthdayLine,
             "每行一条，格式：YYYY-MM-DD|周几|开始时间|结束时间|地点|emoji|事项。emoji 段填一个最贴合该事项的表情符号。",
             "作息时间不受限制（早起、夜跑、通宵都可以安排），但最多 5 条日程，宁缺毋滥。",
-        ].join("\n");
+        ].filter(Boolean).join("\n");
     }
     return [
         `请为${ownerName}生成 ${dates[0]} 到 ${dates[dates.length - 1]} 这一周的日程安排。`,
         "请参考已有日程，生成这一周的完整日程安排。",
+        birthdayLine,
         "每行一条，格式：YYYY-MM-DD|周几|开始时间|结束时间|地点|emoji|事项。emoji 段填一个最贴合该事项的表情符号。",
         "作息时间不受限制（早起、夜跑、通宵都可以安排），但每一天最多 5 条日程，宁缺毋滥。",
-    ].join("\n");
+    ].filter(Boolean).join("\n");
 }
 
 function stripCodeFences(text: string): string {
@@ -265,7 +277,10 @@ async function generateScheduleForRange(
             restoreRemoved();
             return { success: false, error: "没有有效的目标日期。" };
         }
-        const triggerInstruction = buildCalendarTriggerInstruction(resolved.ownerName, targetDates);
+        const birthday = ownerType === "character"
+            ? loadCharacters().find(c => c.id === ownerId)?.birthday
+            : undefined;
+        const triggerInstruction = buildCalendarTriggerInstruction(resolved.ownerName, targetDates, birthday);
 
         const messages: LLMMessage[] = [
             ...resolved.llmMessages,

@@ -154,3 +154,19 @@ export function formatWeekRangeLabel(weekStart: string): string {
 export function getOwnerStorageKey(ownerType: string, ownerId: string): string {
   return `${ownerType}:${ownerId}`;
 }
+
+/**
+ * 判断某个 MM-DD 生日字符串是否落在指定日期（YYYY-MM-DD）。
+ * 非法生日（未设置/格式错）一律返回 false。
+ */
+export function isBirthdayOnDate(birthday: string | null | undefined, dateIso: string): boolean {
+  if (!birthday) return false;
+  const m = birthday.trim().match(/^(\d{1,2})-(\d{1,2})$/);
+  if (!m) return false;
+  const month = Number(m[1]);
+  const day = Number(m[2]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const d = parseIsoDate(dateIso);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getMonth() + 1 === month && d.getDate() === day;
+}
