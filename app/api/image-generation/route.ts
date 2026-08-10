@@ -189,8 +189,9 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
     if (input.prompt?.trim()) parts.push(input.prompt.trim());
     // 参与者（谁在画面里），仅作身份锚定，不抢主体
     if (input.participants?.length) {
-        // v1.5.12：参与者与 referenceImages 同序（前端 specList 顺序 = refImages 顺序）。
-        // 该人物有对应锁脸参考图时，把 {charN} 锚点直接绑到人物名前，让 NAI 精确对应"哪张脸=哪个人"。
+        // {charN} 锚点是 NAI 专属语法，OAI/Google 不认，注入反而污染提示词 → 仅 NAI 注入。
+        // 参与者与 referenceImages 同序（前端 specList 顺序 = refImages 顺序）。
+        const isNai = input.provider === "novelai";
         const refList = (input.referenceImages || [])
             .filter((d) => typeof d === "string" && d.startsWith("data:"))
             .slice(0, 4);
@@ -200,7 +201,8 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             const action = (p.action || "").trim();
             if (!name && !anchor && !action) continue;
             const hasRef = Boolean(refList[idx]);
-            let clause = hasRef ? `{char${idx + 1}} ${name || "某人"}` : (name || "某人");
+            // 仅 NAI 用 {charN} 锚点绑定"哪张脸=哪个人"；OAI/Google 直接写人物名（脸靠参考图锁）。
+            let clause = (hasRef && isNai) ? `{char${idx + 1}} ${name || "某人"}` : (name || "某人");
             if (anchor) clause += `（${anchor}）`;
             if (action) clause += ` ${action}`;
             parts.push(clause);
@@ -655,13 +657,23 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     // 关键修复：gpt-image / 部分第三方 relay 在 edits 带多张人脸参考图时，会弱化处理文字 prompt、
     // 直接把参考图拼回输出（表现就是「关键词不读 + 两张参考图拼接」）。
     // 这里显式声明：参考图 ONLY 用于匹配外貌/风格，文字描述才是画面主导指令，且禁止照搬参考图的构图/姿势/背景。
+    // v1.5.13：多参考图时显式映射"第几张参考图 = 哪个人"，降低 OAI 张冠李戴概率。
+    // （gpt-image 系 edits 接口无法给 image[] 单独打标，只能靠上传顺序约定 + 提示词显式映射）
+    const orderHint = (() => {
+      const list = (input.participants || []).slice(0, refCount);
+      if (list.length < 1) return "";
+      const orderParts = list.map((p, i) =>
+        `reference image ${i + 1} = ${p.name || "person " + (i + 1)}${p.anchor ? " (" + p.anchor + ")" : ""}`
+      );
+      return ` The reference images are provided in this exact order: ${orderParts.join("; ")}. Reproduce each person's face STRICTLY from their corresponding reference image.`;
+    })();
     if (hasReference) {
       // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
       // 但同时要禁止模型把多张参考图当拼贴左右粘贴，也不许照搬原背景/姿势/衣服——
       // 场景、动作、构图必须由下方文字描述主导。
       const refNote = refCount > 1
-        ? "LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images. Then compose them into ONE coherent scene that strictly follows the description below. Do NOT collage or paste the reference images side-by-side; do NOT copy their original backgrounds, poses, or outfits."
-        : "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit.";
+        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent scene that strictly follows the description below. Do NOT collage or paste the reference images side-by-side; do NOT copy their original backgrounds, poses, or outfits.`
+        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit.`;
       finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
     console.log("[OAI-PROMPT] final:", {

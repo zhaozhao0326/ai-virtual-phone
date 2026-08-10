@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.12";
+export const APP_VERSION = "1.5.13";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.13",
+    date: "2026-08-10",
+    title: "修复：OAI(gpt-image) 文字生图多参考图锁脸张冠李戴（OAI 不识别 NAI 的 {charN} 锚点 + 不声明第几张图=谁）",
+    highlights: [
+      "用户实测：OAI 角色锁脸能力可用（参考图能锁脸），故 v1.5.12 仅针对 NAI 的 {charN} 修复没覆盖 OAI",
+      "根因1：buildStructuredChinesePrompt 给有锁脸图的人物统一前缀 {charN}，但 {charN} 是 NAI 专属锚点语法，OAI/Google 不认 → 注入后变成污染噪声",
+      "根因2：OAI edits 接口 image[] 无法给每张图单独打标，原 refNote 只说\"锁每张脸\"却没说第几张=谁 → 模型凭空分配两张脸 → 画出一男一女但不是你和他",
+      "修复1：{charN} 注入改为仅 provider===\"novelai\" 时生效，OAI/Google 只写人物名（脸靠参考图锁，不靠锚点）",
+      "修复2：OAI refNote 追加 orderHint — 用 participants 与 referenceImages 同序，显式声明\"reference image 1 = 你（女生...）；reference image 2 = 季言浅（男生...）。Strictly reproduce each person's face from their corresponding reference image\"",
+      "纯服务端改动（app/api/image-generation/route.ts）；前端 participants/referenceImages 本就同序，无需改动",
+    ],
+  },
   {
     version: "1.5.12",
     date: "2026-08-10",
