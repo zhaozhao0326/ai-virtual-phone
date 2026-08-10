@@ -109,6 +109,46 @@ async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> 
   }
 }
 
+/**
+ * 把参考图压缩到适合走 Vercel 中转的大小（避免请求体超 4.5MB 触发 413）。
+ * - 最长边 768px（gpt-image-1 内部对参考图就只取 ~1024px）
+ * - JPEG 0.82 质量（人脸主观差异肉眼基本不可见）
+ * - 原图 < 220KB 跳过压缩（已经够小，再压只会丢细节）
+ * - 任何失败/非浏览器环境都回退到原图，绝不阻断生图
+ */
+async function compressReferenceImageForUpload(
+  dataUrl: string,
+  maxDim = 768,
+  quality = 0.82,
+): Promise<string> {
+  if (typeof document === "undefined") return dataUrl;
+  // 已经够小 → 不压（避免无谓画质损失）
+  if (dataUrl.length <= 220 * 1024) return dataUrl;
+  try {
+    const image = await loadDataUrlImage(dataUrl);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return dataUrl;
+    // 不放大：小图保持原样
+    const longest = Math.max(width, height);
+    const scale = longest > maxDim ? maxDim / longest : 1;
+    const targetW = Math.round(width * scale);
+    const targetH = Math.round(height * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const context = canvas.getContext("2d");
+    if (!context) return dataUrl;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, targetW, targetH);
+    // 强制 JPEG 输出，体积比 PNG 小 70%+（人脸参考图不需要透明）
+    return canvas.toDataURL("image/jpeg", quality);
+  } catch {
+    return dataUrl;
+  }
+}
+
 function imageExtension(mimeType: string): string {
   const subtype = mimeType.split("/")[1] || "png";
   return subtype.replace("jpeg", "jpg");
@@ -885,19 +925,31 @@ export async function generateImageFromConfiguredApi(params: {
     ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
     : null;
   throwIfAborted(params.signal);
+  // 同步压缩：OAI server 模式下这张也作为 base64 发到 Vercel 中转，
+  // 单独一张也可能接近 4.5MB（高清头像 / 角色图常见），压一下兜底。
+  const compressedReferenceImageDataUrl = referenceImageDataUrl
+    ? await compressReferenceImageForUpload(referenceImageDataUrl)
+    : null;
 
-  /* ===== 合并：角色锁脸图排第一，再接参与者的脸，去重后截 4 张 ===== */
-  const mergedReferenceImages = (() => {
+  /* ===== 合并：角色锁脸图排第一，再接参与者的脸，去重后截 4 张 =====
+     每张先 compressReferenceImageForUpload → 避免多张高清图累加
+     触发 Vercel 中转 4.5MB 请求体上限（413 Payload Too Large）。 */
+  const mergedReferenceImages = await (async () => {
     const out: string[] = [];
     const seen = new Set<string>();
-    const push = (v?: string | null) => {
+    const push = async (v?: string | null) => {
       const s = typeof v === "string" ? v.trim() : "";
       if (!s.startsWith("data:image/") || seen.has(s)) return;
-      seen.add(s);
-      out.push(s);
+      const compressed = await compressReferenceImageForUpload(s);
+      // 压缩后也可能命中已 seen（不同原图→同压缩结果），仍按 seen 去重
+      if (seen.has(compressed)) return;
+      seen.add(compressed);
+      out.push(compressed);
     };
-    push(referenceImageDataUrl);                    // ① 角色自己的锁脸图优先
-    (params.referenceImages ?? []).forEach(push);   // ② 再加用户等参与者
+    await push(referenceImageDataUrl);                    // ① 角色自己的锁脸图优先
+    for (const r of params.referenceImages ?? []) {
+      await push(r);                                      // ② 再加用户等参与者
+    }
     return out.slice(0, 4);
   })();
   const usedReferenceImagesCount = mergedReferenceImages.length;
@@ -907,6 +959,7 @@ export async function generateImageFromConfiguredApi(params: {
     useReferenceImage: params.useReferenceImage,
     hasCharRef: Boolean(reference?.assetId),
     mergedRefs: usedReferenceImagesCount,
+    firstRefBytes: mergedReferenceImages[0]?.length ?? 0,
   });
   /* ============================================================== */
 
@@ -1011,7 +1064,7 @@ export async function generateImageFromConfiguredApi(params: {
   const data = await generateImageViaServerOrProxy({
     settings,
     prompt,
-    referenceImageDataUrl,
+    referenceImageDataUrl: compressedReferenceImageDataUrl,
     referenceImages: mergedReferenceImages,
     participants: params.participants,
     sceneBackground: params.sceneBackground,

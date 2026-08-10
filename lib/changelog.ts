@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.4";
+export const APP_VERSION = "1.5.5";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.5",
+    date: "2026-08-10",
+    title: "修复：生图请求 413（请求体超 4.5MB）",
+    highlights: [
+      "客户端自动压缩参考图：发到 Vercel 中转的每张锁脸图都先缩到最长边 768px、JPEG 0.82 质量；原图 < 220KB 跳过压缩（避免无谓画质损失）",
+      "多张角色/参与者参考图累加 1–2MB × N 容易触发 Vercel Serverless Function 的 4.5MB 请求体上限（413 Payload Too Large），压缩后单张 ~100–200KB，4 张也才 600–800KB 离上限很安全",
+      "朋友圈/聊天 [生图] 标签、角色相册等所有走服务端中转的生图路径都受益；OpenAI gpt-image-1 锁脸效果不受影响（gpt-image-1 内部对参考图本来也只取 ~1024px）",
+      "失败时回退到原图，绝不阻断生图；本改动纯客户端、无新接口",
+    ],
+  },
   {
     version: "1.5.4",
     date: "2026-08-10",
