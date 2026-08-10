@@ -8,6 +8,7 @@ import {
   isCalendarColorKey,
   isCalendarTimeRangeAllowed,
   normalizeTime,
+  parseIsoDate,
   pickScheduleColorKey,
   sanitizeScheduleEmoji,
   sortScheduleItems,
@@ -322,11 +323,63 @@ export function buildCalendarScheduleMarker(
   weekStart: string,
 ): string {
   const ownerLabel = ownerType === "user" ? "用户" : "角色";
-  return [
+  const marker = [
     `当前查看周起始日期：${weekStart}`,
     `${ownerLabel}本周日程：`,
     formatCalendarScheduleForPrompt(ownerType, ownerId, weekStart),
-  ].join("\n");
+  ];
+  // 剧情模式：让角色知道计划可以被剧情改变，并输出 [日程更新] 标签让系统同步日历
+  if (ownerType === "character") {
+    marker.push(
+      "",
+      "如果你的计划因剧情变化而改变（比如临时有约、原计划取消、新安排了事情），请在本轮回复中附带一个标签（不要解释、不要念出来）：[日程更新|YYYY-MM-DD|开始|结束|地点|事项]，例如 [日程更新|2026-08-10|14:00|16:00|游乐园|陪用户去游乐园]。系统会自动把它同步进你的日历。",
+    );
+  }
+  return marker.join("\n");
+}
+
+/**
+ * 处理 AI 输出的 [日程更新|...] 标签：把剧情变化后的新日程写入角色日历。
+ * 同日期同开始时间的旧条目会被覆盖，其余条目保留。
+ */
+export function applyScheduleUpdateForCharacter(
+  characterId: string,
+  tagContent: string,
+): { ok: boolean; title?: string; error?: string } {
+  const parts = tagContent.split("|").map(p => p.trim());
+  if (parts.length < 5) return { ok: false, error: "日程更新标签格式不正确" };
+  const [date, start, end, location, title] = parts;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "日期格式不正确" };
+  const startTime = normalizeTime(start);
+  const endTime = normalizeTime(end);
+  if (!startTime || !endTime || !isCalendarTimeRangeAllowed(startTime, endTime)) {
+    return { ok: false, error: "时间格式不正确" };
+  }
+  if (!title.trim()) return { ok: false, error: "事项为空" };
+
+  const weekStart = getWeekStartIso(parseIsoDate(date));
+  const now = new Date().toISOString();
+  const item: CalendarScheduleItem = {
+    id: `schedule_update_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    date,
+    weekday: getWeekdayLabel(date),
+    startTime,
+    endTime,
+    location: location === "无" ? "" : location,
+    title: title.trim(),
+    emoji: "",
+    colorKey: pickScheduleColorKey(startTime),
+    source: "generated",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const existing = loadCalendarWeekPlan("character", characterId, weekStart);
+  const items = existing?.items ?? [];
+  // 同日期同开始时间的条目视为同一次计划，整体替换
+  const filtered = items.filter(i => !(i.date === date && i.startTime === startTime));
+  replaceCalendarWeekItems("character", characterId, weekStart, sortScheduleItems([...filtered, item]));
+  return { ok: true, title: item.title };
 }
 
 export function normalizeGeneratedScheduleItems(

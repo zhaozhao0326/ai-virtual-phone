@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.5.1";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.5.1",
+    date: "2026-08-10",
+    title: "日历剧情联动：AI 剧情变化自动覆盖原日程",
+    highlights: [
+      "角色聊天时能看到自己的日程；当剧情改变了原计划（比如临时有约、计划取消、安排了新事情），角色会在回复中输出 [日程更新] 标签，系统自动同步进它的日历",
+      "覆盖规则：同一天同一时间段的旧日程被新日程替换，其他时间段的安排原样保留——例如原计划上学、但答应了陪你出去玩，上学那条就会被替换",
+      "「生成今日日程」即按角色最近的聊天事实重新生成当天安排（相当于棉花糖机的「按当前事实校准」）",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-08-10",

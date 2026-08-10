@@ -4,7 +4,8 @@ import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
-import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
@@ -2535,6 +2536,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     part.content = part.content.replace(ADD_FRIEND_TAG_RE, "").trim();
                     if (!part.content) continue; // 整条消息只有标签：不发空气泡
                 }
+                // 群聊里角色剧情变化也能更新自己的日程：拦截 [日程更新] 标签 → 同步日历 + 从气泡文本剥离
+                const sd = SCHEDULE_UPDATE_TAG_RE.exec(part.content);
+                if (sd) {
+                    const applied = applyScheduleUpdateForCharacter(r.characterId, sd[1] || "");
+                    if (applied.ok) {
+                        window.dispatchEvent(new CustomEvent("calendar-updated"));
+                    }
+                    part.content = part.content.replace(SCHEDULE_UPDATE_TAG_RE, "").trim();
+                    if (!part.content) continue; // 整条消息只有标签：不发空气泡
+                }
                 if (!isFirst) await abortableDelay(800, guard?.signal);
                 throwIfGenerationStopped(guard);
                 isFirst = false;
@@ -3724,6 +3735,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             if (fg) {
                                 applyAIProactiveFriendRequest(session.contactId, fg[1] || "");
                                 text = text.replace(ADD_FRIEND_TAG_RE, "");
+                            }
+                            // 剧情变化更新日程标签拦截（1:1 场景）：原计划被新剧情覆盖时 AI 同步日历，再从文本里剥掉标签
+                            const sd = SCHEDULE_UPDATE_TAG_RE.exec(text);
+                            if (sd) {
+                                const applied = applyScheduleUpdateForCharacter(session.contactId, sd[1] || "");
+                                if (applied.ok) {
+                                    showChatToast(`已更新日程：${applied.title}`);
+                                    window.dispatchEvent(new CustomEvent("calendar-updated"));
+                                } else {
+                                    showChatToast(applied.error || "日程更新失败");
+                                }
+                                text = text.replace(SCHEDULE_UPDATE_TAG_RE, "");
                             }
                             const reasoningText = pendingReasoning;
                             pendingReasoning = undefined;
