@@ -707,7 +707,9 @@ function geminiParts(message: LlmRequestMessage): unknown[] {
                         args: hasArgs ? call.args : { noop: "1" },
                     },
                 };
-                if (call.thoughtSignature) part.thoughtSignature = call.thoughtSignature;
+                // Gemini 2.5+ 要求 functionCall part 必须携带 thoughtSignature（即使是空字符串），
+                // 否则多轮工具调用会报 400: "Function call is missing a thought_signature".
+                part.thoughtSignature = call.thoughtSignature ?? "";
                 return part;
             }),
         ];
