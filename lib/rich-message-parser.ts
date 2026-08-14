@@ -760,12 +760,13 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
     // 1.5. Strip AI hallucination XML/bracket action shells
     const actionCleaned = stripActionShells(parsedSV.cleanText);
 
-    // 2. Extract display-only status panel, then inner monologue
+    // 2. Extract display-only status panel, then inner monologue, then scene block
     const status = extractBracketBlock(actionCleaned, "状态栏");
     const mono = extractBracketBlock(status.cleaned, "内心");
+    const scene = extractBracketBlock(mono.cleaned, "当前场景");
 
     // 2.1. Collapse residual blank lines left by tag extraction
-    const postCleaned = mono.cleaned.replace(/\n{3,}/g, "\n\n").trim();
+    const postCleaned = scene.cleaned.replace(/\n{3,}/g, "\n\n").trim();
 
     // 2.5. Merge [引用:...] with following reply text even if separated by newlines
     const mergedText = postCleaned.replace(/(\[引用[：:][^\]]+\])\s*\n+\s*/g, "$1");
@@ -782,7 +783,7 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
     //      [身份确认] / 身份确认： / 思路构思： / 最终选择的思路： / 最终回复：
     //      只保留“最终回复”后的正文作为可见气泡；前面几段归入 reasoningText，
     //      仍以“思维链”形式展示在 reasoning sheet 里，而不是直接刷屏。
-    const reasoningLabels = ["身份确认", "思路构思", "最终选择的思路"];
+    const reasoningLabels = ["身份确认", "思路构思", "最终选择的思路", "当前场景"];
     const visibleSegments: string[] = [];
     const extractedReasoning: string[] = [];
     for (const seg of segments) {
@@ -823,6 +824,6 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
         freshStateValues: parsedSV.stateValues,
         statusPanel: restore(status.content),
         innerMonologue: restore(mono.content),
-        reasoningText: extractedReasoning.length > 0 ? extractedReasoning.join("\n\n") : undefined,
+        reasoningText: [scene.content, ...extractedReasoning].filter(Boolean).join("\n\n") || undefined,
     };
 }
