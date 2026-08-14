@@ -38,6 +38,8 @@ export interface ParsedAIResponse {
     freshStateValues: StateValue[];
     statusPanel: string;
     innerMonologue: string;
+    /** 从结构化输出（如 [身份确认]/思路构思/最终选择的思路）中提取的思维链，供 reasoningsheet 展示 */
+    reasoningText?: string;
 }
 
 // ── Rich-media patterns (non-global, for single match with index) ──
@@ -776,9 +778,30 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
     // 3. Split by double newlines (placeholders still in place)
     const segments = stickerMerged.split(/\n\n+/).map(s => s.trim()).filter(Boolean);
 
+    // 3.5. 剥离部分角色 prompt 强制的结构化输出骨架：
+    //      [身份确认] / 身份确认： / 思路构思： / 最终选择的思路： / 最终回复：
+    //      只保留“最终回复”后的正文作为可见气泡；前面几段归入 reasoningText，
+    //      仍以“思维链”形式展示在 reasoning sheet 里，而不是直接刷屏。
+    const reasoningLabels = ["身份确认", "思路构思", "最终选择的思路"];
+    const visibleSegments: string[] = [];
+    const extractedReasoning: string[] = [];
+    for (const seg of segments) {
+        const finalReplyMatch = seg.match(/^\s*\[?最终回复\]?[：:]\s*/);
+        if (finalReplyMatch) {
+            visibleSegments.push(seg.slice(finalReplyMatch[0].length).trim());
+            continue;
+        }
+        const reasoningMatch = seg.match(new RegExp(`^\\s*\\[?(${reasoningLabels.join("|")})\\]?[：:]\\s*`));
+        if (reasoningMatch) {
+            extractedReasoning.push(seg.slice(reasoningMatch[0].length).trim());
+            continue;
+        }
+        visibleSegments.push(seg);
+    }
+
     // 4. Parse each segment
     const parts: ParsedMessagePart[] = [];
-    for (const seg of segments) {
+    for (const seg of visibleSegments) {
         parseSegment(seg, parts);
     }
 
@@ -800,5 +823,6 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
         freshStateValues: parsedSV.stateValues,
         statusPanel: restore(status.content),
         innerMonologue: restore(mono.content),
+        reasoningText: extractedReasoning.length > 0 ? extractedReasoning.join("\n\n") : undefined,
     };
 }

@@ -2883,8 +2883,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             ? getLatestStateValues(session.id)
             : getLatestCharacterStateValues(session.contactId);
 
-        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(aiResponseText, previousState);
+        const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, reasoningText: parsedReasoningText } = parseAIResponse(aiResponseText, previousState);
         const parts = stripInvalidStickerParts(rawParts);
+        // 优先使用调用方传入的 reasoningText；未传入时，使用 parseAIResponse 从结构化输出里提取的
+        const roundReasoningText = options?.reasoningText || parsedReasoningText;
         throwIfGenerationStopped(options);
 
         // Detect call triggers and AI media actions, filter them out
@@ -2939,7 +2941,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         if (filteredParts.length === 0) {
             // Silence: only status panel / inner monologue / reasoning, no visible chat text
-            if (statusPanel || innerMonologue || options?.reasoningText) {
+            if (statusPanel || innerMonologue || roundReasoningText) {
                 throwIfGenerationStopped(options);
                 const aiMsg = pushChatMessage({
                     sessionId: session.id,
@@ -2949,7 +2951,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     rawResponseText,
                     statusPanel,
                     innerMonologue,
-                    reasoningText: options?.reasoningText,
+                    reasoningText: roundReasoningText,
                     stateValues: stateValues.length > 0 ? stateValues : undefined,
                     freshStateValues,
                 });
@@ -2981,7 +2983,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 rawResponseText,
                 statusPanel: idx === metaIdx && statusPanel ? statusPanel : undefined,
                 innerMonologue: idx === metaIdx && innerMonologue ? innerMonologue : undefined,
-                reasoningText: idx === metaIdx ? options?.reasoningText : undefined,
+                reasoningText: idx === metaIdx ? roundReasoningText : undefined,
                 stateValues: idx === metaIdx && stateValues.length > 0 ? stateValues : undefined,
                 freshStateValues: idx === metaIdx ? freshStateValues : undefined,
             }, options);
