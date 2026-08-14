@@ -707,9 +707,11 @@ function geminiParts(message: LlmRequestMessage): unknown[] {
                         args: hasArgs ? call.args : { noop: "1" },
                     },
                 };
-                // Gemini 2.5+ 要求 functionCall part 必须携带 thoughtSignature（即使是空字符串），
-                // 否则多轮工具调用会报 400: "Function call is missing a thought_signature".
-                part.thoughtSignature = call.thoughtSignature ?? "";
+                // Gemini 2.5+ 多轮工具调用要求"回传"模型原始给出的 thoughtSignature
+                // （哪怕是空字符串 ""，缺了就报 400: "Function call is missing a thought_signature"）。
+                // 但只能在"模型确实给过"时才挂；全新调用（模型没给，undefined）绝不能强行塞空串，
+                // 否则 Gemini 会把它当成错乱请求 → 不回 / 返回格式错乱。
+                if (call.thoughtSignature !== undefined) part.thoughtSignature = call.thoughtSignature;
                 return part;
             }),
         ];
@@ -814,8 +816,8 @@ function parseGeminiResponse(data: unknown): LlmParsedResponse {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里，必须保留，下一轮请求时回传
-            if (item.thoughtSignature) call.thoughtSignature = item.thoughtSignature;
+            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里，必须原样保留（含空串 ""），下一轮请求时回传
+            if (item.thoughtSignature !== undefined) call.thoughtSignature = item.thoughtSignature;
             toolCalls.push(call);
             continue;
         }
@@ -919,7 +921,7 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            if (item.thoughtSignature) delta.thoughtSignature = item.thoughtSignature;
+            if (item.thoughtSignature !== undefined) delta.thoughtSignature = item.thoughtSignature;
             toolCallDeltas.push(delta);
             continue;
         }
