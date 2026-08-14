@@ -59,6 +59,9 @@ import {
   normalizeCustomAppManifestId,
   saveInstalledCustomApps,
   uninstallCustomAppAsync,
+  getCustomAppIconStyle,
+  setCustomAppIconStyle,
+  type CustomAppIconStyle,
 } from "@/lib/custom-app-storage";
 import type { CustomAppManifest, CustomAppPermission, CustomAppResourceDeclarations, InstalledCustomApp } from "@/lib/custom-app-types";
 import { createCustomAppPackageFile } from "@/lib/custom-app-package";
@@ -448,9 +451,34 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
     void refreshMarket();
   }, []);
 
+  // 云端市场同步失败改为一次性弹窗（同一条错误本次只弹一次），不再常驻横幅——自部署无云端时界面保持干净
+  const dismissedMarketErrorRef = useRef("");
+  useEffect(() => {
+    if (marketError && dismissedMarketErrorRef.current !== marketError) {
+      dismissedMarketErrorRef.current = marketError;
+      setErrorDialog({ title: "云端市场同步失败", message: marketError });
+    }
+  }, [marketError]);
+
   useEffect(() => {
     setInstalledActionError("");
   }, [selectedInstalledApp?.id]);
+
+  // 桌面图标样式编辑（详情弹窗图标下方入口）
+  const [iconStyleEditorOpen, setIconStyleEditorOpen] = useState(false);
+  const [selectedIconStyle, setSelectedIconStyle] = useState<CustomAppIconStyle>("cover");
+  useEffect(() => {
+    setIconStyleEditorOpen(false);
+    if (selectedInstalledApp) setSelectedIconStyle(getCustomAppIconStyle(selectedInstalledApp.id));
+  }, [selectedInstalledApp?.id]);
+
+  function chooseIconStyle(style: CustomAppIconStyle) {
+    if (!selectedInstalledApp) return;
+    setCustomAppIconStyle(selectedInstalledApp.id, style);
+    setSelectedIconStyle(style);
+    setIconStyleEditorOpen(false);
+    onNotice?.(style === "global" ? "桌面图标已改为跟随全局样式" : "桌面图标已恢复为上传图标");
+  }
 
   useEffect(() => {
     const targetId = typeof launchContext?.selectedInstalledAppId === "string"
@@ -513,6 +541,21 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
       onNotice?.(`已导出「${app.name}」安装包`);
     } catch (err) {
       showErrorDialog(err, "导出失败");
+    }
+  }
+
+  // 已发布 APP 直接导出安装包：拉线上包还原后打包下载，不经过编辑器
+  async function exportMarketApp(item: CustomAppMarketItem) {
+    setBusy(true);
+    try {
+      const app = await loadCustomAppMarketPackageApp(item);
+      const file = await createCustomAppPackageFile(app);
+      await downloadFile(file, file.name);
+      onNotice?.(`已导出「${item.name}」安装包`);
+    } catch (err) {
+      showErrorDialog(err, "导出失败");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1082,8 +1125,6 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
               <input aria-label="搜索 APP" value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索应用或作者" />
             </label>
 
-            {marketError ? <div className="app-market-error" role="alert">{marketError}</div> : null}
-
             <section className="app-market-section">
               {filteredMarketApps.length === 0 ? (
                 <div className="app-market-empty">
@@ -1501,7 +1542,19 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
             </div>
             <div className="app-market-sheet-body">
               <div className="app-market-preview-row">
-                <AppIcon iconDataUrl={selectedInstalledApp.iconDataUrl} seed={selectedInstalledApp.name} className="large" />
+                <div className="am-installed-icon-col">
+                  <AppIcon
+                    iconDataUrl={selectedIconStyle === "global" ? undefined : selectedInstalledApp.iconDataUrl}
+                    seed={selectedInstalledApp.name}
+                    className="large"
+                  />
+                  {selectedInstalledApp.iconDataUrl ? (
+                    <button type="button" className="am-icon-style-edit" onClick={() => setIconStyleEditorOpen(true)}>
+                      <Pencil size={11} />
+                      图标样式
+                    </button>
+                  ) : null}
+                </div>
                 <div>
                   <strong>{selectedInstalledApp.name}</strong>
                   <p>{selectedInstalledApp.description || "本地自定义 APP"}</p>
@@ -1565,6 +1618,17 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
               <strong>{marketEditTarget ? `编辑「${marketEditTarget.name}」` : localEditTarget ? `编辑「${localEditTarget.name}」（本地）` : "单文件逐项上传"}</strong>
               {localEditTarget ? (
                 <button type="button" onClick={() => void exportLocalApp(localEditTarget)} aria-label={`导出${localEditTarget.name}安装包`} title="导出安装包（zip，可发给别人导入）" disabled={busy}>
+                  <Download size={18} />
+                </button>
+              ) : null}
+              {marketEditTarget ? (
+                <button
+                  type="button"
+                  onClick={() => manualExistingApp ? void exportLocalApp(manualExistingApp) : void exportMarketApp(marketEditTarget)}
+                  aria-label={`导出${marketEditTarget.name}安装包`}
+                  title="导出安装包（zip，可发给别人导入）"
+                  disabled={busy || manualExistingLoading}
+                >
                   <Download size={18} />
                 </button>
               ) : null}
@@ -1699,6 +1763,42 @@ export function AppMarketApp({ onClose, onOpenCustomApp, onInstallToDesktop, onN
                 </button>
                 <button type="button" className="app-market-secondary" onClick={() => setConfirmDelete(null)}>
                   取消
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {iconStyleEditorOpen && selectedInstalledApp ? (
+        <div className="app-market-overlay app-market-center-overlay" role="presentation" onClick={() => setIconStyleEditorOpen(false)}>
+          <div className="app-market-sheet app-market-confirm-sheet am-icon-style-sheet" role="dialog" aria-modal="true" aria-label="桌面图标样式" onClick={event => event.stopPropagation()}>
+            <div className="app-market-sheet-head">
+              <strong>桌面图标样式</strong>
+              <button type="button" onClick={() => setIconStyleEditorOpen(false)} aria-label="关闭">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="app-market-sheet-body">
+              <p className="app-market-upload-hint">选择「{selectedInstalledApp.name}」在桌面上的图标显示方式，随时可以改回来。</p>
+              <div className="am-icon-style-options">
+                <button
+                  type="button"
+                  data-active={selectedIconStyle === "cover" ? "true" : undefined}
+                  onClick={() => chooseIconStyle("cover")}
+                >
+                  <AppIcon iconDataUrl={selectedInstalledApp.iconDataUrl} seed={selectedInstalledApp.name} className="large" />
+                  <strong>使用当前图标</strong>
+                  <span>上传的图标铺满图标格</span>
+                </button>
+                <button
+                  type="button"
+                  data-active={selectedIconStyle === "global" ? "true" : undefined}
+                  onClick={() => chooseIconStyle("global")}
+                >
+                  <AppIcon seed={selectedInstalledApp.name} className="large" />
+                  <strong>跟随全局图标</strong>
+                  <span>生成字形，套用全局图标效果（毛玻璃等）</span>
                 </button>
               </div>
             </div>

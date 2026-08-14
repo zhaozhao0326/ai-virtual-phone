@@ -708,6 +708,15 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   const [communityGames, setCommunityGames] = useState<GameTemplate[]>([]);
   const [communityLoading, setCommunityLoading] = useState(false);
   const [communityError, setCommunityError] = useState<string | null>(null);
+  const [communityErrorDialog, setCommunityErrorDialog] = useState<string | null>(null);
+  const dismissedCommunityErrorRef = useRef<string | null>(null);
+  // 云端同步失败改为一次性弹窗（同一条错误只弹一次），不再常驻横幅——自部署无云端时界面保持干净
+  useEffect(() => {
+    if (communityError && dismissedCommunityErrorRef.current !== communityError) {
+      dismissedCommunityErrorRef.current = communityError;
+      setCommunityErrorDialog(communityError);
+    }
+  }, [communityError]);
   const [notice, setNotice] = useState<GameNotice | null>(null);
   const [selectedTemplate, setSelectedTemplate] = useState<GameTemplate | null>(null);
   const [creatorPageOpen, setCreatorPageOpen] = useState(false);
@@ -715,6 +724,8 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   const [drafts, setDrafts] = useState<GameHallDraft[]>(() => loadGameDrafts());
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  // 当前编辑的草稿来自资源集市时是集市路径，否则 null。别人的作品只能本机试玩，不能发布到大厅。
+  const [editingImportedFrom, setEditingImportedFrom] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishAnonymously, setPublishAnonymously] = useState(false);
   const [runtimeGame, setRuntimeGame] = useState<GameInstalledItem | null>(null);
@@ -1262,6 +1273,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
 
   function resetDraft(): void {
     setEditingDraftId(null);
+    setEditingImportedFrom(null);
     setEditingTemplateId(null);
     setAdvancedStudioOpen(false);
     setPublishAnonymously(false);
@@ -1300,6 +1312,8 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
           publishedTemplateId,
           // 关联草稿存了新内容但还没提交更新：卡片在「已发布」旁提示有未发布改动
           hasUnpublishedChanges: publishedTemplateId ? true : undefined,
+          // 来源标记跟着草稿走：改了内容再存也洗不掉，否则禁发布形同虚设
+          importedFrom: editingImportedFrom || existing?.importedFrom,
           createdAt: existing?.createdAt || now,
           updatedAt: now,
         },
@@ -1317,6 +1331,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   function editDraft(item: GameHallDraft): void {
     setStudioMenuId(null);
     setEditingDraftId(item.id);
+    setEditingImportedFrom(item.importedFrom || null);
     setEditingTemplateId(null);
     setDraft(item.draft);
     setAdvancedStudioOpen(parseGameRoleSlots(item.draft.roleSlotsText).length > 0);
@@ -1333,9 +1348,28 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   }
 
   // 导出草稿为 JSON 文件（blob 下载，不触发页面刷新），可发给别人从草稿箱「从文件导入」
+  // 已发布游戏直接导出为草稿文件（拉全量模板转换，不经过创建表单）
+  async function exportPublishedGameFile(template: GameTemplate): Promise<void> {
+    try {
+      const fullTemplate = await ensureFullGameTemplate(template);
+      const payload = {
+        type: "ai-phone-game-draft",
+        version: 1,
+        title: fullTemplate.title,
+        draft: draftFromTemplate(fullTemplate),
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      await downloadFile(blob, `${fullTemplate.title.trim() || "游戏草稿"}.json`);
+      showNotice("success", "已导出为草稿文件");
+    } catch (err) {
+      showNotice("error", err instanceof Error ? err.message : "导出失败");
+    }
+  }
+
   async function exportDraftFile(item: GameHallDraft): Promise<void> {
     try {
-      const payload = { type: "ai-phone-game-draft", version: 1, title: item.title, draft: item.draft };
+      // 带上来源标记：集市来的作品导出再导入依然禁发布，不能靠转一手洗掉出处
+      const payload = { type: "ai-phone-game-draft", version: 1, title: item.title, draft: item.draft, importedFrom: item.importedFrom };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       await downloadFile(blob, `${item.title.trim() || "游戏草稿"}.json`);
       showNotice("success", "草稿已导出为文件");
@@ -1347,10 +1381,13 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   // 导入草稿 JSON：整张创建表单自动填好（与「上传 HTML」共用一个入口，按扩展名分流）
   async function importDraftIntoForm(file: File): Promise<void> {
     try {
-      const payload = JSON.parse(await file.text()) as { type?: string; draft?: Record<string, unknown>; title?: string };
+      const payload = JSON.parse(await file.text()) as { type?: string; draft?: Record<string, unknown>; title?: string; importedFrom?: unknown };
       if (payload?.type !== "ai-phone-game-draft" || !payload.draft || typeof payload.draft !== "object") {
         throw new Error("不是有效的游戏草稿文件（需要从草稿箱「导出文件」生成）");
       }
+      const importedFrom = typeof payload.importedFrom === "string" && payload.importedFrom.trim()
+        ? payload.importedFrom.trim().slice(0, 400)
+        : null;
       // 只吸收与默认草稿同名同类型的字段，忽略其余内容
       const base = createDefaultGameDraft();
       const incoming = payload.draft;
@@ -1361,11 +1398,14 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
       }
       const nextDraft = importedDraft as GameTemplateDraft;
       setEditingDraftId(null);
+      setEditingImportedFrom(importedFrom);
       setEditingTemplateId(null);
       setDraft(nextDraft);
       setAdvancedStudioOpen(parseGameRoleSlots(nextDraft.roleSlotsText).length > 0);
       const title = (typeof payload.title === "string" && payload.title.trim()) || nextDraft.title.trim() || "导入的游戏";
-      showNotice("success", `已导入草稿「${title}」，检查后可存草稿或发布`);
+      showNotice("success", importedFrom
+        ? `已导入草稿「${title}」，这是集市来的作品，可本机试玩但不能发布到大厅`
+        : `已导入草稿「${title}」，检查后可存草稿或发布`);
     } catch (err) {
       showNotice("error", err instanceof Error ? err.message : "导入失败");
     }
@@ -1382,6 +1422,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
     setStudioMenuId(null);
     setEditingTemplateId(fullTemplate.id);
     setEditingDraftId(null);
+    setEditingImportedFrom(null);
     setDraft(draftFromTemplate(fullTemplate));
     setAdvancedStudioOpen(fullTemplate.roleSlots.length > 0);
     setPublishAnonymously(displayGameAuthorName(fullTemplate.authorName) === "匿名" && !fullTemplate.authorAvatar);
@@ -1523,7 +1564,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
         draftId = createDraftId();
         const title = draft.title.trim() || "未命名游戏";
         setEditingDraftId(draftId);
-        setDrafts(current => saveGameDrafts([{ id: draftId as string, title, draft, createdAt: now, updatedAt: now }, ...current]));
+        setDrafts(current => saveGameDrafts([{ id: draftId as string, title, draft, importedFrom: editingImportedFrom || undefined, createdAt: now, updatedAt: now }, ...current]));
       }
       const result = upsertLocalTestGame(draftId, template);
       if (!result.ok || !result.installedGame) {
@@ -1538,6 +1579,11 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
   }
 
   async function publishDraft(): Promise<void> {
+    // 集市导入的是别人的作品：本机随便玩，但不能借道这里发到共享大厅
+    if (editingImportedFrom) {
+      showNotice("error", "这是从资源集市导入的作品，只能本机试玩，不能发布到共享大厅");
+      return;
+    }
     setPublishing(true);
     try {
       // 关联发布：修改已发布模式用该模板；否则草稿带关联时解析出已发布条目 → 同步更新同一条目
@@ -2371,6 +2417,7 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
             <div className="game-studio-card-menu-pop" onClick={event => event.stopPropagation()}>
               <button type="button" onClick={() => { setStudioMenuId(null); void editPublished(template); }}>编辑</button>
               <button type="button" onClick={() => { setStudioMenuId(null); openTemplateDetails(template); }}>查看详情</button>
+              <button type="button" onClick={() => { setStudioMenuId(null); void exportPublishedGameFile(template); }}>导出文件</button>
               <button type="button" className="is-danger" onClick={() => { setStudioMenuId(null); void deletePublished(template); }}>删除</button>
             </div>
           ) : null}
@@ -2398,7 +2445,9 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
         <div className="game-studio-list-copy">
           <div>
             <strong>{item.title}</strong>
-            <span data-pub={item.publishedTemplateId ? "yes" : "no"}>{item.publishedTemplateId ? "已发布" : "未发布"}</span>
+            {item.importedFrom
+              ? <span data-pub="no">集市作品·不可发布</span>
+              : <span data-pub={item.publishedTemplateId ? "yes" : "no"}>{item.publishedTemplateId ? "已发布" : "未发布"}</span>}
             {item.publishedTemplateId && item.hasUnpublishedChanges ? <i className="game-dirty-hint">有未发布改动</i> : null}
           </div>
           <time>{formatGameDate(item.updatedAt)}</time>
@@ -2699,8 +2748,6 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
       </header>
 
       <main className={`game-hub-scroll ${creatorPageOpen || selectedTemplate ? "game-hub-scroll--page" : ""} ${selectedTemplate ? "game-hub-scroll--detail" : ""}`}>
-        {communityError ? <div className="game-error">{communityError}</div> : null}
-
         {selectedTemplate ? renderTemplateDetailPage(selectedTemplate) : null}
 
         {!selectedTemplate && !creatorPageOpen && mainView === "hall" ? (
@@ -2997,11 +3044,16 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
                   <div className="game-studio-actions">
                     <button type="button" onClick={localTestDraft}><Play size={14} /> 本机测试</button>
                     <button type="button" onClick={saveDraft}><Archive size={14} /> 存草稿</button>
-                    <button type="button" className="is-primary" disabled={publishing} onClick={() => void publishDraft()}>
+                    <button type="button" className="is-primary" disabled={publishing || Boolean(editingImportedFrom)}
+                      title={editingImportedFrom ? "集市导入的作品只能本机试玩" : undefined}
+                      onClick={() => void publishDraft()}>
                       <Send size={14} />
-                      {publishing ? "同步中" : editingTemplate ? "保存修改" : editingDraftLinked ? "更新发布" : "发布共享"}
+                      {editingImportedFrom ? "集市作品·不可发布" : publishing ? "同步中" : editingTemplate ? "保存修改" : editingDraftLinked ? "更新发布" : "发布共享"}
                     </button>
                   </div>
+                  {editingImportedFrom && (
+                    <p className="game-studio-hint">这是从资源集市导入的作品，可以本机试玩、改着自己用，但不能发布到共享大厅。</p>
+                  )}
                 </div>
                 {/* 角色槽位属于旧的模板级选人通路（现行做法是游戏 HTML 内自行选人），
                     入口不再对新草稿开放；仅在编辑已带槽位的存量作品时显示以保持兼容。 */}
@@ -3151,6 +3203,33 @@ export function GameHubApp({ onClose, autoOpenLocalId }: { onClose: () => void; 
             <div className="game-modal-actions">
               <button type="button" onClick={() => setCoverDeleteConfirmOpen(false)}>取消</button>
               <button type="button" className="is-danger" onClick={confirmDeleteCoverImage}>确认删除</button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {communityErrorDialog ? (
+        <div className="game-modal" role="presentation" onClick={() => setCommunityErrorDialog(null)}>
+          <section
+            className="game-modal-card"
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="云端同步失败"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="game-modal-head">
+              <div>
+                <span>SYNC</span>
+                <strong>云端同步失败</strong>
+              </div>
+              <button type="button" aria-label="关闭" onClick={() => setCommunityErrorDialog(null)}>
+                <X size={18} />
+              </button>
+            </div>
+            <p className="game-delete-copy">{communityErrorDialog}</p>
+            <p className="game-delete-copy">本地草稿、已装内容和本机测试不受影响；自部署未配置云端市场时可通过「导入文件」使用本地内容。</p>
+            <div className="game-modal-actions">
+              <button type="button" onClick={() => setCommunityErrorDialog(null)}>知道了</button>
             </div>
           </section>
         </div>

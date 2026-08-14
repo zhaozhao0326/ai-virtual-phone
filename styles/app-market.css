@@ -1033,6 +1033,69 @@
   max-height: min(82%, 420px);
 }
 
+/* ── 已安装详情：桌面图标样式编辑 ── */
+.am-installed-icon-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.am-icon-style-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--am-chip-bg, rgba(37, 99, 235, 0.08));
+  color: var(--am-accent-deep, #2563eb);
+  font-size: calc(10.5px * var(--app-text-scale, 1));
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.am-icon-style-sheet {
+  max-height: min(82%, 480px);
+}
+
+.am-icon-style-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.am-icon-style-options button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 14px 8px 12px;
+  border: 1.5px solid rgba(120, 130, 150, 0.2);
+  border-radius: 16px;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.am-icon-style-options button[data-active="true"] {
+  border-color: var(--am-accent-deep, #2563eb);
+  background: var(--am-chip-bg, rgba(37, 99, 235, 0.06));
+}
+
+.am-icon-style-options button strong {
+  font-size: calc(12.5px * var(--app-text-scale, 1));
+  color: var(--am-ink, #1f2430);
+}
+
+.am-icon-style-options button span {
+  font-size: calc(10.5px * var(--app-text-scale, 1));
+  color: var(--am-ink-dim, #7a8394);
+  line-height: 1.5;
+}
+
 .app-market-error-dialog .app-market-sheet-actions {
   grid-template-columns: 1fr;
 }

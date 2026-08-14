@@ -109,6 +109,7 @@ export const DATA_MODULES: DataModuleDefinition[] = [
         keys: [
           "ai_phone_icon_layout_v1",
           "ai_phone_icon_layout_v2",
+          "ai_phone_desktop_folders_v1",
           "ai_phone_canvas_pan_v2",
           "ai_phone_widgets_v1",
           "ai_phone_diy_templates_v1",
@@ -230,6 +231,28 @@ export const DATA_MODULES: DataModuleDefinition[] = [
           "reading_import_diag_v1",
         ],
         prefixes: ["music-search-cache:", "music-playlist-tracks-", "music-playlist-detail-"],
+      },
+    ],
+  },
+  {
+    id: "resource_hub",
+    label: "资源集市",
+    description: "摊主钥匙（自己发布资源的所有权凭证）、昵称头像与集市设置",
+    variant: "teal",
+    sources: [
+      {
+        type: "kv",
+        label: "摊主身份与集市设置",
+        keys: [
+          // 钥匙丢了就再也管不了自己发过的资源，必须跟着备份走
+          "ai_phone_resource_hub_identity_v1",
+          "ai_phone_resource_hub_my_uploads_v1",
+          "ai_phone_resource_hub_profile_v1",
+          "ai_phone_resource_hub_upload_cfg_v1",
+          "ai_phone_resource_hub_source_v1",
+          "ai_phone_resource_hub_flowers_sent_v1",
+          "ai_phone_resource_hub_notice_v2",
+        ],
       },
     ],
   },

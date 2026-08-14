@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { Columns2, Settings2 } from "lucide-react";
 import type { CalendarScheduleItem } from "@/lib/calendar-types";
 import type { MenstrualDayState } from "@/lib/menstrual-storage";
-import { formatIsoDate, isBirthdayOnDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
+import { formatIsoDate, parseIsoDate, timeToMinutes } from "@/lib/calendar-utils";
 import { getLunarInfoByIso } from "@/lib/lunar";
 
 const WEEKDAY_CN = ["日", "一", "二", "三", "四", "五", "六"];
@@ -90,8 +90,6 @@ export function CalendarDetailPage({
   onBack,
   onSelectedChange,
   onEditItem,
-  ownerName,
-  birthday,
 }: {
   initialDate: string;
   todayIso: string;
@@ -108,10 +106,6 @@ export function CalendarDetailPage({
   onBack: () => void;
   onSelectedChange: (iso: string) => void;
   onEditItem: (item: CalendarScheduleItem) => void;
-  /** 当前查看者名字（生日横幅用） */
-  ownerName?: string;
-  /** 当前查看者的生日 MM-DD（生日横幅用） */
-  birthday?: string;
 }) {
   const [center, setCenter] = useState(initialDate);
   const [selectedIso, setSelectedIso] = useState(initialDate);
@@ -119,6 +113,7 @@ export function CalendarDetailPage({
 
   const stripRef = useRef<HTMLDivElement>(null);
   const tlHRef = useRef<HTMLDivElement>(null);
+  const tlHeadRef = useRef<HTMLDivElement>(null);
   const tlVRef = useRef<HTMLDivElement>(null);
   const suppressRef = useRef(false);
   const reducedMotion = useMemo(
@@ -273,6 +268,7 @@ export function CalendarDetailPage({
   const handleTimelineScroll = () => {
     const tl = tlHRef.current;
     if (!tl) return;
+    if (tlHeadRef.current) tlHeadRef.current.scrollLeft = tl.scrollLeft;
     const colW = tl.clientWidth / dppRef.current;
     if (colW <= 0) return;
     const fIdx = tl.scrollLeft / colW;
@@ -374,14 +370,35 @@ export function CalendarDetailPage({
 
       {cyclePanel}
 
-      {ownerName && birthday && isBirthdayOnDate(birthday, selectedIso) && (
-        <div className="calendar-birthday-banner">
-          <span className="calendar-birthday-cake" aria-hidden="true">🎂</span>
-          <span className="calendar-birthday-text">
-            今天是 <strong>{ownerName}</strong> 的生日！
-          </span>
+      {/* 列头版头：固定在时间轴上方，横向随时间轴同步滚动 */}
+      <div className="calendar-tl-headrow">
+        <div className="calendar-tl-headrow-gutter" aria-hidden="true" />
+        <div
+          className="calendar-tl-headrow-days hide-scrollbar"
+          ref={tlHeadRef}
+          style={{ "--tl-day-w": `${100 / daysPerPage}%` } as CSSProperties}
+        >
+          {days.map(iso => {
+            const d = parseIsoDate(iso);
+            const lunar = getLunarInfoByIso(iso);
+            return (
+              <div key={iso} className="calendar-tl-day-head" data-today={iso === todayIso ? "true" : undefined}>
+                {daysPerPage >= 5 ? (
+                  <>
+                    <b>{d.getDate()}日</b>
+                    <span>{WEEK_LABEL[d.getDay()]}</span>
+                  </>
+                ) : (
+                  <>
+                    <b>{d.getMonth() + 1}月{d.getDate()}日 – {WEEK_LABEL[d.getDay()]}</b>
+                    <span>{lunar ? `${lunar.monthLabel}${lunar.isFirstDay ? "" : lunar.dayLabel}` : ""}</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </div>
 
       <div className="calendar-tl-vscroll hide-scrollbar" ref={tlVRef}>
         <div className="calendar-tl-row">
@@ -389,7 +406,7 @@ export function CalendarDetailPage({
             {Array.from({ length: 24 }, (_, h) => (
               <span key={h}>{String(h).padStart(2, "0")}:00</span>
             ))}
-            <i className="calendar-now-badge" style={{ top: `${50 + nowTop}px` }}>{nowLabel}</i>
+            <i className="calendar-now-badge" style={{ top: `${nowTop}px` }}>{nowLabel}</i>
           </div>
           <div
             className="calendar-tl-hscroll hide-scrollbar"
@@ -398,24 +415,9 @@ export function CalendarDetailPage({
             style={{ "--tl-day-w": `${100 / daysPerPage}%` } as CSSProperties}
           >
             {days.map(iso => {
-              const d = parseIsoDate(iso);
-              const lunar = getLunarInfoByIso(iso);
               const positioned = layoutDayEvents(itemsByDate.get(iso) ?? []);
               return (
                 <div key={iso} className="calendar-tl-day" data-today={iso === todayIso ? "true" : undefined}>
-                  <header>
-                    {daysPerPage >= 5 ? (
-                      <>
-                        <b>{d.getDate()}日</b>
-                        <span>{WEEK_LABEL[d.getDay()]}</span>
-                      </>
-                    ) : (
-                      <>
-                        <b>{d.getMonth() + 1}月{d.getDate()}日 – {WEEK_LABEL[d.getDay()]}</b>
-                        <span>{lunar ? `${lunar.monthLabel}${lunar.isFirstDay ? "" : lunar.dayLabel}` : ""}</span>
-                      </>
-                    )}
-                  </header>
                   <div className="calendar-tl-body">
                     {iso === todayIso ? (
                       <i className="calendar-now-line" style={{ top: `${nowTop}px` }} aria-hidden="true" />

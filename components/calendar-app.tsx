@@ -12,20 +12,14 @@ import type { CalendarOwnerType, CalendarScheduleItem, CalendarWeekPlan } from "
 import {
   CALENDAR_DAYS_PER_PAGE_OPTIONS,
   CALENDAR_THEME_IDS,
-  clearCalendarWeekItems,
   deleteCalendarScheduleItem,
   loadCalendarConfig,
   loadOwnerCalendarPlans,
-  restoreCalendarWeekItems,
   saveCalendarConfig,
   upsertCalendarScheduleItem,
   validateScheduleDraft,
 } from "@/lib/calendar-storage";
-import {
-  createDefaultScheduleDraft,
-  generateDailyCalendarSchedule,
-  generateWeeklyCalendarSchedule,
-} from "@/lib/calendar-engine";
+import { createDefaultScheduleDraft, generateWeeklyCalendarSchedule } from "@/lib/calendar-engine";
 import { loadCharacters } from "@/lib/character-storage";
 import { loadChatSessions } from "@/lib/chat-storage";
 import { resolveUserIdentity } from "@/lib/settings-storage";
@@ -153,8 +147,6 @@ export function PhoneCalendarApp({
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
   const [showAutoConfirm, setShowAutoConfirm] = useState(false);
-  const [showGenerateDailyConfirm, setShowGenerateDailyConfirm] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
   const autoAttemptedRef = useRef<Set<string>>(new Set());
   const [editingItem, setEditingItem] = useState<(CalendarEventDraft & { originalDate?: string }) | null>(null);
@@ -205,11 +197,6 @@ export function PhoneCalendarApp({
     () => owners.find(owner => owner.key === selectedKey) ?? owners[0] ?? null,
     [owners, selectedKey],
   );
-  // 选中角色的生日（MM-DD），供月历/详情页做生日提示
-  const selectedBirthday = useMemo(() => {
-    if (selectedOwner?.ownerType !== "character") return undefined;
-    return loadCharacters().find(c => c.id === selectedOwner.ownerId)?.birthday || undefined;
-  }, [selectedOwner]);
   const weekStart = useMemo(() => getWeekStartIso(parseIsoDate(selectedDate)), [selectedDate]);
 
   const itemsByDate = useMemo(() => {
@@ -391,31 +378,6 @@ export function PhoneCalendarApp({
     onNotice?.("本周日程已生成");
   };
 
-  /** 棉花糖机式「生成今日」—— 只生成当前选中那一天的角色日程 */
-  const handleGenerateDaily = async () => {
-    if (!selectedOwner || isGenerating || selectedOwner.ownerType !== "character") return;
-    setShowGenerateDailyConfirm(false);
-    setIsGenerating(true);
-    const targetDate = view === "detail" ? selectedDate : todayIso;
-    const result = await generateDailyCalendarSchedule(selectedOwner.ownerType, selectedOwner.ownerId, targetDate);
-    setIsGenerating(false);
-    if (!result.success) {
-      onNotice?.(result.error || "生成失败");
-      return;
-    }
-    refreshPlans();
-    onNotice?.(`${targetDate} 日程已生成`);
-  };
-
-  /** 「清空本周日程」—— 清掉当前选中周的全部日程（含手动条目） */
-  const handleClearWeek = () => {
-    if (!selectedOwner) return;
-    setShowClearConfirm(false);
-    const removed = clearCalendarWeekItems(selectedOwner.ownerType, selectedOwner.ownerId, weekStart);
-    refreshPlans();
-    onNotice?.(removed.length === 0 ? "本周本就空空的" : `已清空本周 ${removed.length} 条日程`);
-  };
-
   // ── 经期 ──
   const refreshMenstrual = () => {
     setMenstrualConfig(loadMenstrualConfig());
@@ -569,32 +531,25 @@ export function PhoneCalendarApp({
             itemsByDate={itemsByDate}
             cycleMap={cycleMap}
             ownerStrip={ownerStrip}
-            birthday={selectedBirthday}
             onPickDay={openDetail}
             onClose={onClose}
             onOpenTheme={() => setShowThemePanel(true)}
           />
         ) : (
-          <>
-            {/* 详情页顶部也露出角色切换器，方便查看/切换不同角色日程 */}
-            {ownerStrip}
-            <CalendarDetailPage
-              key={detailKey}
-              initialDate={selectedDate}
-              todayIso={todayIso}
-              itemsByDate={itemsByDate}
-              cycleMap={cycleMap}
-              cyclePanel={cyclePanel}
-              daysPerPage={config.daysPerPage}
-              onOpenDaysPicker={() => setShowDaysPanel(true)}
-              onOpenCycleSettings={selectedOwner?.ownerType === "user" ? openMenstrualSettings : null}
-              onBack={() => setView("month")}
-              onSelectedChange={setSelectedDate}
-              onEditItem={openEditItem}
-              ownerName={selectedOwner?.name}
-              birthday={selectedBirthday}
-            />
-          </>
+          <CalendarDetailPage
+            key={detailKey}
+            initialDate={selectedDate}
+            todayIso={todayIso}
+            itemsByDate={itemsByDate}
+            cycleMap={cycleMap}
+            cyclePanel={cyclePanel}
+            daysPerPage={config.daysPerPage}
+            onOpenDaysPicker={() => setShowDaysPanel(true)}
+            onOpenCycleSettings={selectedOwner?.ownerType === "user" ? openMenstrualSettings : null}
+            onBack={() => setView("month")}
+            onSelectedChange={setSelectedDate}
+            onEditItem={openEditItem}
+          />
         )}
 
         {fabMenuOpen ? <div className="calendar-fab-backdrop" onClick={() => setFabMenuOpen(false)} /> : null}
@@ -611,18 +566,6 @@ export function PhoneCalendarApp({
               >
                 <Plus size={15} />
                 新增日程
-              </button>
-              <button
-                type="button"
-                className="calendar-fab-menu-item"
-                disabled={isGenerating}
-                onClick={() => {
-                  setFabMenuOpen(false);
-                  setShowGenerateDailyConfirm(true);
-                }}
-              >
-                <Wand2 size={15} />
-                {isGenerating ? "生成中…" : "生成今日日程"}
               </button>
               <button
                 type="button"
@@ -648,19 +591,6 @@ export function PhoneCalendarApp({
                 <Bot size={15} />
                 每周自动生成
                 <i className="calendar-fab-menu-state">{autoGenerateEnabled ? "已开" : "已关"}</i>
-              </button>
-              <div className="calendar-fab-menu-divider" />
-              <button
-                type="button"
-                className="calendar-fab-menu-item"
-                data-variant="danger"
-                onClick={() => {
-                  setFabMenuOpen(false);
-                  setShowClearConfirm(true);
-                }}
-              >
-                <Trash2 size={15} />
-                清空本周日程
               </button>
             </div>
           ) : null}
@@ -934,7 +864,7 @@ export function PhoneCalendarApp({
         <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowGenerateConfirm(false)}>
           <div className="calendar-edit-modal calendar-confirm-dialog" onClick={e => e.stopPropagation()}>
             <Wand2 size={26} className="calendar-confirm-icon" />
-            <div className="calendar-confirm-title">确认生成本周日程？</div>
+            <div className="calendar-confirm-title">确认生成日程？</div>
             <div className="calendar-confirm-desc">
               将为 <strong>{selectedOwner.name}</strong> 生成一周日程并覆盖当前已有 AI 安排（手动添加的保留）
             </div>
@@ -950,55 +880,6 @@ export function PhoneCalendarApp({
                 aria-busy={isGenerating}
               >
                 {isGenerating ? "生成中…" : "确认"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showGenerateDailyConfirm && selectedOwner && (
-        <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowGenerateDailyConfirm(false)}>
-          <div className="calendar-edit-modal calendar-confirm-dialog" onClick={e => e.stopPropagation()}>
-            <Wand2 size={26} className="calendar-confirm-icon" />
-            <div className="calendar-confirm-title">确认生成今日日程？</div>
-            <div className="calendar-confirm-desc">
-              将为 <strong>{selectedOwner.name}</strong> 生成 <strong>{(view === "detail" ? selectedDate : todayIso)}</strong> 当天的日程安排（其他日期不受影响）
-            </div>
-            <div className="calendar-confirm-footer">
-              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowGenerateDailyConfirm(false)}>取消</button>
-              <button
-                type="button"
-                className="calendar-block-btn"
-                data-variant="primary"
-                data-loading={isGenerating ? "true" : undefined}
-                onClick={handleGenerateDaily}
-                disabled={isGenerating}
-                aria-busy={isGenerating}
-              >
-                {isGenerating ? "生成中…" : "确认"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showClearConfirm && selectedOwner && (
-        <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowClearConfirm(false)}>
-          <div className="calendar-edit-modal calendar-confirm-dialog" onClick={e => e.stopPropagation()}>
-            <Trash2 size={26} className="calendar-confirm-icon" />
-            <div className="calendar-confirm-title">清空本周日程？</div>
-            <div className="calendar-confirm-desc">
-              将清掉 <strong>{selectedOwner.name}</strong> 本周 <strong>全部日程</strong>（含手动添加的），该操作不可撤销
-            </div>
-            <div className="calendar-confirm-footer">
-              <button type="button" className="calendar-block-btn" data-variant="ghost" onClick={() => setShowClearConfirm(false)}>取消</button>
-              <button
-                type="button"
-                className="calendar-block-btn"
-                data-variant="danger"
-                onClick={handleClearWeek}
-              >
-                清空
               </button>
             </div>
           </div>

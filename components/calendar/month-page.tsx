@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { ChevronLeft, Palette } from "lucide-react";
 import type { CalendarScheduleItem } from "@/lib/calendar-types";
 import type { MenstrualDayState } from "@/lib/menstrual-storage";
-import { formatIsoDate, isBirthdayOnDate } from "@/lib/calendar-utils";
+import { formatIsoDate } from "@/lib/calendar-utils";
 import { getLunarInfoByIso } from "@/lib/lunar";
 
 const MONTH_CN = ["一月", "二月", "三月", "四月", "五月", "六月", "七月", "八月", "九月", "十月", "十一月", "十二月"];
@@ -66,7 +66,6 @@ export function CalendarMonthPage({
   onPickDay,
   onClose,
   onOpenTheme,
-  birthday,
 }: {
   todayIso: string;
   itemsByDate: Map<string, CalendarScheduleItem[]>;
@@ -75,8 +74,6 @@ export function CalendarMonthPage({
   onPickDay: (iso: string) => void;
   onClose: () => void;
   onOpenTheme: () => void;
-  /** 当前查看者的生日 MM-DD（生日那天画 🎂 标记） */
-  birthday?: string;
 }) {
   const months = useMemo(() => buildMonths(todayIso), [todayIso]);
   const todayYm = useMemo(() => {
@@ -157,20 +154,17 @@ export function CalendarMonthPage({
                 {week.map(cell => {
                   const items = itemsByDate.get(cell.iso);
                   const cycle = cycleMap?.get(cell.iso) ?? null;
-                  const isBirthday = birthday ? isBirthdayOnDate(birthday, cell.iso) : false;
                   return (
                     <button
                       key={cell.iso}
                       type="button"
                       className="calendar-month-cell"
                       data-today={cell.iso === todayIso ? "true" : undefined}
-                      data-birthday={isBirthday ? "true" : undefined}
                       style={{ gridColumnStart: cell.weekday + 1 }}
-                      aria-label={`${block.month + 1}月${cell.day}日${isBirthday ? "，生日" : ""}${items?.length ? `，${items.length}个日程` : ""}`}
+                      aria-label={`${block.month + 1}月${cell.day}日${items?.length ? `，${items.length}个日程` : ""}`}
                       onClick={() => onPickDay(cell.iso)}
                     >
                       <span className="calendar-month-num">{cell.day}</span>
-                      {isBirthday && <span className="calendar-month-birthday" aria-hidden="true">🎂</span>}
                       <span className={`calendar-month-lunar${cell.lunarFirst ? " is-first" : ""}`}>{cell.lunarLabel}</span>
                       <span className="calendar-month-dots" aria-hidden="true">
                         {cycle ? <i className="calendar-cycle-dot" data-type={cycle.type} /> : null}
