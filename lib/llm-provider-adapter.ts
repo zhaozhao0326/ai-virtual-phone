@@ -660,6 +660,15 @@ function buildGeminiRequest(
     const method = options.stream
         ? `streamGenerateContent?alt=sse&key=${encodeURIComponent(config.apiKey)}`
         : `generateContent?key=${encodeURIComponent(config.apiKey)}`;
+    const dbgContents = body.contents as Array<{ role: string; parts?: unknown[] }>;
+    const hasFc = dbgContents.some(
+        (c) => Array.isArray(c.parts) && c.parts.some((p) => !!(p as Record<string, unknown>).functionCall),
+    );
+    if (hasFc) {
+        try {
+            console.error("[GEMINI DEBUG contents]\n" + debugGeminiContents(dbgContents as Array<{ role: string; parts: unknown[] }>));
+        } catch { /* debug only */ }
+    }
     return {
         url: `${baseUrl.replace(/\/$/, "")}/models/${config.defaultModel}:${method}`,
         headers,
@@ -667,6 +676,29 @@ function buildGeminiRequest(
         providerKind: "gemini",
         messagesForLog: messages.map(messageForLog),
     };
+}
+
+function debugGeminiContents(contents: Array<{ role: string; parts: unknown[] }>): string {
+    const lines: string[] = [];
+    contents.forEach((c, i) => {
+        const parts = (c.parts || []).map((p) => {
+            const pp = p as Record<string, unknown>;
+            const fc = pp.functionCall as Record<string, unknown> | undefined;
+            if (fc) {
+                const sig = pp.thoughtSignature !== undefined
+                    ? `[sig=${pp.thoughtSignature === "" ? "EMPTY" : String(pp.thoughtSignature).slice(0, 12)}]`
+                    : "[NO-SIG]";
+                return `functionCall:${String(fc.name ?? "?")}${sig}`;
+            }
+            if (pp.thought) return `thought:${String(pp.text ?? "").slice(0, 24)}…`;
+            if (pp.text) return `text:${String(pp.text).slice(0, 24)}…`;
+            const fr = pp.functionResponse as Record<string, unknown> | undefined;
+            if (fr) return `functionResponse:${String(fr.name ?? "?")}`;
+            return JSON.stringify(p).slice(0, 30);
+        });
+        lines.push(`#${i} ${c.role}: ${parts.join(" | ") || "(empty)"}`);
+    });
+    return lines.join("\n");
 }
 
 function compactGeminiContents(messages: LlmRequestMessage[]): Array<{ role: "user" | "model" | "tool"; parts: unknown[] }> {
