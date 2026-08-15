@@ -57,17 +57,34 @@ export async function POST(req: NextRequest) {
   delete forwardHeaders["content-length"];
   delete forwardHeaders["transfer-encoding"];
 
+  // OAI/上游 429 限流自动退避重试：开流前的初始请求若遇 429，等待后重试。
+  // 仅作用在初始请求上，不触碰流式内容/消息解析，避免影响正常聊天逻辑。
+  const CHAT_RELAY_MAX_429_RETRIES = 3;
   let upstream: Response;
-  try {
-    upstream = await externalFetch(targetUrl, {
-      method: "POST",
-      headers: forwardHeaders,
-      body,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[CHAT-RELAY] upstream fetch failed:", message);
-    return NextResponse.json({ error: `Relay 连接上游失败: ${message}` }, { status: 502 });
+  let attempt = 0;
+  while (true) {
+    try {
+      upstream = await externalFetch(targetUrl, {
+        method: "POST",
+        headers: forwardHeaders,
+        body,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[CHAT-RELAY] upstream fetch failed:", message);
+      return NextResponse.json({ error: `Relay 连接上游失败: ${message}` }, { status: 502 });
+    }
+
+    if (upstream.status === 429 && attempt < CHAT_RELAY_MAX_429_RETRIES) {
+      attempt++;
+      // 尊重上游 Retry-After；否则指数退避（4s→8s→12s）
+      const retryAfter = Number(upstream.headers.get("retry-after")) || 0;
+      const waitMs = retryAfter > 0 ? retryAfter * 1000 : 4000 * attempt;
+      console.warn(`[CHAT-RELAY] 上游 429 限流，第 ${attempt} 次重试，等待 ${(waitMs / 1000).toFixed(0)}s`);
+      await new Promise((r) => setTimeout(r, waitMs));
+      continue;
+    }
+    break;
   }
 
   const contentType = upstream.headers.get("content-type") || "application/json";
