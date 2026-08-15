@@ -207,12 +207,28 @@ function stripXmlField(rawText: string, tag: string): string {
     return rawText.replace(new RegExp(`<${escaped}>[\\s\\S]*?</${escaped}>`, "gi"), "").trim();
 }
 
+/**
+ * 线下模式标签兜底清洗：即使模型违规输出线上图片协议，也不要让它以文本形式污染正文。
+ * 删除 [照片:...]（含使用/不使用参考图两种写法）和 [相册]...[/相册] 块。
+ */
+function stripOfflineImageTags(text: string): string {
+    return text
+        .replace(/\[照片[：:]使用参考图[：:][^\]]+\]/g, "")
+        .replace(/\[照片[：:]不使用参考图[：:][^\]]+\]/g, "")
+        .replace(/\[照片[：:][^\]]+\]/g, "")
+        .replace(/\[相册\][\s\S]*?\[\/相册\]/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+}
+
 export function parseOfflineResponse(rawText: string, summaryTag: string): ParsedOfflineResponse {
     const trimmed = rawText.trim();
     const effectiveSummaryTag = summaryTag.trim() || "summary";
     const summary = extractXmlField(trimmed, [effectiveSummaryTag, "summary"]);
-    const content = extractXmlField(trimmed, ["content"])
-        || stripXmlField(stripXmlField(trimmed, effectiveSummaryTag), "summary");
+    const content = stripOfflineImageTags(
+        extractXmlField(trimmed, ["content"])
+        || stripXmlField(stripXmlField(trimmed, effectiveSummaryTag), "summary"),
+    );
     return {
         rawText: trimmed,
         content: content.trim(),
