@@ -444,9 +444,9 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     console.log("[NAI-DIAG] request:", JSON.stringify(diag));
 
     const controller = new AbortController();
-    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时 Vercel 在 120s 杀函数，
-    // Promise 永不 settle → 流式 .finally 不跑 → 客户端只收到心跳 → “流式响应中断”。
-    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
+    // v1.5.15：贴着 maxDuration(120s) 留 5s 收尾余量。GPT-Image 实测 60–115s，
+    // 100s 会提前掐断“还在生成”的请求 → 客户端收到 This operation was aborted。
+    const timeout = setTimeout(() => controller.abort(), 115_000); // 115s
     let res: Response;
     try {
       res = await externalFetch(url, {
@@ -464,6 +464,12 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
+      // 上游如果返回 HTML（如代理 502 页面），剥掉标签避免 UI 显示 raw HTML。
+      const cleaned = errText
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 300);
       // 收集 NAI 响应头辅助诊断
       const respHeaders: Record<string, string> = {};
       res.headers.forEach((v, k) => { respHeaders[k] = v; });
@@ -474,7 +480,7 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
         ...diag,
       }));
       return { status: 502, body: {
-        error: `NovelAI API 错误 ${res.status}: ${errText.slice(0, 400)} [DIAG: ${diag._codeVersion} model=${diag.model} size=${diag.size} sampler=${diag.sampler} noise=${diag.noiseSchedule} paramsV=${diag.paramsV} bodySize=${diag.bodySize} hasCJK=${diag.hasCJK} translated=${diag.translated}]`,
+        error: `NovelAI API 错误 ${res.status}：${cleaned || "无详细内容"}。通常是上游节点/代理超时或不可用，请检查 URL 或稍后重试。`,
         _diag: {
           promptPreview: finalPrompt.slice(0, 200),
           model: diag.model,
@@ -550,8 +556,16 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = message.toLowerCase().includes("abort") ? 504 : 502;
-    return { status, body: { error: message } };
+    const isAbort = message.toLowerCase().includes("abort") || (err instanceof Error && err.name === "AbortError");
+    const status = isAbort ? 504 : 502;
+    return {
+      status,
+      body: {
+        error: isAbort
+          ? `生图请求超时（115 秒内未完成）：上游生图太慢或连接中断。请稍后重试，或换用更快的模型/节点。`
+          : message,
+      },
+    };
   }
 }
 
@@ -581,8 +595,8 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
     if (input.googlePersonGeneration?.trim()) body.person_generation = input.googlePersonGeneration.trim();
 
     const controller = new AbortController();
-    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时被 Vercel 杀函数 → 流式标记丢失。
-    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
+    // v1.5.15：贴着 maxDuration(120s) 留 5s 收尾余量，避免提前 abort。
+    const timeout = setTimeout(() => controller.abort(), 115_000); // 115s
     let res: Response;
     try {
       res = await externalFetch(GOOGLE_IMAGEN_ENDPOINT, {
@@ -600,7 +614,17 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
 
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      return { status: 502, body: { error: `Google Imagen API 错误 ${res.status}: ${errText.slice(0, 600)}` } };
+      const cleaned = errText
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 300);
+      return {
+        status: 502,
+        body: {
+          error: `Google Imagen API 错误 ${res.status}：${cleaned || "无详细内容"}。通常是上游节点/代理超时或不可用，请检查 URL 或稍后重试。`,
+        },
+      };
     }
 
     const json = await res.json() as Record<string, unknown>;
@@ -618,8 +642,16 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = message.toLowerCase().includes("abort") ? 504 : 502;
-    return { status, body: { error: message } };
+    const isAbort = message.toLowerCase().includes("abort") || (err instanceof Error && err.name === "AbortError");
+    const status = isAbort ? 504 : 502;
+    return {
+      status,
+      body: {
+        error: isAbort
+          ? `生图请求超时（115 秒内未完成）：上游生图太慢或连接中断。请稍后重试，或换用更快的模型/节点。`
+          : message,
+      },
+    };
   }
 }
 
@@ -728,8 +760,8 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     }
 
     const controller = new AbortController();
-    // v1.5.10：必须 < maxDuration(120s)，否则上游卡住时被 Vercel 杀函数 → 流式标记丢失。
-    const timeout = setTimeout(() => controller.abort(), 100_000); // 100s
+    // v1.5.15：贴着 maxDuration(120s) 留 5s 收尾余量，避免提前 abort。
+    const timeout = setTimeout(() => controller.abort(), 115_000); // 115s
     let res: Response;
     try {
       res = await externalFetch(url, { method: "POST", headers, body, signal: controller.signal });
@@ -740,7 +772,18 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     const contentType = (res.headers.get("content-type") || "").toLowerCase();
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      return { status: 502, body: { error: `生图 API 错误 ${res.status}: ${errText.slice(0, 600)}` } };
+      // 上游如果返回 HTML（如 nginx 502 页面），把标签剥掉，避免 UI 显示 raw HTML。
+      const cleaned = errText
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 300);
+      return {
+        status: 502,
+        body: {
+          error: `上游生图 API 返回错误 ${res.status}：${cleaned || "无详细内容"}。通常是上游节点/代理超时或不可用，请检查 base URL 或稍后重试。`,
+        },
+      };
     }
 
     if (contentType.startsWith("image/")) {
@@ -769,8 +812,16 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const status = message.toLowerCase().includes("abort") ? 504 : 502;
-    return { status, body: { error: message } };
+    const isAbort = message.toLowerCase().includes("abort") || (err instanceof Error && err.name === "AbortError");
+    const status = isAbort ? 504 : 502;
+    return {
+      status,
+      body: {
+        error: isAbort
+          ? `生图请求超时（115 秒内未完成）：上游生图太慢或连接中断。请稍后重试，或换用更快的模型/节点。`
+          : message,
+      },
+    };
   }
 }
 
