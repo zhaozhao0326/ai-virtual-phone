@@ -707,7 +707,9 @@ function geminiParts(message: LlmRequestMessage): unknown[] {
                         args: hasArgs ? call.args : { noop: "1" },
                     },
                 };
-                if (call.thoughtSignature) part.thoughtSignature = call.thoughtSignature;
+                // 只要模型给过 thoughtSignature（哪怕是空串），就必须回传，否则 Gemini 多轮工具调用会报 400。
+                // 模型完全没给（undefined）时不能硬塞空串——之前试过硬塞会导致聊天格式错乱。
+                if (call.thoughtSignature !== undefined) part.thoughtSignature = call.thoughtSignature;
                 return part;
             }),
         ];
@@ -812,8 +814,10 @@ function parseGeminiResponse(data: unknown): LlmParsedResponse {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里，必须保留，下一轮请求时回传
-            if (item.thoughtSignature) call.thoughtSignature = item.thoughtSignature;
+            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里（也可能嵌在 functionCall 对象内），
+            // 必须原样保留（含空串 ""），下一轮请求时回传，否则多轮工具调用会报 400。
+            const sig = item.thoughtSignature ?? (item.functionCall as Record<string, unknown>).thoughtSignature;
+            if (sig !== undefined) call.thoughtSignature = String(sig);
             toolCalls.push(call);
             continue;
         }
@@ -917,7 +921,9 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            if (item.thoughtSignature) delta.thoughtSignature = item.thoughtSignature;
+            // 流式响应同样可能把 thoughtSignature 放在 part 级或嵌在 functionCall 内；原样保留（含空串）。
+            const sig = item.thoughtSignature ?? (item.functionCall as Record<string, unknown>).thoughtSignature;
+            if (sig !== undefined) delta.thoughtSignature = String(sig);
             toolCallDeltas.push(delta);
             continue;
         }
