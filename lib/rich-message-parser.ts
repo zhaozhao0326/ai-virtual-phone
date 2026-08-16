@@ -598,7 +598,32 @@ function parseSegment(segment: string, parts: ParsedMessagePart[]) {
 
 // ── Main parser ──────────────────────────────────────────
 
+/**
+ * 硬隔离：剥离模型自发的 [照片:...] / [相册]...[/相册] 标签。
+ *
+ * 聊天里的生图必须由用户显式触发（照片墙按钮 → handleTextPhotoGenerate 直达生图 API，
+ * 不经过本标签），模型不能自发配图——否则会退化成「每句话配一张图」（已实测：仅靠
+ * prompt 约束「默认不发照片」会被模型绕过，每句仍发图）。剥离后这些标签既不会生图、
+ * 也不会以原文本泄漏进气泡。
+ *
+ * 注意：此处理不影响用户主动生图（那条路径不输出 [照片:] 标签），也不影响 [红包]/
+ * [转账] 等其它方括号协议（那些是正经功能标签，不在本函数的剥离范围内）。
+ */
+function stripModelInitiatedImageTags(text: string): string {
+    if (!text) return text;
+    // [照片:描述] / [照片使用参考图:描述] / [照片不使用参考图:描述]
+    // 要求 照片 之后紧跟 使用参考图|不使用参考图|:，避免误伤 [照片墙] 这类 UI 文案
+    let cleaned = text.replace(/\[照片(?:使用参考图|不使用参考图)?:?[^\]]*\]/g, "");
+    // [相册]...[/相册] 私有相册块（角色自发拍照，不进聊天气泡，但也不该污染叙事）
+    cleaned = cleaned.replace(/\[相册\][\s\S]*?\[\/相册\]/g, "");
+    // 压缩因剥离产生的多余空行
+    cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
+    return cleaned;
+}
+
 export function parseAIResponse(rawText: string, previousState: StateValue[]): ParsedAIResponse {
+    // 0. 硬隔离：模型不能自发配图，否则会退化成「每句话配一张图」
+    rawText = stripModelInitiatedImageTags(rawText);
     // 0. FIRST: extract ```html blocks and <style>+HTML before any processing
     const htmlBlockPlaceholders: { placeholder: string; original: string }[] = [];
     let protected_ = rawText;
