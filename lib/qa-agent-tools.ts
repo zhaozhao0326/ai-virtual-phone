@@ -1047,8 +1047,21 @@ const feedbackTool: QaTool = {
 
 function contentToolByNative(native: string): QaTool {
     const tool = QA_CONTENT_TOOLS.find((t) => t.nativeName === native);
-    if (!tool) throw new Error(`内容工具缺失：${native}`);
-    return tool;
+    if (tool) return tool;
+    // 上游可能在统一工具集里引用了 fork 尚未实现的「内容工具」（如共同建设类的
+    // compare_with_official / read_contrib_diff / submit_contribution）。旧逻辑直接抛错会导致
+    // 模块加载即崩溃、首页预渲染失败。改为返回安全占位：构建通过、运行时调用时给出友好
+    // 提示，而不是整页崩溃；缺失的工具也能被后续单独移植补齐。
+    return {
+        name: native,
+        nativeName: native,
+        description: `（当前部署版本未实现的内容工具：${native}）`,
+        schemaLines: ["（当前部署版本未启用）"],
+        parameters: { type: "object", properties: {} },
+        async run() {
+            return `功能「${native}」在当前部署版本中暂未启用（上游依赖的整套贡献管线未移植）。如需启用请告知。`;
+        },
+    };
 }
 
 const listTool: QaTool = {
