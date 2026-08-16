@@ -137,6 +137,8 @@ export type VoiceApiConfig = {
     sttModel?: string;
     defaultVoice: string;
     languageBoost?: string;
+    /** Minimax voice_setting.speed. Missing values keep the legacy 1.0x behavior. */
+    speechSpeed?: number;
     customVoices?: { id: string; name: string; createdAt?: number }[];
     enableSTT: boolean;
     enableTTS: boolean;
@@ -144,7 +146,6 @@ export type VoiceApiConfig = {
 
 // --- Image Generation ---
 export type ImageGenerationRequestMode = "server" | "direct";
-export type ImageProvider = "openai" | "novelai" | "pollinations" | "google-imagen";
 
 export type ImageHostingProvider = "none" | "imgbb";
 
@@ -156,6 +157,8 @@ export type ImageHostingSettings = {
     autoConvertToWebp: boolean;
     allowMascotUpload: boolean;
 };
+
+export type ImageProvider = "openai" | "novelai" | "pollinations" | "google-imagen";
 
 /** NovelAI 专属配置 */
 export type NovelAIConfig = {
@@ -360,7 +363,7 @@ export type BindingConfig = {
     /** App-level defaults shared by every character; character app overrides still win. */
     appDefaults?: Partial<Record<string, BindingSlot>>;
     characterBindings: CharacterBinding[];
-    /** World-level defaults: keyed by worldId (CharacterWorldGroup.id). Applies to every member of that world, overriding per-character exclusive masks but below app overrides. */
+    /** World-level defaults: keyed by worldId (CharacterWorldGroup.id). Applies to every member of that world. */
     worldBindings?: Partial<Record<string, BindingSlot>>;
     /** Auxiliary API: used for memory summarization (global, not per-character) */
     memorySummaryApiConfigId?: string;
@@ -455,6 +458,8 @@ export type McpServerConfig = {
     description?: string;
     url: string;
     enabled: boolean;
+    /** 直连模式：浏览器直接请求（本机/内网 MCP 用），不走服务端代理 */
+    directFetch?: boolean;
     headers?: Record<string, string>;
     discoveredTools?: McpDiscoveredTool[];
     // Session state (runtime, not persisted across page refresh)

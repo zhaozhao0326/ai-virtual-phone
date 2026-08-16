@@ -38,9 +38,18 @@ export interface ParsedAIResponse {
     freshStateValues: StateValue[];
     statusPanel: string;
     innerMonologue: string;
-    /** 从结构化输出（如 [身份确认]/思路构思/最终选择的思路）中提取的思维链，供 reasoningsheet 展示 */
+    /** 从结构化输出（如 [身份确认]/思路构思/最终选择的思路/[当前场景]）中提取的思维链，供 reasoningsheet 展示 */
     reasoningText?: string;
 }
+
+// ── 群聊/好友/日程 标签正则（供 chat-room 解析动作） ──
+export const CREATE_GROUP_TAG_RE =
+    /\[([^\]]+?)\s*(?:建了(?:了)?一个?群[聊]?|拉你进(?:了)?新?群[聊]?)\s*(?:\s*[|｜]\s*群名[:：]\s*([^|｜\]]+?))?\s*(?:\s*[|｜]\s*成员[:：]\s*([^\]]+?))?\s*\]/;
+
+export const SCHEDULE_UPDATE_TAG_RE = /\[日程更新[|｜：:]\s*([^\]]+?)\]/;
+
+export const ADD_FRIEND_TAG_RE =
+    /\[(?:(?:申请)?加好友|添加好友)(?:\s*[|｜]\s*(?:备注|理由)[:：]\s*([^\]]+?))?\]/;
 
 // ── Rich-media patterns (non-global, for single match with index) ──
 
@@ -66,61 +75,6 @@ function parseMuteMinutes(num?: string, unit?: string): number {
     if (unit === "小时") return n * 60;
     return n;
 }
-
-/**
- * 角色自主建群标签：
- *   [A建了一个群 | 群名: 周末聚餐 | 成员: 李四,王五]
- *   [A拉你进了群 | 群名: 周末聚餐]
- *   [A建了一个群]（无群名/成员时取默认）
- * 捕获组：1=发起角色名 2=群名(可选) 3=成员名(逗号/、分隔，可选)
- */
-export const CREATE_GROUP_TAG_RE =
-    /\[([^\]]+?)\s*(?:建了(?:了)?一个?群[聊]?|拉你进(?:了)?新?群[聊]?)\s*(?:\s*[|｜]\s*群名[:：]\s*([^|｜\]]+?))?\s*(?:\s*[|｜]\s*成员[:：]\s*([^\]]+?))?\s*\]/;
-
-/**
- * 角色改群名标签：
- *   [A把群名改成了 周末聚餐] / [A修改群名为 周末聚餐] / [A将群名改为 周末聚餐]
- * 捕获组：1=操作角色名 2=新群名
- */
-export const RENAME_GROUP_TAG_RE =
-    /\[([^\]]+?)(?:把群名改成(?:了)?|修改群名为|将群名改为|改名(?:为|成)?)\s*([^\]]+?)\]/;
-
-/**
- * 角色主动询问用户并等待确认：
- *   [询问 | 问题: 要不要一起建个群？ | 选项: 好啊,不用了]
- * 捕获组：1=问题 2=选项（逗号/、分隔）
- */
-export const ASK_USER_TAG_RE =
-    /\[询问\s*[|｜]\s*问题[:：]\s*([^\]|｜]+?)\s*[|｜]\s*选项[:：]\s*([^\]]+?)\]/;
-
-/** 角色设置群公告：[A设置了群公告: 明天团建] */
-export const SET_ANNOUNCEMENT_TAG_RE = /\[([^\]]+?)设置了?群公告[:：]\s*([^\]]+?)\]/;
-
-/** 角色添加群待办：[A添加了群待办: 买饮料] */
-export const ADD_TODO_TAG_RE = /\[([^\]]+?)添加了?群待办[:：]\s*([^\]]+?)\]/;
-
-/** 角色完成群待办：[A完成了群待办: 买饮料] / [A完成群待办: 买饮料] */
-export const COMPLETE_TODO_TAG_RE = /\[([^\]]+?)完成(?:了)?群待办[:：]\s*([^\]]+?)\]/;
-
-/** 角色删除群待办：[A删除了群待办: 买饮料] */
-export const REMOVE_TODO_TAG_RE = /\[([^\]]+?)删除了?群待办[:：]\s*([^\]]+?)\]/;
-
-/**
- * 角色因剧情变化更新自己的日程（剧情覆盖）：
- *   [日程更新|2026-08-10|14:00|16:00|图书馆|和用户一起去图书馆]
- *   [日程更新|2026-08-10|09:00|12:00|学校|去上学]
- * 捕获组：1=YYYY-MM-DD|开始|结束|地点|事项（5 段，| 分隔）
- */
-export const SCHEDULE_UPDATE_TAG_RE = /\[日程更新[|｜：:]\s*([^\]]+?)\]/;
-
-/**
- * 角色主动发好友申请（1:1 场景）：
- *   [加好友] / [添加好友] / [申请加好友]
- *   [加好友|备注:一起出来玩] / [申请加好友|理由:想认识你]
- * 捕获组：1=申请留言（备注/理由，可选）。半角 `|` 与全角 `｜` 分隔符均可。
- */
-export const ADD_FRIEND_TAG_RE =
-    /\[(?:(?:申请)?加好友|添加好友)(?:\s*[|｜]\s*(?:备注|理由)[:：]\s*([^\]]+?))?\]/;
 
 const RICH_PATTERNS: {
     regex: RegExp;
@@ -395,89 +349,6 @@ const RICH_PATTERNS: {
         regex: /\[([^\]]+?)解除了([^\]]+?)的禁言\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "unmute" as const, adminActorName: m[1]?.trim(), adminTargetName: m[2]?.trim() } }),
     },
-    {
-        // [A解散了群聊] / [A解散了群] / [A解散群] —— 群主主动解散，属剧情节点
-        regex: /\[([^\]]+?)解散了?群聊?\]/,
-        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "dissolve" as const, adminActorName: m[1]?.trim() } }),
-    },
-    {
-        // 角色自主建群（pull 用户+指定成员进新群）。群名/成员可选。
-        regex: CREATE_GROUP_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: {
-                adminAction: "create_group" as const,
-                adminActorName: m[1]?.trim(),
-                groupName: m[2]?.trim() || "",
-                memberNames: m[3]?.trim() || "",
-            },
-        }),
-    },
-    {
-        // 角色改群名：[A把群名改成了 周末聚餐] 等
-        regex: RENAME_GROUP_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: {
-                adminAction: "rename" as const,
-                adminActorName: m[1]?.trim(),
-                newGroupName: m[2]?.trim(),
-            },
-        }),
-    },
-    {
-        // 角色主动询问用户并等待确认（选项卡片）。解析出的选项存为数组。
-        regex: ASK_USER_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "ask_user" as const,
-            mediaData: {
-                askQuestion: m[1]?.trim(),
-                askOptions: (m[2] || "")
-                    .split(/[,，、]/)
-                    .map(s => s.trim())
-                    .filter(Boolean),
-            },
-        }),
-    },
-    {
-        // 角色设置群公告：[A设置了群公告: 明天团建]
-        regex: SET_ANNOUNCEMENT_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim(), newAnnouncement: m[2]?.trim() },
-        }),
-    },
-    {
-        // 角色添加群待办：[A添加了群待办: 买饮料]
-        regex: ADD_TODO_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
-        }),
-    },
-    {
-        // 角色完成群待办：[A完成了群待办: 买饮料]
-        regex: COMPLETE_TODO_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
-        }),
-    },
-    {
-        // 角色删除群待办：[A删除了群待办: 买饮料]
-        regex: REMOVE_TODO_TAG_RE,
-        build: (m) => ({
-            content: "",
-            mediaType: "group_admin_notice" as const,
-            mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() },
-        }),
-    },
     // 1:1 简单格式（兼容）
     {
         regex: /\[领取红包\]/,
@@ -737,8 +608,13 @@ export function parseAIResponse(rawText: string, previousState: StateValue[]): P
         htmlBlockPlaceholders.push({ placeholder, original: match });
         return placeholder;
     });
-    // Protect <style>...</style> and following HTML until next double-newline + non-HTML
-    protected_ = protected_.replace(/<style[\s\S]*?<\/style>[\s\S]*?(?=\n\n[^<\x00]|$)/gi, (match) => {
+    // Protect <style>...</style> and following HTML until next double-newline + non-HTML,
+    // 或者撞上 [/状态栏]、[/内心] 的闭合标签。
+    // 闭合标签这一支不能省：AI 按契约在 [状态栏] 里直出 HTML 时，HTML 和闭合标签之间
+    // 通常只有单换行、没有空行可停，保护段就会一路吞到 $——把 [/状态栏] 连同它后面的
+    // 聊天正文一起卷进占位符。闭合标签在下面 extractBracketBlock 跑之前就没了，状态栏
+    // 提取不到，整块连标签带 HTML 全泄进气泡。（"要空一行才正常"就是撞的这里。）
+    protected_ = protected_.replace(/<style[\s\S]*?<\/style>[\s\S]*?(?=\n\n[^<\x00]|\s*\[\/(?:状态栏|内心)\]|$)/gi, (match) => {
         const placeholder = `\x00HTML_BLOCK_${htmlBlockPlaceholders.length}\x00`;
         htmlBlockPlaceholders.push({ placeholder, original: match });
         return placeholder;

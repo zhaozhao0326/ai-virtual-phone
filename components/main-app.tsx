@@ -14,6 +14,7 @@ import { getThemeAssetMap, readThemeProfile } from "@/lib/theme-storage";
 import { resolveActiveIconSkins, type ThemeProfile } from "@/lib/theme-types";
 import { applyShellZoom, isMobileShell } from "@/lib/mobile-shell";
 import { hasPendingMcpOAuthCallback } from "@/lib/tool-executor";
+import { shouldRequestPwaFullscreen } from "@/lib/pwa-display-mode";
 
 const TEXT = {
   loading: "\u52A0\u8F7D\u4E2D...",
@@ -255,17 +256,23 @@ export function MainApp() {
       }
     })();
 
-    // 安卓全屏兜底：点击屏幕进入全屏模式（iOS 不支持此 API，会自动忽略）
+    // 安卓全屏兜底。是否请求全屏在每次点击时读取（渠道默认 + 用户「显示系统状态栏」偏好），
+    // beta 渠道默认不强制（延续测试线行为），用户显式选沉浸后恢复强制；设置切换后无需重载。
     const isMobile = isMobileShell();
-    // Edge 改用 minimal-ui 保留原生状态栏，不能再被强制全屏顶掉（仅 Edge 跳过，其它浏览器照旧）
-    const isEdge = /Edg/i.test(navigator.userAgent);
-    if (!isMobile || isEdge) return () => {
+    if (!isMobile) return () => {
       cancelled = true;
     };
 
-    // [TEST 分支验证] 点击强制全屏已完全禁用——验证 Via 强制横屏根因
+    function tryFullscreen() {
+      if (!shouldRequestPwaFullscreen()) return;
+      const doc = document.documentElement;
+      if (document.fullscreenElement) return;
+      doc.requestFullscreen?.().catch(() => { });
+    }
+    document.addEventListener("click", tryFullscreen);
     return () => {
       cancelled = true;
+      document.removeEventListener("click", tryFullscreen);
     };
   }, []);
 

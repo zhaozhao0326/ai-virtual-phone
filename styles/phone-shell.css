@@ -1080,6 +1080,31 @@
    与 lib/mobile-shell.ts 的 MOBILE_SHELL_MQ 保持一致。 */
 @media (hover: none) and (pointer: coarse) {
 
+  /* 用户在设置里显式开启「显示系统状态栏」且运行时不在全屏时，控制器才会挂
+     data-pwa-display-mode 标记（见 pwa-manifest-injector）：此时所有 App 共用系统
+     安全区，不再重复预留 48px 虚拟状态栏。未开启开关的用户（含 iOS 装机用户，
+     iOS 永远报 standalone）不受影响，保持沉浸外观。 */
+  html[data-pwa-display-mode="standalone"] .phone-shell,
+  html[data-pwa-display-mode="minimal-ui"] .phone-shell,
+  html[data-pwa-display-mode="browser"] .phone-shell {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --phone-titlebar-safe-top: env(safe-area-inset-top, 0px);
+    --page-header-safe-top: env(safe-area-inset-top, 0px);
+    --home-grid-top-offset: calc(env(safe-area-inset-top, 0px) + 16px);
+  }
+
+  html[data-pwa-display-mode="standalone"] .phone-shell > .phone-status-bar,
+  html[data-pwa-display-mode="minimal-ui"] .phone-shell > .phone-status-bar,
+  html[data-pwa-display-mode="browser"] .phone-shell > .phone-status-bar {
+    display: none;
+  }
+
+  html[data-pwa-display-mode="standalone"] .phone-shell-wrap,
+  html[data-pwa-display-mode="minimal-ui"] .phone-shell-wrap,
+  html[data-pwa-display-mode="browser"] .phone-shell-wrap {
+    margin-top: 0;
+  }
+
   /* 大屏档整屏缩放：--shell-zoom 由 layout.tsx 内联脚本/lib/mobile-shell.ts 写入
      （平板/折叠屏内屏 ≥520 短边才有值，手机恒缺省=1）。壳自身 zoom 放大，
      屏幕尺寸变量除以 zoom——壳内有效视口按设计稿比例缩小，渲染后仍铺满全屏。 */

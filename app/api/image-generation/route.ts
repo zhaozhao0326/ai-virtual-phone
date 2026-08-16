@@ -199,7 +199,7 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             const name = (p.name || "").trim();
             const anchor = (p.anchor || "").trim();
             const action = (p.action || "").trim();
-            if (!name && !anchor && !action) continue;
+            if (!name && !anchor && !action) return;
             const hasRef = Boolean(refList[idx]);
             // 仅 NAI 用 {charN} 锚点绑定"哪张脸=哪个人"；OAI/Google 直接写人物名（脸靠参考图锁）。
             let clause = (hasRef && isNai) ? `{char${idx + 1}} ${name || "某人"}` : (name || "某人");

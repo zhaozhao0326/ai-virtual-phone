@@ -356,20 +356,8 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                         onError={() => {
                             setResolvedPhotoUrl(null);
                         }}
-                        sideAction={canRegeneratePhoto ? (
-                            <button
-                                type="button"
-                                className="feed-post-photo-retry-btn"
-                                disabled={photoRegenerating}
-                                aria-label="重新生成朋友圈图片"
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    openPhotoPromptEditor();
-                                }}
-                            >
-                                <RefreshCw size={14} className={photoRegenerating ? "is-spinning" : undefined} />
-                            </button>
-                        ) : undefined}
+                        onRegenerate={canRegeneratePhoto ? () => openPhotoPromptEditor() : undefined}
+                        regenerating={photoRegenerating}
                     />
                 )}
                 {fallbackPhotoDescription && (

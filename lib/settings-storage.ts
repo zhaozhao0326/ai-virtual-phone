@@ -1166,7 +1166,7 @@ export function resolveUserIdentity(characterId?: string, appId?: string, worldI
     const identities = loadUserIdentities();
     if (identities.length === 0) return null;
     const config = loadBindingConfig();
-    const derivedWorldId = worldId ?? getWorldIdForCharacter(characterId ?? "");
+    const derivedWorldId = (worldId ?? getWorldIdForCharacter(characterId ?? "")) ?? undefined;
     const resolved = resolveBinding(config, characterId, appId, derivedWorldId);
     if (resolved.userIdentityId) {
         return identities.find(i => i.id === resolved.userIdentityId) || identities[0];
@@ -1207,7 +1207,7 @@ export function resolveWorldIdForGroup(participantIds?: string[]): string | unde
 export function setWorldUserIdentity(worldId: string, identityId: string | null): void {
     if (typeof window === "undefined") return;
     const config = loadBindingConfig();
-    const worldBindings: Record<string, BindingSlot> = { ...(config.worldBindings || {}) };
+    const worldBindings: Record<string, BindingSlot> = { ...(config.worldBindings || {}) } as Record<string, BindingSlot>;
     if (identityId) {
         worldBindings[worldId] = { ...(worldBindings[worldId] || {}), userIdentityId: identityId };
     } else {

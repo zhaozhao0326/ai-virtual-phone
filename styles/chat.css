@@ -645,7 +645,7 @@
   left: 0;
   right: 0;
   z-index: 10;
-  padding: 10px 16px;
+  padding: 8px 16px max(8px, env(safe-area-inset-bottom, 0px));
   background: color-mix(in srgb, var(--c-input, var(--c-page-body-bg)) 55%, transparent);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -726,7 +726,7 @@
   display: flex;
   justify-content: center;
   gap: 32px;
-  padding: 10px 0 24px;
+  padding: 6px 0 0;
 }
 
 .chat-input-bar .chat-input-actions .ui-bare-btn {
@@ -2019,6 +2019,19 @@
 
 /* ── Music Share Card (uses --c-music-* tokens) ── */
 
+/* 聊天里的音乐/文件卡片沿用聊天自己的配色。tokens.css 的全局月光暗色板是给
+   全屏播放器的，2026-08-09 提取全局变量后意外漏进聊天卡片（白字浅底看不清）；
+   这里按提取前的兜底值把聊天卡片锁回原样，音乐 App 不受影响。 */
+.chat-music-share-card,
+.chat-media-file-wrap,
+.chat-media-file-card {
+  /* 值 = 2026-07-09 首发版 tokens.css 的"龙井绿"浅色板（8/9 播放器改月光暗色板前的原样） */
+  --c-music-surface: rgba(255, 255, 255, 0.3);
+  --c-music-surface-solid: rgba(255, 255, 255, 0.55);
+  --c-music-text: #2b3d31;
+  --c-music-accent: #5b7b64;
+}
+
 .chat-music-share-card {
   width: 220px;
   border-radius: 16px;
@@ -2085,10 +2098,10 @@
 
 .chat-media-file-card {
   width: 220px;
-  border-radius: 0;
+  border-radius: 16px;
   overflow: hidden;
   background: var(--c-music-surface, rgba(255,255,255,0.06));
-  border: none;
+  border: 1px solid var(--c-music-surface-solid, rgba(255,255,255,0.12));
   backdrop-filter: blur(16px);
 }
 
@@ -2471,12 +2484,14 @@
   transform: scale(0.96);
 }
 
-.chat-thought-card .chat-html-inline {
+.chat-thought-card .chat-html-inline,
+.chat-status-bare .chat-html-inline {
   border-radius: 10px;
   box-shadow: none;
 }
 
-.chat-thought-card .chat-html-inline-frame {
+.chat-thought-card .chat-html-inline-frame,
+.chat-status-bare .chat-html-inline-frame {
   min-height: 100px;
   max-height: min(52vh, 420px);
 }
@@ -2501,6 +2516,27 @@
   aspect-ratio: 1 / 1.618;
   border: none;
   background: transparent;
+}
+
+/* ── Status bar area (bare: no sticky-note frame) ──
+   [状态栏] 的内容自己就是卡片（AI 直出的 HTML / 正则渲染的排版 / 自定义渲染代码），
+   这里只负责对齐到气泡左缘，不加任何背景、边框与标题。 */
+.chat-status-bare {
+  margin-left: 52px;
+  margin-top: -8px;
+  max-width: calc(100% - 64px);
+  animation: thoughtCardIn 0.3s ease-out;
+}
+
+/* 纯文字状态栏（没被正则/HTML 接管时）沿用折叠区原来的小字号，颜色跟随主题 */
+.chat-status-bare .chat-markdown {
+  font-size: calc(11.7px*var(--app-text-scale,1));
+  line-height: 1.7;
+}
+
+/* 状态栏和内心便利贴同时出现时，便利贴的负上边距会压到状态栏上，这里收回来 */
+.chat-status-bare + .chat-thought-card {
+  margin-top: 8px;
 }
 
 /* ── Inner monologue card (sticky-note style) ── */
