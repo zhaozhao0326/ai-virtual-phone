@@ -23,6 +23,8 @@ const MASCOT_DB_VERSION = 2;
 const MASCOT_CHAT_STORE = "chat";
 const MASCOT_MESSAGES_KEY = "messages"; // 旧版单会话键，仅用于迁移
 const MASCOT_STATE_KEY = "state";
+// 首选持久化：localStorage 同步写入，关闭/重开应用后可靠保留（旧版已验证）
+const MASCOT_LS_KEY = "aiphone_mascot_state_v1";
 const MAX_STORED_MASCOT_MESSAGES = 50;
 const MAX_MASCOT_SESSIONS = 30;
 
@@ -77,23 +79,42 @@ function emit() {
 }
 
 function persistState() {
-    if (typeof indexedDB === "undefined") return;
-    try {
-        const req = openMascotDb();
-        req.onsuccess = () => {
+    const state: PersistedMascotState = { sessions, activeSessionId };
+    // 首选：localStorage 同步写入，关闭/重开应用后可靠保留（旧版已验证）
+    if (typeof window !== "undefined" && window.localStorage) {
+        try {
+            window.localStorage.setItem(MASCOT_LS_KEY, JSON.stringify(state));
+        } catch {
+            // 配额超限：剥离图片后重试，保住文字记录（与旧版「超配额自动剥离图片保文字」一致）
             try {
-                if (!req.result.objectStoreNames.contains(MASCOT_CHAT_STORE)) return;
-                const tx = req.result.transaction(MASCOT_CHAT_STORE, "readwrite");
-                const state: PersistedMascotState = { sessions, activeSessionId };
-                tx.objectStore(MASCOT_CHAT_STORE).put(state, MASCOT_STATE_KEY);
-                tx.oncomplete = () => req.result.close();
-                tx.onerror = () => req.result.close();
+                const textOnly: PersistedMascotState = {
+                    sessions: state.sessions.map((s) => ({ ...s, messages: s.messages.map((m) => ({ ...m, images: [] })) })),
+                    activeSessionId: state.activeSessionId,
+                };
+                window.localStorage.setItem(MASCOT_LS_KEY, JSON.stringify(textOnly));
             } catch {
-                // Keep in-memory chat usable even if persistence fails.
+                // 放弃本地镜像，降级到 IndexedDB
             }
-        };
-    } catch {
-        // Ignore IndexedDB availability issues.
+        }
+    }
+    // 兼容回退：IndexedDB（适合大体积图片等），不阻塞主流程
+    if (typeof indexedDB !== "undefined") {
+        try {
+            const req = openMascotDb();
+            req.onsuccess = () => {
+                try {
+                    if (!req.result.objectStoreNames.contains(MASCOT_CHAT_STORE)) return;
+                    const tx = req.result.transaction(MASCOT_CHAT_STORE, "readwrite");
+                    tx.objectStore(MASCOT_CHAT_STORE).put(state, MASCOT_STATE_KEY);
+                    tx.oncomplete = () => req.result.close();
+                    tx.onerror = () => req.result.close();
+                } catch {
+                    // Keep in-memory chat usable even if persistence fails.
+                }
+            };
+        } catch {
+            // Ignore IndexedDB availability issues.
+        }
     }
 }
 
@@ -411,6 +432,49 @@ export async function hydrateMascotChat(): Promise<void> {
             emit();
             resolve();
         };
+
+        // 首选：从 localStorage 读取（同步、可靠，关闭/重开不丢）
+        if (typeof window !== "undefined" && window.localStorage) {
+            try {
+                const raw = window.localStorage.getItem(MASCOT_LS_KEY);
+                if (raw) {
+                    const saved = JSON.parse(raw) as PersistedMascotState;
+                    if (saved && Array.isArray(saved.sessions) && saved.sessions.length > 0) {
+                        sessions = saved.sessions
+                            .filter((session) => session && typeof session.id === "string" && Array.isArray(session.messages))
+                            .map((session) => ({ ...session, messages: normalizeMessages(session.messages) }))
+                            .sort((a, b) => b.updatedAt - a.updatedAt)
+                            .slice(0, MAX_MASCOT_SESSIONS);
+                        activeSessionId = saved.activeSessionId && sessions.some((session) => session.id === saved.activeSessionId)
+                            ? saved.activeSessionId
+                            : sessions[0]?.id ?? null;
+                        messages = sessions.find((session) => session.id === activeSessionId)?.messages ?? [];
+                        hydrated = true;
+                        emit();
+                        // 同步回 IndexedDB，保持双写一致
+                        if (typeof indexedDB !== "undefined") {
+                            try {
+                                const req = openMascotDb();
+                                req.onsuccess = () => {
+                                    try {
+                                        if (req.result.objectStoreNames.contains(MASCOT_CHAT_STORE)) {
+                                            const tx = req.result.transaction(MASCOT_CHAT_STORE, "readwrite");
+                                            tx.objectStore(MASCOT_CHAT_STORE).put({ sessions, activeSessionId }, MASCOT_STATE_KEY);
+                                            tx.oncomplete = () => req.result.close();
+                                            tx.onerror = () => req.result.close();
+                                        }
+                                    } catch { /* ignore */ }
+                                };
+                            } catch { /* ignore */ }
+                        }
+                        resolve();
+                        return;
+                    }
+                }
+            } catch {
+                // localStorage 解析失败，降级到 IndexedDB
+            }
+        }
 
         if (typeof indexedDB === "undefined") {
             finishWithMessages([], false);
