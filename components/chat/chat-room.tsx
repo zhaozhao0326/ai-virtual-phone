@@ -294,32 +294,6 @@ function isHiddenChatFlowMessage(msg: ChatMessage, displayContent?: string): boo
         && !msg.reasoningText;
 }
 
-// 用户最近消息是否明确索要照片/图片——决定本次 AI 回复里的 [照片:] 标签能否触发生图。
-// 只有命中才放行（按需生图），否则由解析器硬隔离，避免退化成「每句话配一张图」。
-const PHOTO_REQUEST_KEYWORDS = [
-    "照片", "图片", "相片", "拍张", "自拍", "发张", "张照", "露脸",
-    "让我看看你", "看看你", "看下你", "发给我看", "照给我", "图给我",
-    "发张图", "发张照", "发我看看", "上一张", "来张", "发我一张", "照片给我",
-];
-function didUserRequestPhoto(messages: ChatMessage[]): boolean {
-    const recent = [...messages].reverse().slice(0, 3);
-    for (const m of recent) {
-        if (m.role !== "user") continue;
-        const text = (m.content || "").toLowerCase();
-        if (PHOTO_REQUEST_KEYWORDS.some((k) => text.includes(k.toLowerCase()))) return true;
-        if (/\b(photo|picture|selfie|pic)\b/i.test(text) && /\b(send|show|want|give|me)\b/i.test(text)) return true;
-    }
-    return false;
-}
-
-// 频率阀：角色「按剧情需要」可主动发图，但上一条已是图片时压掉本次 [照片:] 标签，
-// 避免退化成「一直发 / 每句生图」。用户明确要照片时始终放行。
-function computeAllowImageTags(messages: ChatMessage[]): boolean {
-    if (didUserRequestPhoto(messages)) return true;
-    const last = messages[messages.length - 1];
-    return !(last && last.mediaType === "image");
-}
-
 // ── Background generation tracking ──────────────────────────
 const GENERATING_PREFIX = "chat-generating:";
 const CHAT_BG_COMPLETE = "chat-bg-complete";
@@ -2476,7 +2450,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     ) => {
         throwIfGenerationStopped(guard);
         // 按需生图硬开关：用户最近明确要照片时，群聊角色回复的 [照片:] 才放行
-        const allowImageTags = computeAllowImageTags(loadChatMessages(session.id));
+        const allowImageTags = true;
         const responseRoundId = createResponseRoundId();
         const editableResponseText = buildEditableGroupRoundText(results);
         // 群聊一轮回复只有一份思维链，挂到本轮第一条落库消息上
@@ -2940,7 +2914,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             : getLatestCharacterStateValues(session.contactId);
 
         // 按需生图硬开关：仅当用户最近明确要照片时，才放行 [照片:] 触发「正在生成中」
-        const allowImageTags = computeAllowImageTags(loadChatMessages(session.id));
+        const allowImageTags = true;
         const { parts: rawParts, stateValues, freshStateValues, statusPanel, innerMonologue, reasoningText: parsedReasoningText } = parseAIResponse(aiResponseText, previousState, { allowImageTags });
         const parts = stripInvalidStickerParts(rawParts);
         // 优先使用调用方传入的 reasoningText；未传入时，使用 parseAIResponse 从结构化输出里提取的
@@ -3816,7 +3790,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         try {
             const latestMessages = loadChatMessages(session.id);
             // 按需生图硬开关：用户最近明确要照片时，群聊里角色回复的 [照片:] 才放行
-            const allowImageTags = computeAllowImageTags(latestMessages);
+            const allowImageTags = true;
             if (session.isGroup) {
                 const streamedImageReplacementTasks: Promise<unknown>[] = [];
                 // 每轮 LLM 调用的思维链：中间轮挂到该轮首条气泡，最终轮传给 processGroupParts
