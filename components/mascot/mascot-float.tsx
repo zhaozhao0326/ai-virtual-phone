@@ -13,7 +13,8 @@ import {
   deactivateMascot,
 } from "@/lib/mascot-state";
 import { getMascotContext, subscribeMascotContext } from "@/lib/mascot-context";
-import { mascotNavigate, DIY_WIDGET_PREVIEW_EVENT, type DiyWidgetPreviewEventDetail, type DiyWidgetPreviewRequest } from "@/lib/mascot-events";
+import { mascotNavigate, DIY_WIDGET_PREVIEW_EVENT, STATUS_BAR_PREVIEW_EVENT, type DiyWidgetPreviewEventDetail, type DiyWidgetPreviewRequest, type StatusBarPreviewEventDetail, type StatusBarPreviewRequest } from "@/lib/mascot-events";
+import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { DIY_WIDGET_GUARD_STYLE } from "@/components/widgets/diy-widget-renderer";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
 import {
@@ -141,6 +142,42 @@ const DIY_PREVIEW_SIZE_PX: Record<string, [number, number]> = {
   "4x2": [148, 356], "4x3": [234, 356], "4x4": [320, 356],
   "5x4": [320, 454], "6x4": [320, 552],
 };
+
+/** 线上聊天状态栏预览：用 CustomStatusFrame 跑，和聊天里真实渲染走的是同一个组件与同一套
+ *  高度桥，所见即所得。示例数据经 window.STATUS_RAW / {{RAW}} 注入，与线上一致。 */
+function StatusBarPreviewDialog({ request, onClose }: { request: StatusBarPreviewRequest; onClose: () => void }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 4000, background: "rgba(10,10,14,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}
+      onClick={onClose}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div
+        style={{ background: "#1c1d24", borderRadius: 18, padding: "14px 16px 16px", width: "min(88vw, 380px)", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 18px 48px rgba(0,0,0,0.45)" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, gap: 12 }}>
+          <span style={{ color: "#f2f2f5", fontSize: "calc(13px*var(--app-text-scale,1))", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            状态栏预览 · {request.displayName}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ border: 0, background: "rgba(255,255,255,0.12)", color: "#fff", borderRadius: 10, padding: "4px 12px", fontSize: "calc(12px*var(--app-text-scale,1))", cursor: "pointer", flex: "0 0 auto" }}
+          >
+            关闭
+          </button>
+        </div>
+        <div style={{ borderRadius: 12, overflow: "hidden", background: "rgba(255,255,255,0.06)", padding: 8 }}>
+          <CustomStatusFrame html={request.renderHtml} raw={request.previewRaw} />
+        </div>
+        <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "calc(10.5px*var(--app-text-scale,1))", textAlign: "center", marginTop: 8 }}>
+          用示例数据沙箱渲染，不影响已保存的配置
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DiyWidgetPreviewDialog({ request, onClose }: { request: DiyWidgetPreviewRequest; onClose: () => void }) {
   const [w, h] = DIY_PREVIEW_SIZE_PX[request.size] || [320, 258];
@@ -617,6 +654,7 @@ export function MascotFloat() {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [nineSliceCalibration, setNineSliceCalibration] = useState<NineSliceCalibrationEventDetail | null>(null);
   const [diyWidgetPreview, setDiyWidgetPreview] = useState<DiyWidgetPreviewRequest | null>(null);
+  const [statusBarPreview, setStatusBarPreview] = useState<StatusBarPreviewRequest | null>(null);
   const [activeMascotMessageIndex, setActiveMascotMessageIndex] = useState<number | null>(null);
   const msgLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const msgLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -761,6 +799,17 @@ export function MascotFloat() {
     };
     window.addEventListener(DIY_WIDGET_PREVIEW_EVENT, handler);
     return () => window.removeEventListener(DIY_WIDGET_PREVIEW_EVENT, handler);
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<StatusBarPreviewEventDetail>).detail;
+      if (!detail?.request) return;
+      detail.handled = true;
+      setStatusBarPreview(detail.request);
+    };
+    window.addEventListener(STATUS_BAR_PREVIEW_EVENT, handler);
+    return () => window.removeEventListener(STATUS_BAR_PREVIEW_EVENT, handler);
   }, []);
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -2129,6 +2178,12 @@ export function MascotFloat() {
         />
       )}
 
+      {statusBarPreview && (
+        <StatusBarPreviewDialog
+          request={statusBarPreview}
+          onClose={() => setStatusBarPreview(null)}
+        />
+      )}
       {diyWidgetPreview && (
         <DiyWidgetPreviewDialog
           request={diyWidgetPreview}
