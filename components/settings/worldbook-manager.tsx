@@ -11,6 +11,7 @@ import {
     UNSUPPORTED_IMPORT_FORMAT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
+import { importWorldBooksFromDocs } from "@/lib/worldbook-doc-import";
 import type { WorldBookConfig, WorldBookEntry } from "@/lib/settings-types";
 import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
@@ -28,6 +29,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const [importError, setImportError] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const docFileInputRef = useRef<HTMLInputElement>(null);
 
     const { setSubpageTitle, setOverrideBack, setSubpageRightAction } = useContext(SettingsContext);
 
@@ -260,6 +262,14 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                 </button>
                 <button
                     type="button"
+                    onClick={() => docFileInputRef.current?.click()}
+                    className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-gray-800 shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95 focus:outline-none"
+                >
+                    <Upload size={15} strokeWidth={1.8} />
+                    <span>批量导入 Word</span>
+                </button>
+                <button
+                    type="button"
                     onClick={addBook}
                     className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[20px] bg-black px-4 text-xs font-bold text-white shadow-sm transition-all hover:bg-gray-800 hover:shadow-md active:scale-95 focus:outline-none"
                 >
@@ -311,6 +321,21 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         };
         reader.readAsText(file);
         if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    const handleDocBatchImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+        const { books: imported, skipped } = await importWorldBooksFromDocs(files);
+        if (imported.length > 0) {
+            persist([...imported, ...books]);
+            setActiveBookId(imported[0].id);
+            setViewMode("detail");
+        }
+        if (skipped.length > 0) {
+            setImportError(`以下文件导入失败（${skipped.length} 个）：${skipped.map(s => s.name).join("、")}`);
+        }
+        if (docFileInputRef.current) docFileInputRef.current.value = "";
     };
 
     const handleExport = async (book: WorldBookConfig) => {
@@ -474,6 +499,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         <div ref={wbContainerRef} className="flex flex-col gap-5 h-full">
             <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
             <input type="file" accept=".json" className="hidden" ref={entryFileInputRef} onChange={handleEntryImportFile} />
+            <input type="file" accept=".doc,.docx,.txt" multiple className="hidden" ref={docFileInputRef} onChange={handleDocBatchImport} />
             {viewMode === "list" ? (
                 <>
                     <div className="flex items-center">
