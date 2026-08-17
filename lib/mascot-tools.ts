@@ -1050,6 +1050,7 @@ const MASCOT_NATIVE_LOADER_NAMES: Record<string, string> = {
     worldbook_pack: "mascot_load_worldbook_pack",
     preset_pack: "mascot_load_preset_pack",
     regex_pack: "mascot_load_regex_pack",
+    status_bar_pack: "mascot_load_status_bar_pack",
     widget_pack: "mascot_load_widget_pack",
 };
 
