@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useContext, useCallback } from "react";
-import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, AlertCircle, Maximize2, Replace } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, ChevronDown, AlertCircle, Maximize2, Replace } from "lucide-react";
 import {
     loadWorldBooks,
     saveWorldBooks,
@@ -27,6 +27,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const [isLoaded, setIsLoaded] = useState(false);
     const [expandUid, setExpandUid] = useState<string | null>(null);
     const [importError, setImportError] = useState<string | null>(null);
+    const [importMenuOpen, setImportMenuOpen] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docFileInputRef = useRef<HTMLInputElement>(null);
@@ -252,22 +253,43 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         }
         setSubpageRightAction("worldbook",
             <div className="flex items-center gap-2">
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-gray-800 shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95 focus:outline-none"
-                >
-                    <Upload size={15} strokeWidth={1.8} />
-                    <span>导入世界书</span>
-                </button>
-                <button
-                    type="button"
-                    onClick={() => docFileInputRef.current?.click()}
-                    className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-gray-800 shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95 focus:outline-none"
-                >
-                    <Upload size={15} strokeWidth={1.8} />
-                    <span>批量导入 Word</span>
-                </button>
+                <div className="relative">
+                    <button
+                        type="button"
+                        onClick={() => setImportMenuOpen(o => !o)}
+                        className="inline-flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-gray-800 shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95 focus:outline-none"
+                    >
+                        <Upload size={15} strokeWidth={1.8} />
+                        <span>导入</span>
+                        <ChevronDown size={14} strokeWidth={1.8} />
+                    </button>
+                    {importMenuOpen && (
+                        <>
+                            <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setImportMenuOpen(false)}
+                            />
+                            <div className="absolute right-0 top-11 z-50 w-44 overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-lg">
+                                <button
+                                    type="button"
+                                    onClick={() => { setImportMenuOpen(false); fileInputRef.current?.click(); }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-800 transition-colors hover:bg-gray-50"
+                                >
+                                    <Upload size={14} strokeWidth={1.8} />
+                                    <span>导入世界书 (JSON)</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { setImportMenuOpen(false); docFileInputRef.current?.click(); }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-800 transition-colors hover:bg-gray-50"
+                                >
+                                    <Upload size={14} strokeWidth={1.8} />
+                                    <span>批量导入 Word 文档</span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
                 <button
                     type="button"
                     onClick={addBook}
@@ -279,7 +301,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
             </div>
         );
         return () => setSubpageRightAction("worldbook", null);
-    }, [addBook, setSubpageRightAction, viewMode]);
+    }, [addBook, setSubpageRightAction, viewMode, importMenuOpen]);
 
     const updateBook = (id: string, updates: Partial<WorldBookConfig>) => {
         persist(books.map(b => b.id === id ? { ...b, ...updates, updatedAt: Date.now() } : b));

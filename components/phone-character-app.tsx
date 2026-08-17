@@ -16,6 +16,7 @@ import {
 
   CHAR_BLOCKED_FIELDS,
 } from "@/lib/character-storage";
+import { extractTextFromWordFile } from "@/lib/worldbook-doc-import";
 import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity } from "@/lib/settings-storage";
@@ -902,8 +903,21 @@ function CharListView({
         c.polaroidStyle = styleIdx;
         onStartCharPlacement(c);
         onNotice("点击画布放置角色");
+      } else if (/\.(docx?|txt)$/i.test(file.name)) {
+        const text = await extractTextFromWordFile(file);
+        if (!text.trim()) return onNotice("文档内容为空或无法读取");
+        const name = file.name.replace(/\.[^.]+$/, "") || "未命名角色";
+        const c = createCharacter({
+          name,
+          avatar: null,
+          persona: text.trim(),
+          personality: "",
+        });
+        c.polaroidStyle = styleIdx;
+        onStartCharPlacement(c);
+        onNotice("点击画布放置角色");
       } else {
-        onNotice("请选择 .json 或 .png 文件");
+        onNotice("请选择 .json / .png / .doc / .docx / .txt 文件");
       }
     } catch (e) {
       if (e instanceof Error && e.message === CHAR_BLOCKED_FIELDS) {
@@ -1069,7 +1083,7 @@ function CharListView({
                 <span>NPC</span>
               </button>
               <input
-                ref={fileRef} type="file" accept=".json,.png,image/png,application/json" className="hidden"
+                ref={fileRef} type="file" accept=".json,.png,image/png,application/json,.doc,.docx,.txt" className="hidden"
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) await handleImportFile(file);
