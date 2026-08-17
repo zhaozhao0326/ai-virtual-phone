@@ -609,21 +609,41 @@ function parseSegment(segment: string, parts: ParsedMessagePart[]) {
  * 注意：此处理不影响用户主动生图（那条路径不输出 [照片:] 标签），也不影响 [红包]/
  * [转账] 等其它方括号协议（那些是正经功能标签，不在本函数的剥离范围内）。
  */
-function stripModelInitiatedImageTags(text: string): string {
+/**
+ * 控制是否放行模型输出的 [照片:...] 配图标签。
+ *
+ * - allowImageTags = false（默认，安全态）：剥离模型自发的 [照片:...] 标签。
+ *   仅靠 prompt 约束会被模型绕过、退化成「每句话配一张图」，所以这里用代码层
+ *   硬剥离兜底，避免刷屏。
+ * - allowImageTags = true：放行 [照片:...]，让角色在「用户要照片」或「剧情需要」
+ *   时正常触发生图（"正在生成中"→ 出图）。
+ *
+ * 「不要一直发」的频率约束由调用方在聊天主流程判断：上一条已是图片时压掉本次
+ * 标签，用户明确要照片时则始终放行。两层配合 = 按需/剧情可发 + 绝不刷屏。
+ *
+ * [相册]...[/相册] 私有相册块无论哪种情况都剥离（角色自发拍照，不进聊天气泡）。
+ */
+function stripModelInitiatedImageTags(text: string, allowImageTags = false): string {
     if (!text) return text;
     // [照片:描述] / [照片使用参考图:描述] / [照片不使用参考图:描述]
     // 要求 照片 之后紧跟 使用参考图|不使用参考图|:，避免误伤 [照片墙] 这类 UI 文案
-    let cleaned = text.replace(/\[照片(?:使用参考图|不使用参考图)?:?[^\]]*\]/g, "");
+    const cleaned = allowImageTags
+        ? text
+        : text.replace(/\[照片(?:使用参考图|不使用参考图)?:?[^\]]*\]/g, "");
     // [相册]...[/相册] 私有相册块（角色自发拍照，不进聊天气泡，但也不该污染叙事）
-    cleaned = cleaned.replace(/\[相册\][\s\S]*?\[\/相册\]/g, "");
+    const afterAlbum = cleaned.replace(/\[相册\][\s\S]*?\[\/相册\]/g, "");
     // 压缩因剥离产生的多余空行
-    cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
-    return cleaned;
+    return afterAlbum.replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function parseAIResponse(rawText: string, previousState: StateValue[]): ParsedAIResponse {
-    // 0. 硬隔离：模型不能自发配图，否则会退化成「每句话配一张图」
-    rawText = stripModelInitiatedImageTags(rawText);
+export function parseAIResponse(
+    rawText: string,
+    previousState: StateValue[],
+    opts?: { allowImageTags?: boolean },
+): ParsedAIResponse {
+    // 0. 硬隔离兜底：默认剥离模型自发配图标签，避免退化成「每句话配一张图」。
+    //    聊天主流程会在「用户要照片」或「上一条非图片」时传 allowImageTags=true 放行。
+    rawText = stripModelInitiatedImageTags(rawText, opts?.allowImageTags ?? false);
     // 0. FIRST: extract ```html blocks and <style>+HTML before any processing
     const htmlBlockPlaceholders: { placeholder: string; original: string }[] = [];
     let protected_ = rawText;
