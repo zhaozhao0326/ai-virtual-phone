@@ -1363,6 +1363,26 @@ export function ImageGenerationSettings() {
             </div>
             )}
 
+            {/* ════════════ 纯净生图模式 ═════════════ */}
+            <div className="flex flex-col gap-2">
+                <p className="settings-menu-section-title">纯净生图模式</p>
+                <div className="menu-group">
+                    <div className="menu-item !px-0 !py-0">
+                        <span className="settings-tools-menu-copy">
+                            <span className="menu-label appearance-menu-item-label">只画描述里点名的人</span>
+                            <span className="menu-desc settings-tools-menu-desc">开启后，聊天里 [照片:] 生图只注入你在描述中写出的角色名字；没点名的群成员不会画进去，描述里完全没人名时纯按描述生图。解决「单人描述却画出一群人」。</span>
+                        </span>
+                        <span className="menu-right settings-tools-menu-toggle">
+                            <Toggle
+                                checked={!!settings.pureImageMode}
+                                onChange={(pureImageMode) => updateSettings({ pureImageMode })}
+                                className="settings-toggle-control"
+                            />
+                        </span>
+                    </div>
+                </div>
+            </div>
+
             {/* ════════════ 测试生图（专门预览框，对所有 Provider 生效）═════════════ */}
             <div className="flex flex-col gap-3">
                 <p className="settings-menu-section-title">测试生图</p>

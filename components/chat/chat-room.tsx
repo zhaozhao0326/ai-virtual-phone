@@ -2845,12 +2845,28 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     ): Promise<ChatMessage | null> => {
         if (!isPendingChatGeneratedImageMessage(message)) return Promise.resolve(null);
         // 群聊传所有成员角色，单聊传当前角色；用于生图时注入「谁是谁」的外观
-        const participantIds = session.isGroup
+        let participantIds = session.isGroup
             ? (session.participantIds || [])
             : (characterId || session.contactId ? [(characterId || session.contactId) as string] : []);
+        // 纯净生图模式：只注入描述里「点名」的角色，没点名的群成员不注入；描述未出现「我/你」时也不注入「你」
+        let excludeUser = false;
+        const imgSettings = loadImageGenerationSettings();
+        if (imgSettings.pureImageMode) {
+            const desc = (message.mediaData?.label ?? "").trim();
+            if (session.isGroup) {
+                const chars = loadCharacters();
+                const namedIds = (session.participantIds || []).filter((id) => {
+                    const c = chars.find((x) => x.id === id);
+                    return c ? desc.includes(c.name) : false;
+                });
+                participantIds = namedIds;
+            }
+            excludeUser = !/我|自己|你/.test(desc);
+        }
         return generateAndApplyChatGeneratedImage(message, characterId || session.contactId, {
             signal: guard?.signal,
             participantIds,
+            excludeUser,
         })
             .catch(error => {
                 if (!isAbortLikeError(error)) {

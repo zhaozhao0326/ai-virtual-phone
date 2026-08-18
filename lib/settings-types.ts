@@ -301,6 +301,10 @@ export type ImageGenerationSettings = {
         updatedAt: number;
     }>;
     imageHosting: ImageHostingSettings;
+    // --- 纯净生图模式 ---
+    // 开启后，[照片:] 自动生图只注入描述里「点名」的角色（按名字匹配群成员/你自己），
+    // 没点名的群成员不注入；描述里一个人都没点名时纯靠描述生图，不注入任何外貌/锁脸参考图。
+    pureImageMode: boolean;
 };
 
 // --- Configuration Binding System ---

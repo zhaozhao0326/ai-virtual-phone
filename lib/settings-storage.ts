@@ -696,6 +696,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
         autoConvertToWebp: true,
         allowMascotUpload: false,
     },
+    pureImageMode: false,
 };
 
 function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSettings> | null | undefined): ImageGenerationSettings {

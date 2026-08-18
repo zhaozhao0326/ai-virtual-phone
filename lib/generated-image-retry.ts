@@ -26,19 +26,22 @@ export type ParticipantSpec = {
 
 // 收集参与合影的「你」和各个角色的外观 + 头像，返回结构化规格与兼容用的中文描述串。
 // characterIds: 参与合影的角色 id 列表（群聊=participantIds，单聊=[contactId]）
-export function buildParticipantSpecs(characterIds: string[]): { specs: ParticipantSpec[]; appearanceText: string } {
+// includeUser: 是否把「你」（当前用户身份）也作为参与者注入。纯净模式下可在描述未点名「我/你」时排除。
+export function buildParticipantSpecs(characterIds: string[], includeUser = true): { specs: ParticipantSpec[]; appearanceText: string } {
     const specs: ParticipantSpec[] = [];
     const parts: string[] = [];
 
     // 1) 「你」（当前用户身份）
     const identity = resolveUserIdentity();
-    const userBits: string[] = [];
-    if (identity?.gender && identity.gender !== "保密") {
-        userBits.push(identity.gender === "女" ? "女生" : identity.gender === "男" ? "男生" : identity.gender);
+    if (includeUser) {
+        const userBits: string[] = [];
+        if (identity?.gender && identity.gender !== "保密") {
+            userBits.push(identity.gender === "女" ? "女生" : identity.gender === "男" ? "男生" : identity.gender);
+        }
+        if (identity?.appearance?.trim()) userBits.push(identity.appearance.trim());
+        specs.push({ name: identity?.name?.trim() || "你", anchor: userBits.join("，") || undefined, avatar: (identity?.faceLockUrl || identity?.avatarUrl) || null });
+        if (userBits.length) parts.push(`你（${userBits.join("，")}）`);
     }
-    if (identity?.appearance?.trim()) userBits.push(identity.appearance.trim());
-    specs.push({ name: identity?.name?.trim() || "你", anchor: userBits.join("，") || undefined, avatar: (identity?.faceLockUrl || identity?.avatarUrl) || null });
-    if (userBits.length) parts.push(`你（${userBits.join("，")}）`);
 
     // 2) 各角色
     const chars = loadCharacters();
@@ -124,7 +127,7 @@ export function isPendingChatGeneratedImageMessage(message: Pick<ChatMessage, "m
 export async function generateAndApplyChatGeneratedImage(
     message: ChatMessage,
     characterId?: string,
-    options?: { signal?: AbortSignal; description?: string; participantIds?: string[] },
+    options?: { signal?: AbortSignal; description?: string; participantIds?: string[]; excludeUser?: boolean },
 ): Promise<ChatMessage> {
     const previousDescription = message.mediaData?.label?.trim() || "";
     const description = (options?.description ?? previousDescription).trim();
@@ -137,7 +140,9 @@ export async function generateAndApplyChatGeneratedImage(
     const participantIds = options?.participantIds && options.participantIds.length
         ? options.participantIds
         : (characterId ? [characterId] : []);
-    const { specs, appearanceText } = buildParticipantSpecs(participantIds);
+    // 纯净模式：描述未点名「我/你」时排除「你」这个参与者
+    const includeUser = !options?.excludeUser;
+    const { specs, appearanceText } = buildParticipantSpecs(participantIds, includeUser);
     const participantAppearance = appearanceText || undefined;
     // 收集头像参考图（浏览器内压缩），用于 NAI character_reference 锁脸
     const referenceImages = (await Promise.all(
