@@ -1445,9 +1445,8 @@
 }
 .settings-tools-menu-desc {
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
+  word-break: break-word;
 }
 .settings-tools-menu-toggle {
   margin-left: 12px;
