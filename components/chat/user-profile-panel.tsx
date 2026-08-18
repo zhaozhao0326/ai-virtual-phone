@@ -33,6 +33,7 @@ import {
     Clock,
     FileCode2,
     Heart,
+    Image as ImageIcon,
     MessageSquare,
     MessageSquareDashed,
     Palette,
@@ -941,6 +942,22 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
                             </button>
                         </>
                     )}
+                </div>
+
+                <div className="menu-group">
+                    <div className="menu-item">
+                        <ProfileSettingsIcon icon={ImageIcon} color={CONTENT_APP_ACCENTS.moments} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">只发文字朋友圈</span>
+                            <span className="menu-desc">关闭 AI 自动配图，动态只输出文字，不再触发图片生成</span>
+                        </div>
+                        <div className="menu-right">
+                            <Toggle
+                                checked={config.textOnlyMoments === true}
+                                onChange={checked => update({ textOnlyMoments: checked })}
+                            />
+                        </div>
+                    </div>
                 </div>
 
                 <div className="menu-group">

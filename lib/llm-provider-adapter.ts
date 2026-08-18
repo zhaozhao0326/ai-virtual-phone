@@ -707,9 +707,9 @@ function geminiParts(message: LlmRequestMessage): unknown[] {
                         args: hasArgs ? call.args : { noop: "1" },
                     },
                 };
-                // 只要模型给过 thoughtSignature（哪怕是空串），就必须回传，否则 Gemini 多轮工具调用会报 400。
-                // 模型完全没给（undefined）时不能硬塞空串——之前试过硬塞会导致聊天格式错乱。
-                if (call.thoughtSignature !== undefined) part.thoughtSignature = call.thoughtSignature;
+                // Gemini 2.5+ 要求每个 functionCall part 都必须带 thoughtSignature；
+                // 模型没给时回传空串，缺失该字段会直接报 400 "missing thought_signature"。
+                part.thoughtSignature = call.thoughtSignature ?? "";
                 return part;
             }),
         ];

@@ -354,6 +354,8 @@ export type MomentsInteractionConfig = {
     bilingualTranslationPrompt: string;
     // 禁止自动发帖的角色（只关调度发帖；评论/点赞/手动立即发帖不受影响）
     autoPostDisabledCharacterIds: string[];
+    // 只发文字朋友圈：关闭 AI 自动配图与图片生成，模型不应输出 [照片:...] 标签
+    textOnlyMoments: boolean;
 };
 
 export const DEFAULT_MOMENTS_CONFIG: MomentsInteractionConfig = {
@@ -369,6 +371,7 @@ export const DEFAULT_MOMENTS_CONFIG: MomentsInteractionConfig = {
     collapseBilingualTranslation: true,
     bilingualTranslationPrompt: DEFAULT_MOMENTS_BILINGUAL_PROMPT,
     autoPostDisabledCharacterIds: [],
+    textOnlyMoments: false,
 };
 
 export function loadMomentsConfig(): MomentsInteractionConfig {

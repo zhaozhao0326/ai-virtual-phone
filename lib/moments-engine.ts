@@ -301,13 +301,19 @@ async function triggerAIPost(characterId: string): Promise<void> {
             return;
         }
 
+        // 全局设置：是否只发文字朋友圈
+        const momentsConfig = loadMomentsConfig();
+        const textOnly = momentsConfig.textOnlyMoments === true;
+
         // Assemble prompt via shared pipeline
         const llmMessages = assemblePromptPayload(input);
 
         // Append trigger instruction
         llmMessages.push({
             role: "user",
-            content: "请发一条朋友圈。",
+            content: textOnly
+                ? "请发一条朋友圈。注意：当前开启『只发文字朋友圈』，本条动态只输出文字，不要配图，不要输出 [照片:...] 标签。"
+                : "请发一条朋友圈。",
             _debugMeta: { marker: "moments_trigger" },
         });
 
@@ -332,12 +338,16 @@ async function triggerAIPost(characterId: string): Promise<void> {
         const parsed = parseMomentPostResponse(postText);
         if (!parsed) return;
 
+        // 文字-only 模式下丢弃任何模型仍可能输出的照片描述
+        const effectivePhotoDescription = textOnly ? undefined : parsed.photoDescription;
+        const effectivePhotoUseReferenceImage = textOnly ? false : parsed.photoUseReferenceImage === true;
+
         // 内容去重：生图前先判重，命中直接丢弃（防止同一内容经多路径重复入库）
         if (findRecentDuplicateMomentPost({
             authorType: "character",
             authorId: characterId,
             content: parsed.content,
-            photoDescription: parsed.photoDescription,
+            photoDescription: effectivePhotoDescription,
         })) {
             console.warn(`[Moments] SKIP duplicate AI post from ${character.name}`);
             return;
@@ -351,9 +361,9 @@ async function triggerAIPost(characterId: string): Promise<void> {
             authorType: "character",
             authorId: characterId,
             content: parsed.content,
-            photoDescription: parsed.photoDescription,
-            photoUseReferenceImage: parsed.photoUseReferenceImage === true,
-            photoGenerationStatus: parsed.photoDescription ? "pending" : undefined,
+            photoDescription: effectivePhotoDescription,
+            photoUseReferenceImage: effectivePhotoUseReferenceImage,
+            photoGenerationStatus: effectivePhotoDescription ? "pending" : undefined,
             visibility,
         });
         if (!post) {
@@ -361,8 +371,8 @@ async function triggerAIPost(characterId: string): Promise<void> {
             return;
         }
 
-        if (parsed.photoDescription) {
-            attachMomentPhotoInBackground(post.id, parsed.photoDescription, characterId, parsed.photoUseReferenceImage === true);
+        if (effectivePhotoDescription) {
+            attachMomentPhotoInBackground(post.id, effectivePhotoDescription, characterId, effectivePhotoUseReferenceImage);
         }
 
         // Increment event counter for auto-summarization (native data read at summarization time)
