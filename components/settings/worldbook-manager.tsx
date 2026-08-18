@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useContext, useCallback } from "react";
-import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, ChevronDown, AlertCircle, Maximize2, Replace } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, ChevronDown, AlertCircle, Maximize2, Replace, FileText } from "lucide-react";
 import {
     loadWorldBooks,
     saveWorldBooks,
@@ -11,7 +11,7 @@ import {
     UNSUPPORTED_IMPORT_FORMAT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
-import { importWorldBooksFromDocs } from "@/lib/worldbook-doc-import";
+import { importWorldBooksFromDocs, extractTextFromWordFile } from "@/lib/worldbook-doc-import";
 import type { WorldBookConfig, WorldBookEntry } from "@/lib/settings-types";
 import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
@@ -417,6 +417,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     // ── 条目级导入/导出（左滑「替换/导出」+ 底部「添加条目」菜单） ──
     const [addEntryMenuOpen, setAddEntryMenuOpen] = useState(false);
     const entryFileInputRef = useRef<HTMLInputElement>(null);
+    const docEntryFileInputRef = useRef<HTMLInputElement>(null);
     const entryImportModeRef = useRef<{ mode: "append" } | { mode: "replace"; uid: string } | null>(null);
 
     const sanitizeEntryImport = (raw: unknown, fallbackUid: string): WorldBookEntry | null => {
@@ -503,6 +504,45 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         reader.readAsText(file);
     };
 
+    // ── 条目级 Word / 文档导入：把每个文档作为一条新条目追加到当前世界书 ──
+    const handleAppendDocsAsEntries = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        if (docEntryFileInputRef.current) docEntryFileInputRef.current.value = "";
+        if (files.length === 0 || !activeBook) return;
+        const appended: WorldBookEntry[] = [];
+        const skipped: string[] = [];
+        for (const file of files) {
+            try {
+                const text = await extractTextFromWordFile(file);
+                if (!text) { skipped.push(file.name); continue; }
+                appended.push({
+                    uid: `wb-entry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    key: "",
+                    content: text,
+                    comment: `来源：${file.name}`,
+                    use_regex: false,
+                    disable: false,
+                    constant: false,
+                    position: "before_char",
+                    depth: 0,
+                    probability: 100,
+                    useProbability: false,
+                    role: 0,
+                    insertion_order: 50,
+                });
+            } catch {
+                skipped.push(file.name);
+            }
+        }
+        if (appended.length > 0) {
+            updateBook(activeBook.id, { entries: [...(activeBook.entries || []), ...appended] });
+            setEditingUid(appended[appended.length - 1].uid);
+        }
+        if (skipped.length > 0) {
+            setImportError(`以下文档未能提取到文本（${skipped.length} 个）：${skipped.join("、")}`);
+        }
+    };
+
     const updateEntry = (uid: string, updates: Partial<WorldBookEntry>) => {
         if (!activeBook) return;
         const newEntries = activeBook.entries.map(e => e.uid === uid ? { ...e, ...updates } : e);
@@ -522,6 +562,7 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
             <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
             <input type="file" accept=".json" className="hidden" ref={entryFileInputRef} onChange={handleEntryImportFile} />
             <input type="file" accept=".doc,.docx,.txt" multiple className="hidden" ref={docFileInputRef} onChange={handleDocBatchImport} />
+            <input type="file" accept=".doc,.docx,.txt" multiple className="hidden" ref={docEntryFileInputRef} onChange={handleAppendDocsAsEntries} />
             {viewMode === "list" ? (
                 <>
                     <div className="flex items-center">
@@ -958,6 +999,16 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                             }}
                         >
                             <Upload size={16} /> 从 JSON 文件导入
+                        </button>
+                        <button
+                            type="button"
+                            className="ui-btn ui-btn-outline w-full"
+                            onClick={() => {
+                                setAddEntryMenuOpen(false);
+                                docEntryFileInputRef.current?.click();
+                            }}
+                        >
+                            <FileText size={16} /> 从 Word / 文档导入
                         </button>
                     </div>
                 </BottomSheet>
