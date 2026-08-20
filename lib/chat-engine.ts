@@ -94,8 +94,11 @@ export class ChatEngineError extends Error {
     }
 }
 
-const LLM_IMAGE_MAX_SIDE = 512;
-const LLM_IMAGE_JPEG_QUALITY = 0.72;
+// 视觉识别用图压缩参数：512px + 72% 质量会把用户发的图压成糊图，
+// AI 看不清细节（把菜照当自拍就是典型症状）。提高到 1024px + 85%，
+// 兼顾 token 成本与识别准确度（OpenAI high 模式最高 2048px，1024 足够）。
+const LLM_IMAGE_MAX_SIDE = 1024;
+const LLM_IMAGE_JPEG_QUALITY = 0.85;
 
 function blobToDataUrl(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
