@@ -800,6 +800,29 @@ function parseAnthropicResponse(data: unknown): LlmParsedResponse {
     };
 }
 
+/**
+ * 从不同来源里原样取回 Gemini 2.5+ 的 thoughtSignature。
+ * 部分中转/代理（如报错文案里写作 thought_signature 的网关）会用 snake_case 或
+ * 把签名挂到 functionCall 内部 / 顶层 signature 上。只要模型返回过，就必须原样保留，
+ * 否则下一轮把 functionCall 回传时会被上游以 "missing thought_signature" 拒绝（400）。
+ * 只接受非空字符串，空串按"没给"处理，避免把无效签名回传出去。
+ */
+function readThoughtSignature(part: unknown): string | undefined {
+    const item = asRecord(part);
+    const candidates: unknown[] = [
+        item.thoughtSignature,
+        item.thought_signature,
+        item.signature,
+        asRecord(item.functionCall).thoughtSignature,
+        asRecord(item.functionCall).thought_signature,
+        asRecord(item.functionCall).signature,
+    ];
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.length > 0) return candidate;
+    }
+    return undefined;
+}
+
 function parseGeminiResponse(data: unknown): LlmParsedResponse {
     const d = data as { candidates?: Array<{ content?: { parts?: unknown[] } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } };
     const parts = d.candidates?.[0]?.content?.parts || [];
@@ -814,10 +837,10 @@ function parseGeminiResponse(data: unknown): LlmParsedResponse {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里（也可能嵌在 functionCall 对象内），
-            // 必须原样保留（含空串 ""），下一轮请求时回传，否则多轮工具调用会报 400。
-            const sig = item.thoughtSignature ?? (item.functionCall as Record<string, unknown>).thoughtSignature;
-            if (sig !== undefined) call.thoughtSignature = String(sig);
+            // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里（也可能嵌在 functionCall 对象内，
+            // 或被中转站改写成 thought_signature / signature）。只要模型给过就必须原样保留，下一轮回传，否则多轮工具调用报 400。
+            const sig = readThoughtSignature(part);
+            if (sig !== undefined) call.thoughtSignature = sig;
             toolCalls.push(call);
             continue;
         }
@@ -921,9 +944,10 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
                 name: String(item.functionCall.name ?? ""),
                 args: objectArgs(item.functionCall.args),
             };
-            // 流式响应同样可能把 thoughtSignature 放在 part 级或嵌在 functionCall 内；原样保留（含空串）。
-            const sig = item.thoughtSignature ?? (item.functionCall as Record<string, unknown>).thoughtSignature;
-            if (sig !== undefined) delta.thoughtSignature = String(sig);
+            // 流式响应同样可能把 thoughtSignature 放在 part 级或嵌在 functionCall 内，
+            // 或被中转站改写成 thought_signature / signature；原样保留（非空即可）。
+            const sig = readThoughtSignature(part);
+            if (sig !== undefined) delta.thoughtSignature = sig;
             toolCallDeltas.push(delta);
             continue;
         }
