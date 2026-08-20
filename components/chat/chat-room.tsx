@@ -15,7 +15,7 @@ import { StickerSearchSuggest } from "./sticker-search-suggest";
 import { StateValuesPanel } from "./state-values-panel";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
 import { formatOfflineTurnXml as formatOfflineTurnXmlShared, buildOfflinePromptHistory as buildOfflinePromptHistoryShared } from "@/lib/offline-prompt-builder";
-import { getStatusRegionConfig, isCustomStatusRegionActive } from "@/lib/chat-status-region";
+import { getStatusRegionConfig, isCustomStatusRegionActive, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
@@ -1192,6 +1192,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [editingOfflineTarget, setEditingOfflineTarget] = useState<OfflineActionTarget | null>(null);
     const [editingOfflineContent, setEditingOfflineContent] = useState("");
     const [regexRevision, setRegexRevision] = useState(0);
+    // 小卷/设置面板改写自定义状态栏后，强制聊天窗口重读 getStatusRegionConfig 刷新状态栏渲染
+    const [statusRegionRevision, setStatusRegionRevision] = useState(0);
+    useEffect(() => {
+        const onExternal = () => setStatusRegionRevision(v => v + 1);
+        window.addEventListener(STATUS_REGION_UPDATED_EVENT, onExternal);
+        return () => window.removeEventListener(STATUS_REGION_UPDATED_EVENT, onExternal);
+    }, []);
     // Whether there are unsent user messages waiting for AI generation
     const [pendingGenerate, setPendingGenerate] = useState(false);
     const [chatToast, setChatToast] = useState<string | null>(null);
