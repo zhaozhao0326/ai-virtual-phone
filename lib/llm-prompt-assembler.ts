@@ -1069,7 +1069,11 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "low" } });
+            // detail: "auto" 对 base64 data URL 走 high-res 分块（OpenAI 文档约定）：
+            // 之前写死 "low" 让 AI 只看到 512×512 的糊图，把菜照当自拍/脖子
+            // （角色 prompt 又假设用户发自拍，AI 强行套"领口""旁边的人"）。
+            // "auto" 对 base64 强制走精细识别路径，能正确分辨"菜 vs 人"。
+            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "auto" } });
             finalPayload.push({
                 role: b.role,
                 content: parts,
@@ -2214,7 +2218,11 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "low" } });
+            // detail: "auto" 对 base64 data URL 走 high-res 分块（OpenAI 文档约定）：
+            // 之前写死 "low" 让 AI 只看到 512×512 的糊图，把菜照当自拍/脖子
+            // （角色 prompt 又假设用户发自拍，AI 强行套"领口""旁边的人"）。
+            // "auto" 对 base64 强制走精细识别路径，能正确分辨"菜 vs 人"。
+            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "auto" } });
             finalPayload.push({
                 role: b.role,
                 content: parts,

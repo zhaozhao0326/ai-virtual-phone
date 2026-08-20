@@ -155,7 +155,9 @@ async function buildImageContextMessage(text: string, imageRefs: string[]): Prom
     const dataUrls = await resolveImageRefs(limitedImageRefs(imageRefs));
     const parts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }> = [];
     if (text) parts.push({ type: "text", text });
-    for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "low" } });
+    // detail: "auto" 对 base64 走 high-res 分块（OpenAI 约定）；
+    // 之前写死 "low" 让 AI 只看到 512×512 糊图，把菜照当自拍/脖子瞎猜。
+    for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "auto" } });
     return { role: "user", content: parts.length > 0 ? parts : text };
 }
 
@@ -228,7 +230,9 @@ async function historyToTextMessagesMultipart(history: MascotMsg[]): Promise<Llm
         const dataUrls = await resolveImageRefs(images);
         const parts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }> = [];
         if (m.content) parts.push({ type: "text", text: m.content });
-        for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "low" } });
+        // detail: "auto" 对 base64 走 high-res 分块（OpenAI 约定）；
+    // 之前写死 "low" 让 AI 只看到 512×512 糊图，把菜照当自拍/脖子瞎猜。
+    for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "auto" } });
         out.push({ role: "user", content: parts });
     }
     return out;
@@ -245,7 +249,9 @@ async function historyToNativeMessages(history: MascotMsg[]): Promise<LlmRequest
                 const dataUrls = await resolveImageRefs(m.images);
                 const parts: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail?: "low" | "high" | "auto" } }> = [];
                 if (m.text) parts.push({ type: "text", text: m.text });
-                for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "low" } });
+                // detail: "auto" 对 base64 走 high-res 分块（OpenAI 约定）；
+    // 之前写死 "low" 让 AI 只看到 512×512 糊图，把菜照当自拍/脖子瞎猜。
+    for (const url of dataUrls) parts.push({ type: "image_url", image_url: { url, detail: "auto" } });
                 out.push({ role: "user", content: parts });
             } else {
                 out.push({ role: "user", content: m.text });
