@@ -55,6 +55,12 @@ export type LlmStreamDelta = {
     content: string;
     reasoning: string;
     toolCallDeltas?: LlmToolCallDelta[];
+    /**
+     * 跨 chunk 传递的 thoughtSignature：当模型把签名放在不带 functionCall 的独立 part 上、
+     * 或签名与 functionCall 拆在不同 SSE 事件里时，把"最近一次出现的签名"传给下一个 chunk 使用，
+     * 防止后续 functionCall part 上签名缺失而被上游以 "missing thought_signature" 拒绝。
+     */
+    pendingThoughtSignature?: string;
 };
 
 export type LlmToolCallDelta = {
@@ -828,8 +834,13 @@ function parseGeminiResponse(data: unknown): LlmParsedResponse {
     let content = "";
     let reasoning = "";
     const toolCalls: LlmToolCall[] = [];
+    // 中转/旧协议可能把 thoughtSignature 放在不带 functionCall 的独立 part 上。
+    // 记下"最近一次出现的签名"，遇到没带签名的 functionCall 时回退到它。
+    let pendingSignature: string | undefined;
     for (const part of parts) {
         const item = part as { text?: string; thought?: boolean; thoughtSignature?: string; functionCall?: { name?: string; args?: unknown } };
+        const sigOnThisPart = readThoughtSignature(part);
+        if (sigOnThisPart !== undefined) pendingSignature = sigOnThisPart;
         if (item.functionCall) {
             const call: LlmToolCall = {
                 id: `gemini_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -838,9 +849,11 @@ function parseGeminiResponse(data: unknown): LlmParsedResponse {
             };
             // Gemini 2.5+ 把 thoughtSignature 放在和 functionCall 同一个 part 里（也可能嵌在 functionCall 对象内，
             // 或被中转站改写成 thought_signature / signature）。只要模型给过就必须原样保留，下一轮回传，否则多轮工具调用报 400。
-            const sig = readThoughtSignature(part);
-            if (sig !== undefined) call.thoughtSignature = sig;
+            // 优先本 part 的签名；本 part 没有时回退到上文最近一次出现的签名。
+            if (sigOnThisPart !== undefined) call.thoughtSignature = sigOnThisPart;
+            else if (pendingSignature !== undefined) call.thoughtSignature = pendingSignature;
             toolCalls.push(call);
+            pendingSignature = undefined;
             continue;
         }
         if (item.thought) reasoning += item.text ?? "";
@@ -934,8 +947,13 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
     let content = "";
     let reasoning = "";
     const toolCallDeltas: LlmToolCallDelta[] = [];
+    // 同 chunk 内：上一个没挂 functionCall 的 part 若出现 thoughtSignature（部分中转/旧协议
+    // 会把签名单独下发），先记下来挂给后续的 functionCall，避免下一轮缺签名被拒。
+    let pendingSignature: string | undefined;
     for (const part of parts) {
         const item = part as { text?: string; thought?: boolean; thoughtSignature?: string; type?: string; functionCall?: { name?: string; args?: unknown } };
+        const sigOnThisPart = readThoughtSignature(part);
+        if (sigOnThisPart !== undefined) pendingSignature = sigOnThisPart;
         if (item.functionCall) {
             const delta: LlmToolCallDelta = {
                 index: toolCallDeltas.length,
@@ -945,15 +963,21 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
             };
             // 流式响应同样可能把 thoughtSignature 放在 part 级或嵌在 functionCall 内，
             // 或被中转站改写成 thought_signature / signature；原样保留（非空即可）。
-            const sig = readThoughtSignature(part);
-            if (sig !== undefined) delta.thoughtSignature = sig;
+            // 优先本 part 的签名；本 part 没有时回退到同 chunk 内上一个独立 part 的签名。
+            if (sigOnThisPart !== undefined) delta.thoughtSignature = sigOnThisPart;
+            else if (pendingSignature !== undefined) delta.thoughtSignature = pendingSignature;
             toolCallDeltas.push(delta);
+            pendingSignature = undefined;
             continue;
         }
         if (item.thought || item.type === "thinking" || item.type === "thought") reasoning += item.text ?? "";
         else content += item.text ?? "";
     }
-    return { content, reasoning, toolCallDeltas: toolCallDeltas.length > 0 ? toolCallDeltas : undefined };
+    const result: LlmStreamDelta = { content, reasoning };
+    if (toolCallDeltas.length > 0) result.toolCallDeltas = toolCallDeltas;
+    // 跨 chunk：本 chunk 末尾还残留未消费的签名，交给调用方继续持有
+    if (pendingSignature !== undefined) result.pendingThoughtSignature = pendingSignature;
+    return result;
 }
 
 function parseStrictArgs(value: string): Record<string, unknown> {

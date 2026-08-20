@@ -1080,12 +1080,15 @@ export async function sendLLMToolStreamRequest(
     const llmAbort = new AbortController();
     const llmTimeout = setTimeout(() => llmAbort.abort(), 500_000);
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
-    let rawResponse = "";
-    let content = "";
-    let reasoning = "";
-    const contentStripper = createStreamingTimestampStripper();
-    const toolDrafts = new Map<number, StreamToolCallDraft>();
-    const firedToolCallStarts = new Set<number>();
+let rawResponse = "";
+        let content = "";
+        let reasoning = "";
+        const contentStripper = createStreamingTimestampStripper();
+        const toolDrafts = new Map<number, StreamToolCallDraft>();
+        const firedToolCallStarts = new Set<number>();
+        // 跨 chunk 持有 thoughtSignature：上游/旧协议可能把签名拆到下一个 SSE 事件。
+        // 流式解析器返回的 pendingThoughtSignature 会在下一段合并前先注入到该段的第一个 functionCall。
+        let pendingThoughtSignature: string | undefined;
 
     try {
         const response = await fetch(request.url, {
@@ -1110,6 +1113,14 @@ export async function sendLLMToolStreamRequest(
         const handleParsedDelta = async (data: unknown) => {
             {
                     const delta = parseProviderStreamDelta(request.providerKind, data);
+                    // 跨 chunk 注入：上段遗留签名若本段第一个 toolCall 没有自己的签名，补上。
+                    // 已经存在的签名不会被覆盖（mergeToolCallDelta 用 ?? 保留首次非空值）。
+                    if (pendingThoughtSignature) {
+                        for (const td of delta.toolCallDeltas || []) {
+                            if (!td.thoughtSignature) td.thoughtSignature = pendingThoughtSignature;
+                        }
+                        pendingThoughtSignature = undefined;
+                    }
                     if (delta.reasoning) {
                         reasoning += delta.reasoning;
                         await callbacks?.onReasoningDelta?.(delta.reasoning);
@@ -1140,6 +1151,8 @@ export async function sendLLMToolStreamRequest(
                             }
                         }
                     }
+                    // 本段解析完，把"还没传给任何 functionCall"的签名带到下一段
+                    if (delta.pendingThoughtSignature) pendingThoughtSignature = delta.pendingThoughtSignature;
             }
         };
         while (true) {
