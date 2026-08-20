@@ -4236,7 +4236,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     // 线下 XML 构造与提示词查看器共用 lib/offline-prompt-builder（社区 #108），
     // 保证「预览 = 真实发出的提示词」；此处仅包一层稳定引用。
     // 自定义状态栏：custom 生效时新消息盖戳，折叠区改走用户渲染代码；旧消息按原生渲染
-    const statusRegionCfg = getStatusRegionConfig(session.id);
+    // statusRegionRevision 由 STATUS_REGION_UPDATED_EVENT 递增，确保小卷/设置面板改写后重读
+    const statusRegionCfg = useMemo(
+        () => getStatusRegionConfig(session.id),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [session.id, statusRegionRevision],
+    );
     const customStatusActive = isCustomStatusRegionActive(statusRegionCfg);
 
     const formatOfflineTurnXml = useCallback((turn: ChatOfflineTurn): string => formatOfflineTurnXmlShared(turn), []);
