@@ -32,6 +32,7 @@ import { loadCustomAppChatPlusActions, type RegisteredCustomAppChatPlusAction } 
 import { CUSTOM_APPS_UPDATED_EVENT, getInstalledCustomApp } from "@/lib/custom-app-storage";
 import { toCustomAppIconId, type InstalledCustomApp } from "@/lib/custom-app-types";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
+import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 
 import { ChatSettingsPanel } from "./chat-settings-panel";
 import { VoiceCallScreen } from "./voice-call-screen";
@@ -46,6 +47,7 @@ import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseG
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
+import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { addFriendRequest, getPendingFriendRequests, dispatchFriendRequestUpdated } from "@/lib/friend-request-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
@@ -4103,6 +4105,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         if (shouldRunDeclineReply) await triggerReply();
     };
 
+    // 收起键盘（或关掉表情/加号面板）并安静 N 秒后自动触发回复，
+    // 等价于替用户点一次「触发回复」。判定全在 hook 内部，配置关掉后与手动模式一致。
+    useKeyboardDismissAutoSend(wrapperRef, {
+        active: !offlineMode && !isMultiSelectMode,
+        pending: pendingGenerate,
+        generating: isGenerating,
+        panelOpen: showEmojiPanel || showStickerPanel || showPlusMenu,
+        sessionId: session.id,
+        onTrigger: () => { void triggerAIResponse(); },
+    });
+
     useEffect(() => {
         const handleCustomAppReplyRequest = (event: Event) => {
             const detail = (event as CustomEvent<{
@@ -6473,13 +6486,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             </button>
                         </div>
                         <div className="chat-custom-app-body">
-                            <CustomAppRunner
-                                app={activeCustomChatPlus.app}
-                                launchContext={activeCustomChatPlus.launchContext}
-                                embedded
+                            <CustomAppForegroundBoundary
+                                key={activeCustomChatPlus.app.id}
+                                appName={activeCustomChatPlus.app.name}
+                                appId={activeCustomChatPlus.app.id}
+                                appVersion={activeCustomChatPlus.app.version}
+                                manifestId={activeCustomChatPlus.app.manifest?.id}
+                                closeLabel="返回聊天"
                                 onClose={() => setActiveCustomChatPlus(null)}
-                                onNotice={showChatToast}
-                            />
+                            >
+                                <CustomAppRunner
+                                    app={activeCustomChatPlus.app}
+                                    launchContext={activeCustomChatPlus.launchContext}
+                                    embedded
+                                    onClose={() => setActiveCustomChatPlus(null)}
+                                    onNotice={showChatToast}
+                                />
+                            </CustomAppForegroundBoundary>
                         </div>
                     </div>
                 </div>

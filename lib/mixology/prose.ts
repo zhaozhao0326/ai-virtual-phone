@@ -7,7 +7,33 @@
 //   ~强调~    → accent      其余     → narration（普通叙述）
 // 状态栏块 [状态栏]...[/状态栏] 在解析正文前剥离，交给沙盒 iframe 渲染。
 
+import type { MixFilterRule } from "./types";
+
 export type MixProseSegmentType = "dialogue" | "thought" | "accent" | "narration";
+
+/**
+ * 按滤网规则清洗正文。只在拆完状态栏/小剧场块之后调用（规则碰不到块数据）：
+ * - mode="context"：回复入库前清洗一次（引擎调用）
+ * - mode="display"：渲染前清洗（界面调用，不改存储）
+ * 单条正则编译失败就跳过那条，绝不因为规则写错拦住整轮。
+ */
+export function applyMixFilterRules(
+    text: string,
+    rules: MixFilterRule[] | undefined,
+    mode: MixFilterRule["mode"],
+): string {
+    if (!text || !rules?.length) return text;
+    let out = text;
+    for (const rule of rules) {
+        if (rule.mode !== mode || !rule.find) continue;
+        try {
+            out = out.replace(new RegExp(rule.find, "g"), rule.replace ?? "");
+        } catch {
+            // 正则写错：这条作废，其余照跑
+        }
+    }
+    return out;
+}
 
 export type MixProseSegment = {
     type: MixProseSegmentType;
@@ -56,6 +82,25 @@ function pullFamily(text: string, tags: TagFamily): { text: string; raw?: string
 }
 
 /** 从 AI 原文剥离状态栏与小剧场块；漏写闭合（生成截断）时走行首开标签兜底 */
+/**
+ * 流式过程中能安全显示的那一段正文。
+ * 状态栏 / 小剧场块交给 extractMixBlocks 兜住——它认得"只开没关"的块，
+ * 半张状态栏不会漏到正文里。机括的标记行（〔记〕这类）要等出杯后才被摘掉，
+ * 流式里会先闪一下再消失，所以末尾那一行只要以 〔 或 [ 开头就先不显示：
+ * 它要么是块的开头，要么是标记行，两种最终都不属于正文。
+ */
+export function mixStreamText(partial: string): string {
+    const lines = extractMixBlocks(String(partial ?? "")).text.split("\n");
+    // 从末尾往回剥：空行、以 〔 或 [ 开头的行都先不显示。
+    // 写完整的块已经被 extractMixBlocks 摘走了，还留在这儿的一定是没写完的。
+    while (lines.length) {
+        const tail = lines[lines.length - 1].trim();
+        if (tail === "" || /^[〔[]/.test(tail)) { lines.pop(); continue; }
+        break;
+    }
+    return lines.join("\n");
+}
+
 export function extractMixBlocks(rawInput: string): { text: string; ticketRaw?: string; encoreRaw?: string } {
     const afterEncore = pullFamily(rawInput, ENCORE_TAGS);
     const afterTicket = pullFamily(afterEncore.text, TICKET_TAGS);

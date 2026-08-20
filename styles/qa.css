@@ -1446,6 +1446,113 @@
   box-shadow: none;
 }
 
+/* ── 消息操作菜单（长按 / 右键弹出：复制、编辑）── */
+.qa-msg-wrap {
+  position: relative;
+  /* 消息级懒渲染：视口外的消息跳过布局与绘制，降低长对话在输入框聚焦和视口 resize 时的开销。
+     浏览器首次跳过内容时使用预估高度，渲染后记住实际高度；不支持时自动回退。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 80px;
+}
+
+/* 消息操作（复制 / 编辑）：常驻在气泡下方的小图标，替代原来的长按菜单
+   ——长按要跟系统选词、取词、划词搜索抢同一个手势，移动端几乎必然打架。
+   平时压到低透明度，不跟正文抢视线；按下才提亮。 */
+.qa-msg-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+.qa-msg-actions[data-role="user"] {
+  justify-content: flex-end;
+}
+.qa-msg-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--qa-text-tertiary);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.qa-msg-action:hover {
+  opacity: 1;
+  color: var(--qa-text-secondary);
+}
+.qa-msg-action:active {
+  opacity: 1;
+  color: var(--qa-text-primary);
+  background: color-mix(in srgb, var(--qa-text-primary) 8%, transparent);
+}
+
+/* ── 编辑消息弹窗（展示未渲染原始内容）── */
+.qa-edit-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: qa-fade-in 0.18s ease;
+}
+.qa-edit-dialog {
+  width: min(100%, 520px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--qa-bg-overlay);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+.qa-edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.qa-edit-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--qa-text-primary);
+}
+.qa-edit-textarea {
+  width: 100%;
+  min-height: 220px;
+  max-height: 55vh;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--qa-bg-raised);
+  color: var(--qa-text-primary);
+  font-size: 13px;
+  line-height: 1.6;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+  box-sizing: border-box;
+}
+.qa-edit-textarea:focus {
+  border-color: var(--qa-accent, rgba(255, 255, 255, 0.35));
+}
+.qa-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* 工坊配置面板 */
 .qa-settings-field {
   display: flex;
@@ -1560,7 +1667,6 @@
 }
 .qa-file-card-btn:active { opacity: 0.7; }
 .qa-file-card-error { width: 100%; font-size: 11px; color: var(--c-danger, #d33); }
-
 .qa-file-card-ready {
   width: 100%;
   border: 0;

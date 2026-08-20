@@ -1883,8 +1883,11 @@ export const CALENDAR_CSS_EXAMPLE = `/* ═════════════�
 .calendar-tl-event span {
   /* display: none; */  /* 只显示标题行 */
 }
-.calendar-tl-day > header {
-  /* background: var(--c-calendar-surface); */
+.calendar-tl-headrow {
+  /* background: var(--c-calendar-surface); */  /* 列头版头行底色 */
+}
+.calendar-tl-day-head b {
+  /* color: var(--c-calendar-sub); */  /* 列头日期文字 */
 }
 
 /* ━━ 经期打卡行 ━━ */

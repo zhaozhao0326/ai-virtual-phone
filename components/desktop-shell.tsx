@@ -29,6 +29,7 @@ import ReadingApp from "@/components/reading/reading-app";
 import MapApp from "@/components/map/map-app";
 import { DwellingApp } from "@/components/dwelling/dwelling-app";
 import { MascotFloat } from "@/components/mascot/mascot-float";
+import { MascotPreviewHost } from "@/components/mascot/mascot-preview-host";
 import { useMusicControlsOptional } from "@/lib/music-context";
 import { PhoneResourcesApp, type ResourceSubPage } from "@/components/phone-resources-app";
 import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
@@ -39,6 +40,7 @@ import InterviewMagazineApp from "@/components/interview/interview-magazine-app"
 import { CoCreateApp } from "@/components/cocreate/cocreate-app";
 import { AppMarketApp } from "@/components/app-market/app-market-app";
 import { CustomAppRunner } from "@/components/app-market/custom-app-runner";
+import { CustomAppForegroundBoundary } from "@/components/app-market/custom-app-failure";
 import { hydrateKvDb, kvGet, kvSet, kvRemove, kvKeysWithPrefix } from "@/lib/kv-db";
 import { deleteDatabase } from "@/lib/data-management/idb";
 import { hydrateStoryStorage } from "@/lib/story-storage";
@@ -3829,12 +3831,21 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     const customApp = getCustomAppForIcon(activeApp);
     if (customApp) {
       return (
-        <CustomAppRunner
-          app={customApp}
-          launchContext={customAppLaunchContext?.appId === customApp.id ? customAppLaunchContext.context : null}
+        <CustomAppForegroundBoundary
+          key={customApp.id}
+          appName={customApp.name}
+          appId={customApp.id}
+          appVersion={customApp.version}
+          manifestId={customApp.manifest?.id}
           onClose={() => closeCustomAppRunner(customApp)}
-          onNotice={setNotice}
-        />
+        >
+          <CustomAppRunner
+            app={customApp}
+            launchContext={customAppLaunchContext?.appId === customApp.id ? customAppLaunchContext.context : null}
+            onClose={() => closeCustomAppRunner(customApp)}
+            onNotice={setNotice}
+          />
+        </CustomAppForegroundBoundary>
       );
     }
 
@@ -4679,6 +4690,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
               <DebugPromptPanel />
               <QuickActionFloat />
               <MascotFloat />
+              {/* 预览弹窗宿主：独立于桌宠的展开/收起状态，否则桌宠收成小球时弹不出来 */}
+              <MascotPreviewHost />
 
               {/* Widget Picker Bottom Sheet */}
               {showWidgetPicker && (

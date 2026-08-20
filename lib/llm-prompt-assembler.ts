@@ -1047,7 +1047,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
     const finalPayload: LLMMessage[] = [];
     blocks.forEach(b => {
         const inputCtx: RegexContext = b.fromHistory
-            ? { depth: b.depth, activeTags }
+            ? { depth: b.depth, activeTags, history: true }
             : { activeTags };
         const processedText = b.role === "tool" ? b.text : applyInputRegex(b.text, regexes, inputCtx);
         const carriesNativeToolData = b.role === "tool" || Boolean(b.toolCalls?.length);
@@ -1338,6 +1338,7 @@ export type RegexContext = {
     isEdit?: boolean;        // true when user is editing a message
     depth?: number;          // message depth (0 = latest)
     activeTags?: string[];   // current app tags used for tag-scoped rule filtering
+    history?: boolean;       // true when the block is a chat history message (historyOnly rules only fire here)
     macroEngine?: MacroEngine;  // for {{char}} etc. in findRegex & replaceString
 };
 
@@ -1460,6 +1461,8 @@ function shouldRunRule(
     if (rule.disabled) return false;
     if (!rule.placement?.includes(placement)) return false;
     if (!matchesActiveTags(rule.tags, ctx.activeTags ?? [])) return false;
+    // historyOnly gate: only fire on chat history message blocks
+    if (rule.historyOnly === true && ctx.history !== true) return false;
 
     // markdownOnly / promptOnly / default filtering
     const { isMarkdown = false, isPrompt = false, isEdit = false, depth } = ctx;
@@ -2195,7 +2198,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
     const finalPayload: LLMMessage[] = [];
     blocks.forEach(b => {
         const inputCtx: RegexContext = b.fromHistory
-            ? { depth: b.depth, activeTags }
+            ? { depth: b.depth, activeTags, history: true }
             : { activeTags };
         const processedText = b.role === "tool" ? b.text : applyInputRegex(b.text, regexes, inputCtx);
         const carriesNativeToolData = b.role === "tool" || Boolean(b.toolCalls?.length);

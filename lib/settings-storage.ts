@@ -7,9 +7,6 @@ import type {
     ApiConfig,
     VoiceApiConfig,
     ImageGenerationSettings,
-    NovelAIConfig,
-    PollinationsConfig,
-    GoogleImagenConfig,
     BindingConfig,
     BindingSlot,
     CharacterBinding,
@@ -229,6 +226,11 @@ function stripDeprecatedPresetFields(preset: PresetConfig & { fold_tags?: unknow
         frequency_penalty: round2(rest.frequency_penalty),
         presence_penalty: round2(rest.presence_penalty),
         prompts: rest.prompts.map(({ injection_order: _injectionOrder, ...prompt }) => normalizePresetPromptScope(prompt)),
+        // 老数据里可能只有 prompts 没有 prompt_order（早期新建/导入的预设）。
+        // 这里按数组顺序补齐：界面和组装器从此读的是同一份顺序表。
+        prompt_order: rest.prompt_order?.length
+            ? rest.prompt_order
+            : rest.prompts.map(p => ({ identifier: p.identifier, enabled: p.enabled })),
     };
 }
 
@@ -279,7 +281,9 @@ export function createPreset(name: string): PresetConfig {
         openai_max_tokens: 0,
         openai_max_context: 100000,
         story_summary_tag: "summary",
-        prompts: []
+        prompts: [],
+        // 新建预设从第一天起就带上顺序表，避免出现「有条目但没有 order」的中间态
+        prompt_order: [],
     };
 }
 
@@ -354,6 +358,12 @@ export function parsePresetFromJson(text: string, fallbackName: string = "导入
                     };
                 });
             }
+        }
+
+        // 导入的 JSON 没带顺序表时，按 prompts 数组顺序补一份，
+        // 保证界面看到的顺序和组装时用的顺序永远是同一份。
+        if (!preset.prompt_order?.length && preset.prompts.length > 0) {
+            preset.prompt_order = preset.prompts.map(p => ({ identifier: p.identifier, enabled: p.enabled }));
         }
 
         return preset;
@@ -657,7 +667,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
         noiseSchedule: "karras",
         seed: null,
         presetGroups: [],
-        // ---- 截图中新增字段 ----
+        // ---- 高级字段 ----
         ucPreset: 0,
         qualityTags: true,
         smea: false,
@@ -706,94 +716,25 @@ function normalizeImageGenerationSettings(settings: Partial<ImageGenerationSetti
     const requestMode = settings?.requestMode === "server" || settings?.requestMode === "direct"
         ? settings.requestMode
         : DEFAULT_IMAGE_GENERATION_SETTINGS.requestMode;
-    const provider = settings?.provider === "openai" || settings?.provider === "novelai"
-        || settings?.provider === "pollinations" || settings?.provider === "google-imagen"
-        ? settings.provider
-        : DEFAULT_IMAGE_GENERATION_SETTINGS.provider;
     const hosting: Partial<ImageGenerationSettings["imageHosting"]> = settings?.imageHosting && typeof settings.imageHosting === "object"
         ? settings.imageHosting
         : {};
-    const nai: Partial<NovelAIConfig> = settings?.novelai && typeof settings.novelai === "object"
-        ? settings.novelai
-        : {};
-    const hostingProvider = hosting.provider === "imgbb" ? "imgbb" : "none";
+    const provider = hosting.provider === "imgbb" ? "imgbb" : "none";
     const defaultExpirationSeconds = typeof hosting.defaultExpirationSeconds === "number"
         ? Math.max(0, Math.min(15552000, Math.floor(hosting.defaultExpirationSeconds)))
         : DEFAULT_IMAGE_GENERATION_SETTINGS.imageHosting.defaultExpirationSeconds;
     const maxUploadBytes = typeof hosting.maxUploadBytes === "number"
         ? Math.max(64 * 1024, Math.min(32 * 1024 * 1024, Math.floor(hosting.maxUploadBytes)))
         : DEFAULT_IMAGE_GENERATION_SETTINGS.imageHosting.maxUploadBytes;
-    // NAI 高级参数 normalize
-    const naiStyleStrength = typeof nai.styleStrength === "number" ? nai.styleStrength : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.styleStrength;
-    const naiSteps = typeof nai.steps === "number" ? nai.steps : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.steps;
-    const naiCfgScale = typeof nai.cfgScale === "number" ? nai.cfgScale : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.cfgScale;
-    const naiSampler = typeof nai.sampler === "string" && nai.sampler ? nai.sampler : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.sampler;
-    const naiNoiseSchedule = typeof nai.noiseSchedule === "string" && nai.noiseSchedule ? nai.noiseSchedule : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.noiseSchedule;
-    const naiSeed = nai.seed !== undefined ? (nai.seed === "" ? null : nai.seed) : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.seed;
-    const naiRefImg = typeof nai.referenceImageDataUrl === "string" ? nai.referenceImageDataUrl : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.referenceImageDataUrl;
-    const naiPresetGroups = Array.isArray(nai.presetGroups) ? nai.presetGroups : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.presetGroups;
-    // 新增字段 normalize
-    const naiUcPreset = typeof nai.ucPreset === "number" ? nai.ucPreset : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.ucPreset;
-    const naiQualityTags = typeof nai.qualityTags === "boolean" ? nai.qualityTags : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.qualityTags;
-    const naiSmea = typeof nai.smea === "boolean" ? nai.smea : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.smea;
-    const naiSmeaDyn = typeof nai.smeaDyn === "boolean" ? nai.smeaDyn : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.smeaDyn;
-    const naiEndpointMode = nai.endpointMode === "stream" || nai.endpointMode === "normal" ? nai.endpointMode : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.endpointMode;
-    const naiCorsProxy = typeof nai.corsProxy === "boolean" ? nai.corsProxy : DEFAULT_IMAGE_GENERATION_SETTINGS.novelai.corsProxy;
-    const naiNsfw = nai.nsfw === true;
-    // Pollinations / Google Imagen 配置 normalize
-    const poll: Partial<PollinationsConfig> = settings?.pollinations && typeof settings.pollinations === "object" ? settings.pollinations : {};
-    const gi: Partial<GoogleImagenConfig> = settings?.googleImagen && typeof settings.googleImagen === "object" ? settings.googleImagen : {};
     return {
         ...DEFAULT_IMAGE_GENERATION_SETTINGS,
         ...(settings || {}),
         requestMode,
-        provider,
         characterReferences: refs,
-        novelai: {
-            ...DEFAULT_IMAGE_GENERATION_SETTINGS.novelai,
-            ...nai,
-            referenceImageDataUrl: naiRefImg,
-            styleStrength: Math.max(0, Math.min(1, naiStyleStrength)),
-            steps: Math.max(1, Math.min(150, naiSteps)),
-            cfgScale: Math.max(0, Math.min(30, naiCfgScale)),
-            sampler: naiSampler,
-            noiseSchedule: naiNoiseSchedule,
-            seed: naiSeed,
-            presetGroups: naiPresetGroups,
-            ucPreset: naiUcPreset,
-            qualityTags: naiQualityTags,
-            smea: naiSmea,
-            smeaDyn: naiSmeaDyn,
-            endpointMode: naiEndpointMode,
-            corsProxy: naiCorsProxy,
-            nsfw: naiNsfw,
-        },
-        pollinations: {
-            ...DEFAULT_IMAGE_GENERATION_SETTINGS.pollinations,
-            ...poll,
-            apiKey: typeof poll.apiKey === "string" ? poll.apiKey : "",
-            model: typeof poll.model === "string" && poll.model ? poll.model : DEFAULT_IMAGE_GENERATION_SETTINGS.pollinations.model,
-            width: typeof poll.width === "number" ? Math.max(64, Math.min(2048, Math.floor(poll.width))) : DEFAULT_IMAGE_GENERATION_SETTINGS.pollinations.width,
-            height: typeof poll.height === "number" ? Math.max(64, Math.min(2048, Math.floor(poll.height))) : DEFAULT_IMAGE_GENERATION_SETTINGS.pollinations.height,
-            seed: typeof poll.seed === "string" ? poll.seed : "",
-            enhance: poll.enhance !== false,
-            nologo: poll.nologo !== false,
-        },
-        googleImagen: {
-            ...DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen,
-            ...gi,
-            apiKey: typeof gi.apiKey === "string" ? gi.apiKey : "",
-            model: typeof gi.model === "string" && gi.model ? gi.model : DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen.model,
-            width: typeof gi.width === "number" ? Math.max(64, Math.min(2048, Math.floor(gi.width))) : DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen.width,
-            height: typeof gi.height === "number" ? Math.max(64, Math.min(2048, Math.floor(gi.height))) : DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen.height,
-            negativePrompt: typeof gi.negativePrompt === "string" ? gi.negativePrompt : "",
-            aspectRatio: typeof gi.aspectRatio === "string" && gi.aspectRatio ? gi.aspectRatio : DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen.aspectRatio,
-            personGeneration: typeof gi.personGeneration === "string" && gi.personGeneration ? gi.personGeneration : DEFAULT_IMAGE_GENERATION_SETTINGS.googleImagen.personGeneration,
-        },
         imageHosting: {
             ...DEFAULT_IMAGE_GENERATION_SETTINGS.imageHosting,
             ...hosting,
-            provider: hostingProvider,
+            provider,
             defaultExpirationSeconds,
             maxUploadBytes,
             autoConvertToWebp: hosting.autoConvertToWebp !== false,
@@ -820,31 +761,12 @@ export function saveImageGenerationSettings(settings: ImageGenerationSettings): 
     window.dispatchEvent(new CustomEvent("settings-image-generation-updated"));
 }
 
-/**
- * 把一张已生成的图（data URL）直接挂为某角色的「形象参考图 / 锁脸图」。
- * 复用与设置页上传相同的存储路径：存入 IndexedDB 拿到 assetId，再写入 characterReferences[characterId]。
- * 供角色档案编辑页「设为人物形象参考图」按钮调用。
- */
-export async function setCharacterReferenceFromDataUrl(characterId: string, dataUrl: string): Promise<void> {
-    if (typeof window === "undefined") return;
-    const { saveChatImageToIndexedDB } = await import("./chat-asset-storage");
-    const blob = await (await fetch(dataUrl)).blob();
-    const assetId = await saveChatImageToIndexedDB(blob);
-    const settings = loadImageGenerationSettings();
-    settings.characterReferences = {
-        ...(settings.characterReferences || {}),
-        [characterId]: { assetId, updatedAt: Date.now() },
-    };
-    saveImageGenerationSettings(settings);
-}
-
 // --- Binding Config ──────────────────────────────────────────
 
 const DEFAULT_BINDING_CONFIG: BindingConfig = {
     globalDefaults: {},
     appDefaults: {},
-    characterBindings: [],
-    worldBindings: {}
+    characterBindings: []
 };
 
 function normalizeBindingConfig(config: BindingConfig): { config: BindingConfig; changed: boolean } {
@@ -873,7 +795,6 @@ function normalizeBindingConfig(config: BindingConfig): { config: BindingConfig;
             ...config,
             appDefaults: config.appDefaults && typeof config.appDefaults === "object" ? config.appDefaults : {},
             characterBindings,
-            worldBindings: config.worldBindings && typeof config.worldBindings === "object" ? config.worldBindings : {},
         },
         changed,
     };
@@ -1030,7 +951,7 @@ export function resolveBinding(
  * Falls back to global default apiConfigId if not explicitly set.
  */
 export function resolveAuxiliaryApiConfig(
-    field: "memorySummaryApiConfigId" | "embeddingApiConfigId" | "mascotApiConfigId" | "reasoningTranslateApiConfigId"
+    field: "memorySummaryApiConfigId" | "embeddingApiConfigId" | "mascotApiConfigId" | "reasoningTranslateApiConfigId" | "qaApiConfigId"
 ): ApiConfig | null {
     const config = loadBindingConfig();
     const apiConfigs = loadApiConfigs();
@@ -1159,9 +1080,8 @@ export function saveUserIdentities(identities: UserIdentity[]): void {
 
 /**
  * Resolve user identity through the binding cascade:
- *   global defaults → character exclusive → world mask → app overrides.
- * Falls back to first identity if no binding has a userIdentityId set.
- * worldId is derived from characterId when not passed explicitly.
+ *   global defaults → character defaults → app overrides.
+ * Falls back to first identity if binding has no userIdentityId set.
  */
 export function resolveUserIdentity(characterId?: string, appId?: string, worldId?: string): UserIdentity | null {
     const identities = loadUserIdentities();
@@ -1175,11 +1095,59 @@ export function resolveUserIdentity(characterId?: string, appId?: string, worldI
     return identities[0];
 }
 
+// --- Migration from legacy CharacterSettingsOverride ---
+
+function migrateLegacyOverrides(): BindingConfig | null {
+    if (typeof window === "undefined") return null;
+    try {
+        const raw = kvGet(LEGACY_OVERRIDES_KEY);
+        if (!raw) return null;
+
+        const legacyOverrides = JSON.parse(raw) as LegacyOverride[];
+        if (!Array.isArray(legacyOverrides) || legacyOverrides.length === 0) return null;
+
+        const config: BindingConfig = {
+            globalDefaults: {},
+            appDefaults: {},
+            characterBindings: legacyOverrides.map(o => ({
+                characterId: o.characterId,
+                defaults: {
+                    presetId: o.presetId,
+                    worldBookIds: o.worldBookId ? [o.worldBookId] : undefined,
+                    regexIds: o.regexId ? [o.regexId] : undefined,
+                },
+                appOverrides: {}
+            }))
+        };
+
+        return config;
+    } catch {
+        return null;
+    }
+}
+
+// ── fork 回植：角色参考图 / 群组世界身份（合并上游时补回，2026-08-20） ──
+
+/** Save a character reference image into chat asset storage and link it in image settings. */
+export async function setCharacterReferenceFromDataUrl(characterId: string, dataUrl: string): Promise<void> {
+    if (typeof window === "undefined") return;
+    const { saveChatImageToIndexedDB } = await import("./chat-asset-storage");
+    const blob = await (await fetch(dataUrl)).blob();
+    const assetId = await saveChatImageToIndexedDB(blob);
+    const settings = loadImageGenerationSettings();
+    settings.characterReferences = {
+        ...(settings.characterReferences || {}),
+        [characterId]: { assetId, updatedAt: Date.now() },
+    };
+    saveImageGenerationSettings(settings);
+}
+
 /**
  * Look up which world a character belongs to, without importing character-world-storage
  * (avoids a settings ↔ world circular dependency). Mirrors CHARACTER_WORLDS_KEY there.
  */
 const CHARACTER_WORLDS_KEY = "ai_phone_character_worlds_v1";
+
 function getWorldIdForCharacter(characterId: string): string | null {
     if (typeof window === "undefined" || !characterId) return null;
     try {
@@ -1215,35 +1183,4 @@ export function setWorldUserIdentity(worldId: string, identityId: string | null)
         delete worldBindings[worldId];
     }
     saveBindingConfig({ ...config, worldBindings });
-}
-
-// --- Migration from legacy CharacterSettingsOverride ---
-
-function migrateLegacyOverrides(): BindingConfig | null {
-    if (typeof window === "undefined") return null;
-    try {
-        const raw = kvGet(LEGACY_OVERRIDES_KEY);
-        if (!raw) return null;
-
-        const legacyOverrides = JSON.parse(raw) as LegacyOverride[];
-        if (!Array.isArray(legacyOverrides) || legacyOverrides.length === 0) return null;
-
-        const config: BindingConfig = {
-            globalDefaults: {},
-            appDefaults: {},
-            characterBindings: legacyOverrides.map(o => ({
-                characterId: o.characterId,
-                defaults: {
-                    presetId: o.presetId,
-                    worldBookIds: o.worldBookId ? [o.worldBookId] : undefined,
-                    regexIds: o.regexId ? [o.regexId] : undefined,
-                },
-                appOverrides: {}
-            }))
-        };
-
-        return config;
-    } catch {
-        return null;
-    }
 }

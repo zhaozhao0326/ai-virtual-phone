@@ -5,6 +5,7 @@
 // 高度自适应桥与小票画布同款；allow-scripts 无 same-origin，碰不到宿主页面与数据。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createMixFrameHeightTracker, nextMixFrameHeight } from "@/lib/mixology/frame-height";
 
 /** 是否含 HTML 标签：含则按作者排版渲染，纯文本走默认样式 */
 export function mixTextHasHtml(text: string): boolean {
@@ -12,11 +13,21 @@ export function mixTextHasHtml(text: string): boolean {
 }
 
 const FRAME_MIN_HEIGHT = 24;
+/**
+ * 高度上限。iframe 是 scrolling="no"，高度必须等于内容高度，超出的部分会被直接切掉，
+ * 所以这个数就是「开场画布最多能有多高」。原来给 2400（约两屏半），复杂的画布——
+ * 多章节、满幅大图、人物关系列表——很容易超过，底下那截在 App 里根本看不到。
+ * 放宽到 12000（约十三屏）。仍然留一个上限：万一画布报了个荒谬的数（脚本写错、
+ * 死循环撑高），别让宿主去布局一个几十万像素高的元素。
+ */
+const FRAME_MAX_HEIGHT = 12000;
 
 function RichFrame({ html, inert }: { html: string; inert?: boolean }) {
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const [frameId] = useState(() => `mrf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`);
     const [height, setHeight] = useState(FRAME_MIN_HEIGHT);
+    const trackerRef = useRef(createMixFrameHeightTracker(FRAME_MIN_HEIGHT));
+    const heightRef = useRef(FRAME_MIN_HEIGHT);
 
     const srcDoc = useMemo(() => {
         // 默认浅色字 + 透明底：内容浮在深色封面蒙版上直接可读，作者可全量覆盖
@@ -42,8 +53,14 @@ function RichFrame({ html, inert }: { html: string; inert?: boolean }) {
             if (iframeRef.current && event.source !== iframeRef.current.contentWindow) return;
             const data = event.data as Record<string, unknown> | null;
             if (!data || data.source !== "mix-rich-frame" || data.type !== "resize" || data.id !== frameId) return;
-            const next = Number(data.height);
-            if (Number.isFinite(next)) setHeight(Math.min(Math.max(next, FRAME_MIN_HEIGHT), 2400));
+            const applied = nextMixFrameHeight(trackerRef.current, Number(data.height), {
+                min: FRAME_MIN_HEIGHT,
+                max: FRAME_MAX_HEIGHT,
+            });
+            // 高度没变就别重渲染：画布里的动效会让 MutationObserver 一直重报
+            if (applied === null || applied === heightRef.current) return;
+            heightRef.current = applied;
+            setHeight(applied);
         };
         window.addEventListener("message", handleMessage);
         return () => window.removeEventListener("message", handleMessage);
@@ -68,7 +85,11 @@ function RichFrame({ html, inert }: { html: string; inert?: boolean }) {
     );
 }
 
-/** inert：放在按钮里当预览用（开场白选择），让点击穿给外层 */
+/**
+ * inert：放在按钮里当预览用（开场白选择），让点击穿给外层。
+ * 画布是异步撑高的：高度量好后由 iframe 里的桥 postMessage 上来，需要维持滚动落点的
+ * 宿主（对局界面）直接监听那条消息，见 components/mixology/mixology-game.tsx。
+ */
 export function MixRichText({ text, inert }: { text: string; inert?: boolean }) {
     if (mixTextHasHtml(text)) return <RichFrame html={text} inert={inert} />;
     return <div className="mix-detail-value">{text}</div>;
