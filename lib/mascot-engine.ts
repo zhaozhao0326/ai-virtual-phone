@@ -242,7 +242,16 @@ async function historyToTextMessagesMultipart(history: MascotMsg[]): Promise<Llm
 async function historyToNativeMessages(history: MascotMsg[]): Promise<LlmRequestMessage[]> {
     const out: LlmRequestMessage[] = [];
     const recent = history.slice(-40);
-    for (const m of recent) {
+
+    // Gemini 协议约束：function call 轮必须紧跟 user 轮或 function response 轮。
+    // 跳过开头的非 user/tool 消息（如 mascot 开场白），保证请求从 user/tool 开始。
+    let startIdx = 0;
+    while (startIdx < recent.length && recent[startIdx].role !== "user" && recent[startIdx].role !== "tool") {
+        startIdx++;
+    }
+
+    for (let i = startIdx; i < recent.length; i++) {
+        const m = recent[i];
         if (m.role === "user") {
             // 用户消息：含图片时构造多模态 content 数组（text + image_url parts）
             if (m.images && m.images.length > 0) {
@@ -271,8 +280,14 @@ async function historyToNativeMessages(history: MascotMsg[]): Promise<LlmRequest
             }
         } else {
             // mascot 消息
-            const msg: LlmRequestMessage = m.toolCalls && m.toolCalls.length > 0
-                ? { role: "assistant", content: m.text, toolCalls: m.toolCalls, reasoning: m.reasoning, openRouterReasoningDetails: m.openRouterReasoningDetails }
+            // 兜底：若上一条不是 user/tool（罕见：hydrate 残缺 / 历史拼接错位），
+            // 去掉 toolCalls 但保留 text，避免 Gemini 报 "function call turn comes
+            // immediately after a user turn or after a function response turn"。
+            const last = out[out.length - 1];
+            const prevIsUserOrTool = last && (last.role === "user" || last.role === "tool");
+            const safeToolCalls = (m.toolCalls && m.toolCalls.length > 0 && prevIsUserOrTool) ? m.toolCalls : undefined;
+            const msg: LlmRequestMessage = safeToolCalls
+                ? { role: "assistant", content: m.text, toolCalls: safeToolCalls, reasoning: m.reasoning, openRouterReasoningDetails: m.openRouterReasoningDetails }
                 : { role: "assistant", content: m.text, reasoning: m.reasoning, openRouterReasoningDetails: m.openRouterReasoningDetails };
             out.push(msg);
         }
