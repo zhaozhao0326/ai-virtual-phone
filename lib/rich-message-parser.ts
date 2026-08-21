@@ -381,6 +381,31 @@ const RICH_PATTERNS: {
         regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:删除了?|修改了?|改了?))?\s*群待办[：:]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
+    // ── 管道符结构化格式（与建群同款，模型不易变形）──
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?设置群公告[|｜]内容[:：]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim() || "", newAnnouncement: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?添加群待办[|｜]内容[:：]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?完成群待办[|｜]内容[:：]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?删除群待办[|｜]内容[:：]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?改群名[|｜]群名[:：]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim() || "", newGroupName: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[(?:([^\]|]+?)\s+)?退群\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "leave_group" as const, adminActorName: m[1]?.trim() || "" } }),
+    },
     // 1:1 简单格式（兼容）
     {
         regex: /\[领取红包\]/,

@@ -59,11 +59,11 @@ check("executeInternalTool 有 创建群聊 分发分支",
 
 // ── 群主权限全量审计（14 项）：解析器 + 提示词双端 ──
 const adminActions = [
-  { action: "rename",           parser: 'adminAction: "rename"',           prompt: "将群名改为了「" },
-  { action: "set_announcement", parser: 'adminAction: "set_announcement"', prompt: "设置了群公告：" },
-  { action: "add_todo",         parser: 'adminAction: "add_todo"',         prompt: "添加了群待办：" },
-  { action: "complete_todo",    parser: 'adminAction: "complete_todo"',    prompt: "完成了群待办：" },
-  { action: "remove_todo",      parser: 'adminAction: "remove_todo"',      prompt: "删除了群待办：" },
+  { action: "rename",           parser: 'adminAction: "rename"',           prompt: "改群名|群名:" },
+  { action: "set_announcement", parser: 'adminAction: "set_announcement"', prompt: "设置群公告|内容:" },
+  { action: "add_todo",         parser: 'adminAction: "add_todo"',         prompt: "添加群待办|内容:" },
+  { action: "complete_todo",    parser: 'adminAction: "complete_todo"',    prompt: "完成群待办|内容:" },
+  { action: "remove_todo",      parser: 'adminAction: "remove_todo"',      prompt: "删除群待办|内容:" },
 ];
 for (const { action, parser: p, prompt } of adminActions) {
   check(`rich-message-parser 有 ${action} 标签解析`, parser.includes(p));
@@ -108,10 +108,19 @@ check("rich-message-parser 公告/待办正则角色名前缀变为可选",
   parser.includes("(?:([^\\]：:]+?)\\s+)?"));
 check("rich-message-parser 改名正则放宽（兼容修改了群名为）",
   parser.includes("将群名改为了?|修改了?群名为?"));
+check("rich-message-parser 有管道符格式（设置群公告|内容:）",
+  parser.includes("设置群公告[|｜]内容[:：]"));
+check("rich-message-parser 有管道符格式（添加群待办|内容:）",
+  parser.includes("添加群待办[|｜]内容[:：]"));
+check("rich-message-parser 有管道符格式（退群）",
+  parser.includes("退群\\]"));
+check("builtin-preset 提示词主推管道符格式",
+  preset.includes("设置群公告|内容:") && preset.includes("添加群待办|内容:") &&
+  preset.includes("改群名|群名:") && preset.includes("[A 退群]"));
 check("rich-message-parser 有退群标签解析",
   parser.includes('adminAction: "leave_group"'));
 check("builtin-preset 教了退群格式",
-  preset.includes("[A退出了群聊]"));
+  preset.includes("[A 退群]"));
 check("builtin-preset 教了群主拉回（邀请已退群角色）",
   preset.includes("重新拉回来") && preset.includes("邀请B加入了群聊"));
 check("chat-room 对 leave_group 按本人定位目标",
@@ -120,7 +129,7 @@ check("chat-room 1:1 私聊也能执行群管理（找角色所在群）",
   chatRoom.includes("applyAIOneToOneGroupAdminAction") &&
   chatRoom.includes("? applyAIGroupAdminAction(r.characterId, part.mediaData)"));
 check("builtin-preset 1:1 提示词教了管理群格式",
-  preset.includes("管理自己所在的群") && preset.includes("[A设置了群公告：公告内容]"));
+  preset.includes("管理自己所在的群") && preset.includes("设置群公告|内容:"));
 
 // ── 聊天背景透明度 ──
 const storageFile = ROOT + "lib/chat-storage.ts";

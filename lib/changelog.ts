@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.6.3";
+export const APP_VERSION = "1.6.4";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.4",
+    date: "2026-08-21",
+    title: "群管理改用「管道符格式」（和建群同款，识别更稳）",
+    highlights: [
+      "此前角色改公告/加待办靠自然语言标签（[A 修改了群公告：xxx]），模型措辞一变就容易识别失败",
+      "现在群管理统一推荐管道符格式（与建群完全同款）：[A 设置群公告|内容:xxx] / [A 添加群待办|内容:xxx] / [A 改群名|群名:xxx] / [A 退群]",
+      "旧式自然语言写法仍兼容；缺冒号或内容的输出仍会被丢弃，不会误触发",
+      "角色名前缀可省略，缺省时默认是该角色本人操作",
+    ],
+  },
   {
     version: "1.6.3",
     date: "2026-08-21",
