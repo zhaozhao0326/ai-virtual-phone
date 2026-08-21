@@ -94,9 +94,9 @@ export function canGroupAdminAct(
 ): boolean {
     if (!actorKey || !targetKey) return false;
     if (!isGroupMemberKey(session, actorKey)) return false;
-    // 自主退群：任何成员（除群主）都可主动退出，执行人即目标；群主须先转让或解散
+    // 自主退群：任何成员（含群主）都可主动退出，执行人即目标；群主退群后群主身份自动顺延
     if (action === "leave_group") {
-        return actorKey === targetKey && getGroupRole(session, actorKey) !== "owner";
+        return actorKey === targetKey;
     }
     const actorRole = getGroupRole(session, actorKey);
     if (actorRole === "member") return false;
@@ -300,15 +300,26 @@ export function applyGroupAdminAction(
             break;
         }
         case "leave_group": {
-            // 成员自主退群：从群成员/管理员/禁言名单中移除自己（群主被权限层拦截）
-            if (targetKey !== GROUP_SELF_KEY) {
-                updates.participantIds = (session.participantIds || []).filter(id => id !== targetKey);
+            // 成员自主退群：从群成员/管理员/禁言名单中移除自己
+            const leavingKey = targetKey;
+            if (leavingKey !== GROUP_SELF_KEY) {
+                updates.participantIds = (session.participantIds || []).filter(id => id !== leavingKey);
             }
-            updates.groupAdminIds = (session.groupAdminIds || []).filter(id => id !== targetKey);
-            if (session.groupMutes?.[targetKey]) {
+            updates.groupAdminIds = (session.groupAdminIds || []).filter(id => id !== leavingKey);
+            if (session.groupMutes?.[leavingKey]) {
                 const mutes = { ...session.groupMutes };
-                delete mutes[targetKey];
+                delete mutes[leavingKey];
                 updates.groupMutes = mutes;
+            }
+            // 群主退群：群主位置自动顺延给剩余第一名成员（新群主移出管理员名单）
+            if (getGroupOwnerKey(session) === leavingKey) {
+                const remaining = (updates.participantIds ?? session.participantIds ?? []).filter(id => id !== leavingKey);
+                if (remaining.length > 0) {
+                    updates.groupOwnerId = remaining[0];
+                    updates.groupAdminIds = (updates.groupAdminIds ?? session.groupAdminIds ?? []).filter(id => id !== remaining[0]);
+                } else {
+                    updates.groupOwnerId = "";
+                }
             }
             break;
         }

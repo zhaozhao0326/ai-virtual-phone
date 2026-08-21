@@ -92,10 +92,12 @@ const adminFile = ROOT + "lib/group-admin.ts";
 const admin = existsSync(adminFile) ? readFileSync(adminFile, "utf8") : "";
 check("GroupAdminAction 类型含 leave_group",
   admin.includes('| "leave_group"'));
-check("canGroupAdminAct 允许成员退群且群主不可退",
-  admin.includes('action === "leave_group"') && admin.includes('!== "owner"'));
+check("canGroupAdminAct 允许成员/群主退群",
+  admin.includes('action === "leave_group"') && admin.includes("actorKey === targetKey"));
 check("applyGroupAdminAction 有 leave_group 执行分支",
   admin.includes('case "leave_group"') && admin.includes('退出了群聊'));
+check("群主退群自动顺延群主给剩余成员",
+  admin.includes('群主位置自动顺延') && admin.includes("updates.groupOwnerId = remaining[0]"));
 check("rich-message-parser 有退群标签解析",
   parser.includes('adminAction: "leave_group"'));
 check("builtin-preset 教了退群格式",
