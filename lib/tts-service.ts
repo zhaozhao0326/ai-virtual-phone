@@ -89,6 +89,29 @@ function normalizeMinimaxSpeed(speed: number | undefined): number {
     return Math.min(MINIMAX_SPEED_MAX, Math.max(MINIMAX_SPEED_MIN, speed));
 }
 
+// ── 按文本内容自动检测朗读语言 ──────────────────────
+// 粤语特征字：普通话几乎不用，命中即视为粤语原文（如"我而家好开心"）
+const CANTONESE_CHAR_RE = /[嘅咗唔喺喺睇哋俾嗰乜冇啲係傾攞啱噉噏谂氹]/;
+const JAPANESE_RE = /[\u3040-\u30ff]/;
+const KOREAN_RE = /[\uac00-\ud7af]/;
+const LATIN_RUN_RE = /[a-zA-Z]{4,}/;
+const HAS_CJK_RE = /[\u3400-\u9fff]/;
+
+/**
+ * 根据待朗读文本判断 Minimax language_boost。
+ * 返回值优先级：粤语 > 日语 > 韩语 > 英文 > 普通话(Chinese)。
+ * 这样角色混说粤语/普通话时，语音会跟随文本语言，而不是被配置固定成一种。
+ */
+function detectMinimaxLanguageBoost(text: string): string | undefined {
+    if (!text) return undefined;
+    if (CANTONESE_CHAR_RE.test(text)) return "Chinese,Yue";
+    if (JAPANESE_RE.test(text)) return "Japanese";
+    if (KOREAN_RE.test(text)) return "Korean";
+    if (LATIN_RUN_RE.test(text) && !HAS_CJK_RE.test(text)) return "English";
+    if (HAS_CJK_RE.test(text)) return "Chinese";
+    return undefined;
+}
+
 async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?: string): Promise<Blob | null> {
     if (!config.apiKey) throw new Error("Minimax API Key 未配置");
 
@@ -103,6 +126,9 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
     if (normalizedEmotion && MINIMAX_EMOTIONS.has(normalizedEmotion)) {
         voiceSetting.emotion = normalizedEmotion;
     }
+    // 按文本内容自动检测语言（粤语/普通话/日/韩/英），优先于配置里固定的 languageBoost，
+    // 解决"角色混说粤语和普通话时语音被固定成一种"的问题
+    const languageBoost = detectMinimaxLanguageBoost(text) || config.languageBoost || undefined;
 
     const response = await fetchWithTimeout(`${baseUrl}/t2a_v2`, {
         method: "POST",
@@ -114,7 +140,7 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
             model: config.model || "speech-01-turbo",
             text,
             stream: false,
-            ...(config.languageBoost ? { language_boost: config.languageBoost } : {}),
+            ...(languageBoost ? { language_boost: languageBoost } : {}),
             voice_setting: voiceSetting,
             // 44100/256k 是 Minimax 支持的最高档;之前 32000/128k 会把 hd 模型
             // 的输出压闷(用户反馈"声音糊"),各模型均支持该档位。
