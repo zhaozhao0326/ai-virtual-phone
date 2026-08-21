@@ -121,6 +121,14 @@ check("设置面板有背景透明度滑条",
 check("chat.css 有滑条样式",
   css.includes(".menu-slider {"));
 
+// ── 系统更新入口（更新日志可见性）──
+const phoneSettingsFile = ROOT + "components/phone-settings-app.tsx";
+const phoneSettings = existsSync(phoneSettingsFile) ? readFileSync(phoneSettingsFile, "utf8") : "";
+check("手机设置菜单有「系统更新」入口",
+  phoneSettings.includes('label: "系统更新"') && phoneSettings.includes('"updates"'));
+check("系统更新页面渲染更新日志",
+  phoneSettings.includes('case "updates":') && phoneSettings.includes("<SystemUpdates />"));
+
 console.log("");
 if (failed === 0) {
   console.log("ALL PASS — 建群/解散/群主全量权限关键接线确认完成。");

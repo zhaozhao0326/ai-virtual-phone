@@ -15,6 +15,7 @@ import { RegexManager } from "./settings/regex-manager";
 import { DataManagement } from "./settings/data-management";
 import { UserIdentitySettings } from "./settings/user-identity";
 import { AboutDeclaration } from "./settings/about-declaration";
+import { SystemUpdates } from "./settings/system-updates";
 import { BindingManager } from "./settings/binding-manager";
 import { WeixinSettings } from "./settings/weixin-settings";
 import { ToolboxSettings } from "./settings/toolbox-settings";
@@ -54,7 +55,8 @@ type SubPage =
     | "toolbox"
     | "agentComputer"
     | "moderation"
-    | "about";
+    | "about"
+    | "updates";
 
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api },
@@ -70,6 +72,7 @@ const SETTINGS_MENU = [
     { id: "agentComputer", icon: Laptop, label: "角色电脑", desc: "云端小电脑（自部署）", iconColor: BINDING_ACCENTS.memory },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory },
+    { id: "updates", icon: FileText, label: "系统更新", desc: "版本与更新日志", iconColor: BINDING_ACCENTS.memory },
 ] as const;
 
 const realtimeIconStyle = {
@@ -300,6 +303,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <UserIdentitySettings />;
             case "about":
                 return <AboutDeclaration />;
+            case "updates":
+                return <SystemUpdates />;
             default:
                 return null;
         }
@@ -465,7 +470,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="User"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["identity", "about"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["identity", "about", "updates"].includes(item.id)).map(makeCardItem)}
                         />
                         {accountSheetOpen && (
                             <div className="modal-overlay modal-overlay-bottom" data-ui="modal" onClick={() => setAccountSheetOpen(false)}>
