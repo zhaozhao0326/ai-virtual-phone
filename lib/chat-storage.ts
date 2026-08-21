@@ -191,7 +191,7 @@ export type ChatMessage = {
         blackMarketTheaterStartedAt?: string;
         claimer?: string;         // 领取/接受动作的执行人名
         owner?: string;           // 领取/接受动作的目标人名（谁发的红包/转账）
-        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute" | "dissolve" | "create_group" | "rename" | "set_announcement" | "add_todo" | "complete_todo" | "remove_todo"; // 群管理操作类型
+        adminAction?: "transfer_owner" | "set_admin" | "unset_admin" | "kick" | "invite" | "mute" | "unmute" | "dissolve" | "create_group" | "rename" | "set_announcement" | "add_todo" | "complete_todo" | "remove_todo" | "leave_group"; // 群管理操作类型
         adminActorName?: string;  // 群管理操作执行人显示名
         adminTargetName?: string; // 群管理操作目标显示名
         adminMuteMinutes?: number;// 禁言时长（分钟）

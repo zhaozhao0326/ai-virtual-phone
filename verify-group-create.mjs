@@ -87,6 +87,24 @@ const css = existsSync(cssFile) ? readFileSync(cssFile, "utf8") : "";
 check("chat.css 有群信息折叠卡片样式",
   css.includes(".chat-group-info {") && css.includes(".chat-group-info-toggle {"));
 
+// ── 成员自主退群 leave_group + 群主拉回 ──
+const adminFile = ROOT + "lib/group-admin.ts";
+const admin = existsSync(adminFile) ? readFileSync(adminFile, "utf8") : "";
+check("GroupAdminAction 类型含 leave_group",
+  admin.includes('| "leave_group"'));
+check("canGroupAdminAct 允许成员退群且群主不可退",
+  admin.includes('action === "leave_group"') && admin.includes('!== "owner"'));
+check("applyGroupAdminAction 有 leave_group 执行分支",
+  admin.includes('case "leave_group"') && admin.includes('退出了群聊'));
+check("rich-message-parser 有退群标签解析",
+  parser.includes('adminAction: "leave_group"'));
+check("builtin-preset 教了退群格式",
+  preset.includes("[A退出了群聊]"));
+check("builtin-preset 教了群主拉回（邀请已退群角色）",
+  preset.includes("重新拉回来") && preset.includes("邀请B加入了群聊"));
+check("chat-room 对 leave_group 按本人定位目标",
+  chatRoom.includes('action === "leave_group"'));
+
 // ── 聊天背景透明度 ──
 const storageFile = ROOT + "lib/chat-storage.ts";
 const settingsFile = ROOT + "components/chat/chat-settings-panel.tsx";

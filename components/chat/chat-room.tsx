@@ -2400,7 +2400,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // 改群名是对群本身操作，执行人即目标，无需解析成员名
         const targetKey = action === "dissolve"
             ? GROUP_SELF_KEY
-            : (action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo")
+            : (action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo" || action === "leave_group")
                 ? actorKey
                 : resolveGroupMemberKeyByName(session, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
         if (!targetKey) return null;

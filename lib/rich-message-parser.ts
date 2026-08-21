@@ -354,6 +354,10 @@ const RICH_PATTERNS: {
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "dissolve" as const, adminActorName: m[1]?.trim() } }),
     },
     {
+        regex: /\[([^\]]+?)退出了群聊\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "leave_group" as const, adminActorName: m[1]?.trim() } }),
+    },
+    {
         regex: /\[([^\]：:]+?)将群名改为了?[「"]?([^」"\]]+?)[」"]?\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim(), newGroupName: m[2]?.trim() } }),
     },

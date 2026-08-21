@@ -25,7 +25,8 @@ export type GroupAdminAction =
     | "set_announcement"
     | "add_todo"
     | "complete_todo"
-    | "remove_todo";
+    | "remove_todo"
+    | "leave_group";
 
 export type GroupRole = "owner" | "admin" | "member";
 
@@ -93,6 +94,10 @@ export function canGroupAdminAct(
 ): boolean {
     if (!actorKey || !targetKey) return false;
     if (!isGroupMemberKey(session, actorKey)) return false;
+    // 自主退群：任何成员（除群主）都可主动退出，执行人即目标；群主须先转让或解散
+    if (action === "leave_group") {
+        return actorKey === targetKey && getGroupRole(session, actorKey) !== "owner";
+    }
     const actorRole = getGroupRole(session, actorKey);
     if (actorRole === "member") return false;
     // 解散群不针对某个成员，仅群主可执行
@@ -205,6 +210,7 @@ export function buildGroupAdminNoticeText(
         case "add_todo": return `${actorName}添加了群待办：${targetName}`;
         case "complete_todo": return `${actorName}完成了群待办：${targetName}`;
         case "remove_todo": return `${actorName}删除了群待办：${targetName}`;
+        case "leave_group": return `${actorName}退出了群聊`;
     }
 }
 
@@ -237,6 +243,7 @@ export function buildGroupAdminBracketText(
         case "add_todo": return `[${actorName}添加了群待办：${targetName}]`;
         case "complete_todo": return `[${actorName}完成了群待办：${targetName}]`;
         case "remove_todo": return `[${actorName}删除了群待办：${targetName}]`;
+        case "leave_group": return `[${actorName}退出了群聊]`;
     }
 }
 
@@ -290,6 +297,19 @@ export function applyGroupAdminAction(
         case "invite": {
             const ids = session.participantIds || [];
             if (!ids.includes(targetKey)) updates.participantIds = [...ids, targetKey];
+            break;
+        }
+        case "leave_group": {
+            // 成员自主退群：从群成员/管理员/禁言名单中移除自己（群主被权限层拦截）
+            if (targetKey !== GROUP_SELF_KEY) {
+                updates.participantIds = (session.participantIds || []).filter(id => id !== targetKey);
+            }
+            updates.groupAdminIds = (session.groupAdminIds || []).filter(id => id !== targetKey);
+            if (session.groupMutes?.[targetKey]) {
+                const mutes = { ...session.groupMutes };
+                delete mutes[targetKey];
+                updates.groupMutes = mutes;
+            }
             break;
         }
         case "mute": {
