@@ -24,6 +24,7 @@ import {
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
 import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { applyAIProactiveGroupCreate } from "./group-admin";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -779,6 +780,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "角色电脑") return executeAgentComputerTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
+    if (call.name === "创建群聊") return executeCreateGroupTool(call, context);
 
     if (call.name !== "写入记忆") return null;
 
@@ -795,6 +797,44 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     }
 
     return executeMemoryWriteTool(call.args, capability, context);
+}
+
+async function executeCreateGroupTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const actorCharacterId = context?.characterId;
+    if (!actorCharacterId) {
+        return {
+            name: "创建群聊",
+            success: false,
+            error: "缺少发起角色",
+            userNotice: "创建群聊失败：缺少发起角色",
+            continueConversation: false,
+            persistToHistory: false,
+        };
+    }
+    const args = (call.args || {}) as { groupName?: string; memberNames?: string; actorName?: string };
+    const result = applyAIProactiveGroupCreate(actorCharacterId, {
+        groupName: args.groupName,
+        memberNames: args.memberNames,
+        adminActorName: args.actorName,
+    });
+    if (!result) {
+        return {
+            name: "创建群聊",
+            success: false,
+            error: "建群失败（参数无效或短时间内重复触发）",
+            userNotice: "创建群聊未成功（可能参数无效，或短时间内重复建群被合并）",
+            continueConversation: false,
+            persistToHistory: false,
+        };
+    }
+    return {
+        name: "创建群聊",
+        success: true,
+        data: `已创建群聊「${result.groupName}」并把用户拉了进去`,
+        userNotice: `已创建群聊「${result.groupName}」并把你拉了进去`,
+        continueConversation: true,
+        persistToHistory: true,
+    };
 }
 
 function isNoteWallToolName(name: string): boolean {

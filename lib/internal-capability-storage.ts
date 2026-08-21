@@ -14,6 +14,7 @@ export const AGENT_COMPUTER_CAPABILITY_ID = "agent_computer";
 export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
+export const GROUP_CREATE_CAPABILITY_ID = "group_create";
 
 export type InternalToolDefinition = {
     name: string;
@@ -112,6 +113,34 @@ const TIMED_WAKE_USAGE_GUIDE = [
     "",
     "示例：",
     '[执行动作:稍后主动联系({"delayMinutes":15,"intent":"过15分钟看看对方回了没，如果还合适就轻轻找一句"})]',
+].join("\n");
+
+const GROUP_CREATE_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        groupName: { type: "string", description: "群聊名称；不填则默认用「发起角色名+的群聊」" },
+        memberNames: { type: "string", description: "要拉进群的其他角色名，多个用顿号或逗号分隔；用户会被自动拉入，无需填写" },
+        actorName: { type: "string", description: "可选，发起建群的角色名（默认用当前角色）" },
+    },
+});
+
+const GROUP_CREATE_USAGE_GUIDE = [
+    "以下是你获取指令的返回结果：",
+    "动作：创建群聊",
+    "用途：当剧情需要你（角色）主动创建一个新群聊并把用户拉进去时调用。发起角色自动成为群主，用户在群内（被拉入），你点名的其他角色也加入。",
+    "",
+    "参数：",
+    "- groupName (string): 群聊名称，建议具体、有戏（如「周末剧本杀小队」）；不填默认「发起角色名+的群聊」",
+    "- memberNames (string): 要拉进群的其他角色名，多个用顿号或逗号分隔；用户无需填写，系统会自动把用户拉入",
+    "- actorName (string, 可选): 发起建群的角色名，默认用当前角色",
+    "",
+    "规则：",
+    "- 只在剧情有充分理由时使用（关系升温想拉小群、突发事件要拉人商量、起哄组局等），不要无缘无故频繁建群。",
+    "- 建群前后可以用普通消息表达态度、铺垫戏剧感，让建群有理由。",
+    "- 点名的成员必须是真实存在的角色，不能凭空编造。",
+    "",
+    "示例：",
+    '[执行动作:创建群聊({"groupName":"周末剧本杀小队","memberNames":"小美、阿强"})]',
 ].join("\n");
 
 const NOTE_WALL_USAGE_GUIDE = [
@@ -1258,6 +1287,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
+    {
+        id: GROUP_CREATE_CAPABILITY_ID,
+        name: "创建群聊",
+        description: "角色主动创建一个新群聊并把用户拉进去；发起角色成为群主，用户自动被拉入，点名的其他角色也加入。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1361,6 +1399,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: TIMED_WAKE_PARAMETER_SCHEMA,
             usageGuide: TIMED_WAKE_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === GROUP_CREATE_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: GROUP_CREATE_PARAMETER_SCHEMA,
+            usageGuide: GROUP_CREATE_USAGE_GUIDE,
         };
     }
     return null;
