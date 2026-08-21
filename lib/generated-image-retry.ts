@@ -19,6 +19,16 @@ function isReferenceImageRejection(message: string): boolean {
 
 type ImageGenResult = NonNullable<Awaited<ReturnType<typeof generateImageFromConfiguredApi>>>;
 
+// 判断朋友圈/聊天配图的 prompt 是否意图让角色/人物入镜。
+// 仅当 prompt 明确点名该角色，或出现人称/人物相关词时，才视为人物场景；
+// 否则按「纯物品/风景/场景」处理，避免把作者角色硬塞进马力机、菜品等配图里。
+export function momentDescriptionImpliesCharacter(description: string, authorName?: string): boolean {
+    if (!description?.trim()) return false;
+    const d = description.toLowerCase();
+    if (authorName && d.includes(authorName.toLowerCase())) return true;
+    return /我|你|他|她|人物|人|角色|头像|自拍|合影|男生|女生|男孩|女孩|男子|女子|男人|女人|男|女/i.test(d);
+}
+
 // 生图 + 参考图降级兜底：带参考图请求被上游安全策略拒绝时，自动重试一次不带参考图。
 // 这样「食物/风景」类 prompt 在 participants 头像被误判为冲突时也能正常出图，而非直接 400。
 async function generateImageWithReferenceFallback(
@@ -292,23 +302,34 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
     const description = (nextDescription ?? post.photoDescription)?.trim();
     if (!description) throw new Error("缺少图片描述，无法重新生成");
 
-    const momentParticipantIds = post.authorType === "character" && post.authorId ? [post.authorId] : [];
-    const { specs: momentSpecs, appearanceText: momentAppearance } = buildParticipantSpecs(momentParticipantIds);
+    // 根据 prompt 语义决定是否注入作者角色/用户：
+    // 纯场景/物品 prompt 不再硬塞角色外貌与头像，避免「跑车马力机」被画成「江慎行」。
+    const author = post.authorType === "character" && post.authorId
+        ? loadCharacters().find((c) => c.id === post.authorId)
+        : undefined;
+    const includeCharacters = momentDescriptionImpliesCharacter(description, author?.name);
+    const momentParticipantIds = includeCharacters && post.authorId ? [post.authorId] : [];
+    const { specs: momentSpecs, appearanceText: momentAppearance } = buildParticipantSpecs(momentParticipantIds, includeCharacters);
     const momentRefImages = (await Promise.all(
         momentSpecs.map((s) => (s.avatar ? resizeImageDataUrl(s.avatar, 512) : Promise.resolve(null))),
     )).filter(Boolean) as string[];
 
     try {
         const settings = { ...loadImageGenerationSettings(), enabled: true };
+        console.log("[Moments] 重新生图角色注入判断", {
+            description: description.slice(0, 80),
+            includeCharacters,
+            authorName: author?.name,
+        });
         const generated = await generateImageWithReferenceFallback({
             description,
-            characterId: post.authorType === "character" ? post.authorId : undefined,
-            participantAppearance: momentAppearance || undefined,
-            participants: momentSpecs.map((s) => ({ name: s.name, anchor: s.anchor })),
-            referenceImages: momentRefImages.length ? momentRefImages : undefined,
+            characterId: includeCharacters && post.authorType === "character" ? post.authorId : undefined,
+            participantAppearance: includeCharacters ? momentAppearance || undefined : undefined,
+            participants: includeCharacters ? momentSpecs.map((s) => ({ name: s.name, anchor: s.anchor })) : undefined,
+            referenceImages: includeCharacters && momentRefImages.length ? momentRefImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
             sceneLighting: settings.sceneLighting?.trim() || undefined,
-            useReferenceImage: post.photoUseReferenceImage === true,
+            useReferenceImage: includeCharacters ? post.photoUseReferenceImage === true : false,
             settings,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");
