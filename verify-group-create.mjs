@@ -75,6 +75,17 @@ check("applyGroupAdminAction 覆盖全部 14 种动作",
 check("chat-room 对 rename/公告/待办 按群主本人定位目标",
   chatRoom.includes('action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo"'));
 
+// ── UI 展示层：群信息区常驻渲染公告 + 待办 ──
+check("chat-room 群聊顶部常驻渲染群信息区",
+  chatRoom.includes('className="chat-group-info"'));
+check("chat-room 渲染群待办列表（含空态）",
+  chatRoom.includes("chat-group-todos-list") && chatRoom.includes("暂无群待办"));
+check("chat-room 公告栏常驻（无公告显示空态）",
+  chatRoom.includes("暂无群公告"));
+const cssFile = ROOT + "styles/chat.css";
+check("chat.css 有群待办横幅样式",
+  existsSync(cssFile) && readFileSync(cssFile, "utf8").includes(".chat-group-todos {"));
+
 console.log("");
 if (failed === 0) {
   console.log("ALL PASS — 建群/解散/群主全量权限关键接线确认完成。");

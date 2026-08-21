@@ -5640,10 +5640,32 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 className="chat-plugin-header chat-room-main-pane"
             />
 
-            {session.isGroup && session.groupAnnouncement ? (
-                <div className="chat-group-announcement">
-                    <span className="chat-group-announcement-tag">群公告</span>
-                    <span className="chat-group-announcement-text">{session.groupAnnouncement}</span>
+            {session.isGroup ? (
+                <div className="chat-group-info">
+                    <div className="chat-group-announcement">
+                        <span className="chat-group-announcement-tag">群公告</span>
+                        <span className="chat-group-announcement-text">
+                            {session.groupAnnouncement || "暂无群公告"}
+                        </span>
+                    </div>
+                    <div className="chat-group-todos">
+                        <span className="chat-group-todos-tag">群待办</span>
+                        {session.groupTodos && session.groupTodos.length > 0 ? (
+                            <ul className="chat-group-todos-list">
+                                {session.groupTodos.map((todo) => (
+                                    <li
+                                        key={todo.id}
+                                        className={`chat-group-todo-item${todo.done ? " done" : ""}`}
+                                    >
+                                        <span className="chat-group-todo-check">{todo.done ? "✓" : "○"}</span>
+                                        <span className="chat-group-todo-text">{todo.text}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <span className="chat-group-todos-empty">暂无群待办</span>
+                        )}
+                    </div>
                 </div>
             ) : null}
 
