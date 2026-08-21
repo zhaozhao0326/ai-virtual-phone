@@ -2426,6 +2426,64 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     /**
+     * 1:1 私聊里角色管理自己所在的群（群聊场景走 applyAIGroupAdminAction）。
+     * 私聊会话本身 isGroup=false，群管理标签会被上面那个函数直接丢弃；
+     * 这里改为：找到该角色作为群主/管理员所在、最近活跃的未解散群，对其执行动作。
+     */
+    const applyAIOneToOneGroupAdminAction = (actorCharacterId: string, data: ChatMessage["mediaData"]) => {
+        if (!data?.adminAction) return null;
+        const action = data.adminAction as GroupAdminAction;
+        const userN = userIdentity?.name || "用户";
+        const sessions = loadChatSessions();
+        const targetGroup = sessions
+            .filter(s => s.isGroup && !s.dissolved && (s.participantIds || []).includes(actorCharacterId))
+            .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""))
+            .find(s => {
+                const role = getGroupRole(s, actorCharacterId);
+                return role === "owner" || role === "admin";
+            });
+        if (!targetGroup) return null;
+        const actorKey = resolveGroupMemberKeyByName(targetGroup, data.adminActorName || "", userN);
+        if (!actorKey || actorKey !== actorCharacterId) return null;
+        const targetKey = action === "dissolve"
+            ? GROUP_SELF_KEY
+            : (action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo" || action === "leave_group")
+                ? actorKey
+                : resolveGroupMemberKeyByName(targetGroup, data.adminTargetName || "", userN, { includeOutsiders: action === "invite" });
+        if (!targetKey) return null;
+        if (!canGroupAdminAct(targetGroup, actorKey, action, targetKey)) return null;
+        applyGroupAdminAction(targetGroup, action, actorKey, targetKey, data.adminMuteMinutes, data.newGroupName, data.newAnnouncement, data.todoText);
+        // 持久化 + 通知会话列表刷新
+        const freshSessions = loadChatSessions();
+        const idx = freshSessions.findIndex(s => s.id === targetGroup.id);
+        if (idx >= 0) {
+            freshSessions[idx] = targetGroup;
+            saveChatSessions(freshSessions);
+        }
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: targetGroup.id } }));
+            window.dispatchEvent(new CustomEvent("weixin-messages-updated", { detail: { sessionId: targetGroup.id } }));
+        }
+        const actorDisplay = getGroupMemberDisplayName(actorKey, userN);
+        const targetDisplay = action === "rename"
+            ? (data.newGroupName || targetGroup.groupName || "")
+            : (data.newAnnouncement || data.todoText || targetGroup.groupName || "");
+        return {
+            content: buildGroupAdminNoticeText(action, actorDisplay, targetDisplay, data.adminMuteMinutes),
+            mediaData: {
+                adminAction: action,
+                adminActorName: actorDisplay,
+                adminTargetName: targetDisplay,
+                ...(action === "mute" ? { adminMuteMinutes: data.adminMuteMinutes || 10 } : {}),
+                ...(action === "rename" ? { newGroupName: data.newGroupName } : {}),
+                ...(action === "set_announcement" ? { newAnnouncement: data.newAnnouncement } : {}),
+                ...(action === "add_todo" || action === "complete_todo" || action === "remove_todo" ? { todoText: data.todoText } : {}),
+            } as ChatMessage["mediaData"],
+            senderName: actorDisplay,
+        };
+    };
+
+    /**
      * 角色主动发好友申请（1:1 与群聊通用）。
      * 拦截 AI 回复里的 [加好友] 类标签后调用：已是好友/已有待处理申请则跳过去重；
      * 否则写入本地待处理申请、刷新通讯录红点、弹 toast、在聊天里留一条系统消息。
@@ -2562,7 +2620,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         }
                         continue;
                     }
-                    const applied = applyAIGroupAdminAction(r.characterId, part.mediaData);
+                    const applied = session.isGroup
+                        ? applyAIGroupAdminAction(r.characterId, part.mediaData)
+                        : applyAIOneToOneGroupAdminAction(r.characterId, part.mediaData);
                     if (!applied) continue; // 无权限/名字不合法：整个标签静默丢弃
                     isFirst = false;
                     // 带上段落自己的 batch 元数据（与拍一拍同款）：

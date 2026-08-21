@@ -46,7 +46,7 @@ check("rich-message-parser 有 dissolve 标签解析",
   parser.includes('adminAction: "dissolve"'));
 check("chat-room 对 dissolve 调用 applyAIGroupAdminAction",
   chatRoom.includes('if (part.mediaData?.adminAction === "create_group")') &&
-  chatRoom.includes('const applied = applyAIGroupAdminAction(r.characterId, part.mediaData)'));
+  chatRoom.includes("applyAIGroupAdminAction(r.characterId, part.mediaData)"));
 check("applyAIGroupAdminAction 对 dissolve 有分支",
   chatRoom.includes('action === "dissolve"'));
 
@@ -106,6 +106,11 @@ check("builtin-preset 教了群主拉回（邀请已退群角色）",
   preset.includes("重新拉回来") && preset.includes("邀请B加入了群聊"));
 check("chat-room 对 leave_group 按本人定位目标",
   chatRoom.includes('action === "leave_group"'));
+check("chat-room 1:1 私聊也能执行群管理（找角色所在群）",
+  chatRoom.includes("applyAIOneToOneGroupAdminAction") &&
+  chatRoom.includes("? applyAIGroupAdminAction(r.characterId, part.mediaData)"));
+check("builtin-preset 1:1 提示词教了管理群格式",
+  preset.includes("管理自己所在的群") && preset.includes("[A设置了群公告：公告内容]"));
 
 // ── 聊天背景透明度 ──
 const storageFile = ROOT + "lib/chat-storage.ts";
