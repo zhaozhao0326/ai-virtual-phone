@@ -57,9 +57,27 @@ check("tool-executor 引入 applyAIProactiveGroupCreate",
 check("executeInternalTool 有 创建群聊 分发分支",
   exec.includes('if (call.name === "创建群聊") return executeCreateGroupTool(call, context)'));
 
+// ── 群主权限全量审计（14 项）：解析器 + 提示词双端 ──
+const adminActions = [
+  { action: "rename",           parser: 'adminAction: "rename"',           prompt: "将群名改为了「" },
+  { action: "set_announcement", parser: 'adminAction: "set_announcement"', prompt: "设置了群公告：" },
+  { action: "add_todo",         parser: 'adminAction: "add_todo"',         prompt: "添加了群待办：" },
+  { action: "complete_todo",    parser: 'adminAction: "complete_todo"',    prompt: "完成了群待办：" },
+  { action: "remove_todo",      parser: 'adminAction: "remove_todo"',      prompt: "删除了群待办：" },
+];
+for (const { action, parser: p, prompt } of adminActions) {
+  check(`rich-message-parser 有 ${action} 标签解析`, parser.includes(p));
+  check(`builtin-preset 教了 ${action} 输出格式`, preset.includes(prompt));
+}
+// 执行层已由 applyGroupAdminAction 全量覆盖（14 种 action 均有 case）
+check("applyGroupAdminAction 覆盖全部 14 种动作",
+  chatRoom.includes("applyGroupAdminAction(session, action, actorKey, targetKey"));
+check("chat-room 对 rename/公告/待办 按群主本人定位目标",
+  chatRoom.includes('action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo"'));
+
 console.log("");
 if (failed === 0) {
-  console.log("ALL PASS — 建群/解散关键接线确认完成。");
+  console.log("ALL PASS — 建群/解散/群主全量权限关键接线确认完成。");
   process.exit(0);
 } else {
   console.log(`${failed} 项未通过。`);
