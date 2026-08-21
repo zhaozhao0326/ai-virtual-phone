@@ -1285,6 +1285,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
     const [bgImageResolved, setBgImageResolved] = useState<string | null>(null);
     const [bgLoading, setBgLoading] = useState(!!session.backgroundImage);
+    const [groupInfoOpen, setGroupInfoOpen] = useState(false); // 群信息区（公告/待办）折叠态
 
     const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -5643,27 +5644,47 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             />
 
             {session.isGroup ? (
-                <div className="chat-group-info">
-                    <div className="chat-group-info-row">
-                        <span className="chat-group-info-tag announce">公告</span>
-                        <span className="chat-group-info-text">
-                            {session.groupAnnouncement || "暂无群公告"}
-                        </span>
-                    </div>
-                    {session.groupTodos && session.groupTodos.length > 0 ? (
-                        <div className="chat-group-info-row">
-                            <span className="chat-group-info-tag todo">待办</span>
-                            <ul className="chat-group-todos-list">
-                                {session.groupTodos.map((todo) => (
-                                    <li
-                                        key={todo.id}
-                                        className={`chat-group-todo-item${todo.done ? " done" : ""}`}
-                                    >
-                                        <span className="chat-group-todo-check">{todo.done ? "✓" : "○"}</span>
-                                        <span className="chat-group-todo-text">{todo.text}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                <div className={`chat-group-info${groupInfoOpen ? " open" : ""}`}>
+                    <button
+                        type="button"
+                        className="chat-group-info-toggle"
+                        onClick={() => setGroupInfoOpen((o) => !o)}
+                        aria-expanded={groupInfoOpen}
+                    >
+                        <span className="chat-group-info-toggle-title">📋 群信息</span>
+                        {(() => {
+                            const pending = (session.groupTodos || []).filter((t) => !t.done).length;
+                            if (!groupInfoOpen && (session.groupAnnouncement || pending > 0)) {
+                                return <span className="chat-group-info-badge">{pending > 0 ? `${pending} 项待办` : "有公告"}</span>;
+                            }
+                            return null;
+                        })()}
+                        <span className="chat-group-info-toggle-arrow">{groupInfoOpen ? "▾" : "▸"}</span>
+                    </button>
+                    {groupInfoOpen ? (
+                        <div className="chat-group-info-body">
+                            <div className="chat-group-info-row">
+                                <span className="chat-group-info-tag announce">公告</span>
+                                <span className="chat-group-info-text">
+                                    {session.groupAnnouncement || "暂无群公告"}
+                                </span>
+                            </div>
+                            {session.groupTodos && session.groupTodos.length > 0 ? (
+                                <div className="chat-group-info-row">
+                                    <span className="chat-group-info-tag todo">待办</span>
+                                    <ul className="chat-group-todos-list">
+                                        {session.groupTodos.map((todo) => (
+                                            <li
+                                                key={todo.id}
+                                                className={`chat-group-todo-item${todo.done ? " done" : ""}`}
+                                            >
+                                                <span className="chat-group-todo-check">{todo.done ? "✓" : "○"}</span>
+                                                <span className="chat-group-todo-text">{todo.text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : null}
                         </div>
                     ) : null}
                 </div>

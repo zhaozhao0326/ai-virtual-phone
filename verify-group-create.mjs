@@ -75,17 +75,17 @@ check("applyGroupAdminAction 覆盖全部 14 种动作",
 check("chat-room 对 rename/公告/待办 按群主本人定位目标",
   chatRoom.includes('action === "rename" || action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo"'));
 
-// ── UI 展示层：群信息区常驻渲染公告 + 待办 ──
-check("chat-room 群聊顶部常驻渲染群信息区",
-  chatRoom.includes('className="chat-group-info"'));
-check("chat-room 渲染群待办列表（有待办时）",
-  chatRoom.includes("chat-group-todos-list") && chatRoom.includes("chat-group-todo-item"));
-check("chat-room 公告栏常驻（无公告显示空态）",
-  chatRoom.includes("暂无群公告"));
+// ── UI 展示层：群信息区可折叠卡片 ──
+check("chat-room 群聊顶部有群信息折叠卡片",
+  chatRoom.includes('chat-group-info${') && chatRoom.includes("chat-group-info-toggle"));
+check("chat-room 折叠态显示摘要徽标（有公告/待办时）",
+  chatRoom.includes("chat-group-info-badge") && chatRoom.includes("有公告"));
+check("chat-room 展开渲染公告行（空态）与待办列表",
+  chatRoom.includes("暂无群公告") && chatRoom.includes("chat-group-todos-list") && chatRoom.includes("chat-group-todo-item"));
 const cssFile = ROOT + "styles/chat.css";
 const css = existsSync(cssFile) ? readFileSync(cssFile, "utf8") : "";
-check("chat.css 有群信息单卡片样式",
-  css.includes(".chat-group-info {") && css.includes(".chat-group-info-tag.announce"));
+check("chat.css 有群信息折叠卡片样式",
+  css.includes(".chat-group-info {") && css.includes(".chat-group-info-toggle {"));
 
 // ── 聊天背景透明度 ──
 const storageFile = ROOT + "lib/chat-storage.ts";

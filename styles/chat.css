@@ -7081,22 +7081,64 @@
   color: #16a34a;
 }
 
-/* 群信息区（公告 + 待办，单卡片常驻） */
+/* 群信息区（公告 + 待办，单卡片可折叠） */
 .chat-group-info {
   display: flex;
   flex-direction: column;
-  gap: 4px;
   margin: 6px 12px 0;
-  padding: 8px 12px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+.chat-group-info-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3a3a3a;
+  text-align: left;
+}
+.chat-group-info-toggle:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.chat-group-info-toggle-title {
+  flex: 1 1 auto;
+}
+.chat-group-info-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: #ff3b4f;
+  border-radius: 20px;
+  padding: 1px 8px;
+  line-height: 1.6;
+}
+.chat-group-info-toggle-arrow {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: #9a9a9a;
+}
+.chat-group-info-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 8px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.08);
 }
 .chat-group-info-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+  padding-top: 6px;
 }
 .chat-group-info-tag {
   flex: 0 0 auto;
