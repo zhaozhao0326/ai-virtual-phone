@@ -90,8 +90,10 @@ function normalizeMinimaxSpeed(speed: number | undefined): number {
 }
 
 // ── 按文本内容自动检测朗读语言 ──────────────────────
-// 粤语特征字：普通话几乎不用，命中即视为粤语原文（如"我而家好开心"）
-const CANTONESE_CHAR_RE = /[嘅咗唔喺喺睇哋俾嗰乜冇啲係傾攞啱噉噏谂氹]/;
+// ① 粤语专属字：普通话几乎不用，命中即视为粤语
+const CANTONESE_CHAR_RE = /[嘅咗唔喺睇哋俾嗰乜冇啲係傾攞啱噉噏谂氹嘢哂啫喇嚟咩畀埋晒搵諗瞓嬲攰冧啖㗎噃喎啐]/;
+// ② 粤语常用口语词：很多粤语词用字与普通话相同（而家/点解/几时/边度），单查字会漏，加词表兜底
+const CANTONESE_WORD_RE = /(而家|点解|几时|边度|点样|咁样|唔该|唔使|睇下|食咗|做紧|倾偈|吹水|中意|钟意|好嘢|多谢晒|瞓觉|返工|返学|喺度|唔系|唔係|系咩|係咁|啱啱|好正|好攰|好嬲|乜嘢|咩嘢|做乜|听日|琴日|寻日|饮茶|犀利|咁先|咁啱|好耐|一齐|得闲|识得|咩呀|係咩|点讲|讲乜|睇戏|好劲|好犀利|返屋企|早晨|食饭|搭车|巴士|的士|咁啦|喺边|唔好|好开心|好唔开心)/;
 const JAPANESE_RE = /[\u3040-\u30ff]/;
 const KOREAN_RE = /[\uac00-\ud7af]/;
 const LATIN_RUN_RE = /[a-zA-Z]{4,}/;
@@ -99,12 +101,12 @@ const HAS_CJK_RE = /[\u3400-\u9fff]/;
 
 /**
  * 根据待朗读文本判断 Minimax language_boost。
- * 返回值优先级：粤语 > 日语 > 韩语 > 英文 > 普通话(Chinese)。
+ * 优先级：粤语(专属字/口语词) > 日语 > 韩语 > 英文 > 普通话(Chinese)。
  * 这样角色混说粤语/普通话时，语音会跟随文本语言，而不是被配置固定成一种。
  */
 function detectMinimaxLanguageBoost(text: string): string | undefined {
     if (!text) return undefined;
-    if (CANTONESE_CHAR_RE.test(text)) return "Chinese,Yue";
+    if (CANTONESE_CHAR_RE.test(text) || CANTONESE_WORD_RE.test(text)) return "Chinese,Yue";
     if (JAPANESE_RE.test(text)) return "Japanese";
     if (KOREAN_RE.test(text)) return "Korean";
     if (LATIN_RUN_RE.test(text) && !HAS_CJK_RE.test(text)) return "English";
