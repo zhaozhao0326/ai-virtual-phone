@@ -89,28 +89,44 @@ function normalizeMinimaxSpeed(speed: number | undefined): number {
     return Math.min(MINIMAX_SPEED_MAX, Math.max(MINIMAX_SPEED_MIN, speed));
 }
 
-// ── 按文本内容自动检测朗读语言 ──────────────────────
+// ── 按文本内容自动检测朗读语言（保守策略） ──────────
 // ① 粤语专属字：普通话几乎不用，命中即视为粤语
 const CANTONESE_CHAR_RE = /[嘅咗唔喺睇哋俾嗰乜冇啲係傾攞啱噉噏谂氹嘢哂啫喇嚟咩畀埋晒搵諗瞓嬲攰冧啖㗎噃喎啐]/;
 // ② 粤语常用口语词：很多粤语词用字与普通话相同（而家/点解/几时/边度），单查字会漏，加词表兜底
 const CANTONESE_WORD_RE = /(而家|点解|几时|边度|点样|咁样|唔该|唔使|睇下|食咗|做紧|倾偈|吹水|中意|钟意|好嘢|多谢晒|瞓觉|返工|返学|喺度|唔系|唔係|系咩|係咁|啱啱|好正|好攰|好嬲|乜嘢|咩嘢|做乜|听日|琴日|寻日|饮茶|犀利|咁先|咁啱|好耐|一齐|得闲|识得|咩呀|係咩|点讲|讲乜|睇戏|好劲|好犀利|返屋企|早晨|食饭|搭车|巴士|的士|咁啦|喺边|唔好|好开心|好唔开心)/;
+// ③ 繁体字：粤语/港式中文常用，简体几乎不用（简繁不同码位）。命中即视为粤语语境。
+//    覆盖「別磨蹭，宝贝」「寶貝」「車」「樓」「東」这类用字混杂但口吻是粤语的情况。
+const TRADITIONAL_CHAR_RE = /[別樓車灣門問時語華東區國風龍見聽說讀寫長個裡後來給還這貝寶實頭馬鳳魚學業網線電視讓認計劃親終點話體關開動員議應當際驗現質]/;
 const JAPANESE_RE = /[\u3040-\u30ff]/;
 const KOREAN_RE = /[\uac00-\ud7af]/;
 const LATIN_RUN_RE = /[a-zA-Z]{4,}/;
 const HAS_CJK_RE = /[\u3400-\u9fff]/;
 
 /**
- * 根据待朗读文本判断 Minimax language_boost。
- * 优先级：粤语(专属字/口语词) > 日语 > 韩语 > 英文 > 普通话(Chinese)。
- * 这样角色混说粤语/普通话时，语音会跟随文本语言，而不是被配置固定成一种。
+ * 根据待朗读文本判断 Minimax language_boost（保守策略）。
+ *
+ * 关键设计：**只在能明确判定为粤语/外语时才覆盖配置；判定不了的，回退到方案/角色配置的 languageBoost**。
+ *   - 粤语角色说粤语 → 检测到粤语特征 → 用 Chinese,Yue
+ *   - 粤语角色说普通话（无繁体/无粤语字） → 交给方案/角色配置（粤语） → 不再硬切普通话
+ *   - 粤语角色说「別磨蹭宝贝」（繁体混杂）→ 命中繁体 → 用 Chinese,Yue
+ *   - 英文/日文/韩文角色 → 各自语言
+ *
+ * 这样做：
+ *   - 保留用户手动配置的粤语音色 + Chinese,Yue boost 的"原配"组合，避免声音变怪
+ *   - 修复"別磨蹭宝贝"这种繁体混杂句被当成普通话读的问题
+ *   - 牺牲的："粤语角色说普通话时语音切到普通话" —— 用户可手动在方案里选普通话来覆盖
  */
 function detectMinimaxLanguageBoost(text: string): string | undefined {
     if (!text) return undefined;
-    if (CANTONESE_CHAR_RE.test(text) || CANTONESE_WORD_RE.test(text)) return "Chinese,Yue";
+    // 粤语特征（专属字/口语词/繁体字）任一命中即按粤语
+    if (CANTONESE_CHAR_RE.test(text) || CANTONESE_WORD_RE.test(text) || TRADITIONAL_CHAR_RE.test(text)) {
+        return "Chinese,Yue";
+    }
+    // 外语明确特征
     if (JAPANESE_RE.test(text)) return "Japanese";
     if (KOREAN_RE.test(text)) return "Korean";
     if (LATIN_RUN_RE.test(text) && !HAS_CJK_RE.test(text)) return "English";
-    if (HAS_CJK_RE.test(text)) return "Chinese";
+    // 含中文但无粤语/外语特征 → 交给方案/角色配置决定（不再硬切普通话）
     return undefined;
 }
 
