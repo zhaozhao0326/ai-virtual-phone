@@ -78,13 +78,28 @@ check("chat-room 对 rename/公告/待办 按群主本人定位目标",
 // ── UI 展示层：群信息区常驻渲染公告 + 待办 ──
 check("chat-room 群聊顶部常驻渲染群信息区",
   chatRoom.includes('className="chat-group-info"'));
-check("chat-room 渲染群待办列表（含空态）",
-  chatRoom.includes("chat-group-todos-list") && chatRoom.includes("暂无群待办"));
+check("chat-room 渲染群待办列表（有待办时）",
+  chatRoom.includes("chat-group-todos-list") && chatRoom.includes("chat-group-todo-item"));
 check("chat-room 公告栏常驻（无公告显示空态）",
   chatRoom.includes("暂无群公告"));
 const cssFile = ROOT + "styles/chat.css";
-check("chat.css 有群待办横幅样式",
-  existsSync(cssFile) && readFileSync(cssFile, "utf8").includes(".chat-group-todos {"));
+const css = existsSync(cssFile) ? readFileSync(cssFile, "utf8") : "";
+check("chat.css 有群信息单卡片样式",
+  css.includes(".chat-group-info {") && css.includes(".chat-group-info-tag.announce"));
+
+// ── 聊天背景透明度 ──
+const storageFile = ROOT + "lib/chat-storage.ts";
+const settingsFile = ROOT + "components/chat/chat-settings-panel.tsx";
+const storage = existsSync(storageFile) ? readFileSync(storageFile, "utf8") : "";
+const settings = existsSync(settingsFile) ? readFileSync(settingsFile, "utf8") : "";
+check("ChatSession 有 backgroundOpacity 字段",
+  storage.includes("backgroundOpacity?: number"));
+check("chat-room 用白色蒙层实现背景透明度",
+  chatRoom.includes("linear-gradient(rgba(255, 255, 255,"));
+check("设置面板有背景透明度滑条",
+  settings.includes("menu-slider") && settings.includes("背景透明度"));
+check("chat.css 有滑条样式",
+  css.includes(".menu-slider {"));
 
 console.log("");
 if (failed === 0) {

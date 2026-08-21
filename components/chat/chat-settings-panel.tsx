@@ -291,6 +291,7 @@ export function ChatSettingsPanel({
     offlineHistoryBusy = false,
 }: ChatSettingsPanelProps) {
     const [backgroundImage, setBackgroundImage] = useState<string>(session.backgroundImage || "");
+    const [backgroundOpacity, setBackgroundOpacity] = useState<number>(typeof session.backgroundOpacity === "number" ? session.backgroundOpacity : 1);
     const [alias, setAlias] = useState<string>(session.alias || "");
     const [videoBackground, setVideoBackground] = useState<string>(session.videoBackground || "");
     const [voiceBackground, setVoiceBackground] = useState<string>(session.voiceBackground || "");
@@ -1101,6 +1102,30 @@ export function ChatSettingsPanel({
                         </div>
                         <input type="file" accept="image/*" onChange={e => handleImageUpload(e, setBackgroundImage, "backgroundImage")} className="hidden" />
                     </label>
+                    {backgroundImage ? (
+                        <div className="menu-item" style={{ paddingLeft: 72 }}>
+                            <div className="menu-label-group flex-1">
+                                <span className="menu-label">背景透明度</span>
+                                <div className="menu-slider-row">
+                                    <input
+                                        type="range"
+                                        min={15}
+                                        max={100}
+                                        step={5}
+                                        value={Math.round(backgroundOpacity * 100)}
+                                        onChange={(e) => {
+                                            const v = Number(e.target.value) / 100;
+                                            setBackgroundOpacity(v);
+                                            updateSession({ backgroundOpacity: v });
+                                        }}
+                                        className="menu-slider"
+                                        aria-label="聊天背景透明度"
+                                    />
+                                    <span className="menu-desc">{Math.round(backgroundOpacity * 100)}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
                     {session.isGroup ? (
                         <>
                             <div className="menu-item" style={{ cursor: "default" }}>

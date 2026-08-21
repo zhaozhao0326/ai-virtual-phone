@@ -7081,67 +7081,51 @@
   color: #16a34a;
 }
 
-/* 群公告横幅（群聊顶部） */
-.chat-group-announcement {
+/* 群信息区（公告 + 待办，单卡片常驻） */
+.chat-group-info {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   margin: 6px 12px 0;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(255, 59, 79, 0.08);
-  border: 1px solid rgba(255, 59, 79, 0.2);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
-.chat-group-announcement-tag {
+.chat-group-info-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.chat-group-info-tag {
   flex: 0 0 auto;
   font-size: 11px;
   font-weight: 700;
   color: #fff;
-  background: #ff3b4f;
   border-radius: 6px;
   padding: 2px 6px;
   line-height: 1.4;
+  margin-top: 1px;
 }
-.chat-group-announcement-text {
+.chat-group-info-tag.announce {
+  background: #ff3b4f;
+}
+.chat-group-info-tag.todo {
+  background: #ff9500;
+}
+.chat-group-info-text {
+  flex: 1 1 auto;
   font-size: 13px;
   color: #3a3a3a;
   line-height: 1.5;
   word-break: break-word;
 }
-
-/* 群信息区（公告 + 待办，常驻） */
-.chat-group-info {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-/* 群待办横幅（群聊顶部，常驻） */
-.chat-group-todos {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 0 12px 6px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: rgba(255, 149, 0, 0.07);
-  border: 1px solid rgba(255, 149, 0, 0.2);
-}
-.chat-group-todos-tag {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  background: #ff9500;
-  border-radius: 6px;
-  padding: 2px 6px;
-  line-height: 1.4;
-}
 .chat-group-todos-list {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -7169,9 +7153,44 @@
 .chat-group-todo-text {
   word-break: break-word;
 }
-.chat-group-todos-empty {
-  font-size: 13px;
-  color: #9a9a9a;
+
+/* 设置面板背景透明度滑条 */
+.menu-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  width: 100%;
+}
+.menu-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  outline: none;
+}
+.menu-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff3b4f;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.menu-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ff3b4f;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
 }
 
 /* 群设置里的公告 / 待办编辑器 */

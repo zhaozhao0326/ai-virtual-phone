@@ -5579,9 +5579,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     }
 
+    const bgOpacity = typeof session.backgroundOpacity === "number" ? session.backgroundOpacity : 1;
+    const bgMaskAlpha = Math.min(0.95, Math.max(0, 1 - bgOpacity)).toFixed(3);
     const chatRoomBackgroundStyle = bgImageResolved ? {
         backgroundColor: "#fff",
-        backgroundImage: `url(${bgImageResolved})`,
+        backgroundImage: `linear-gradient(rgba(255, 255, 255, ${bgMaskAlpha}), rgba(255, 255, 255, ${bgMaskAlpha})), url(${bgImageResolved})`,
         backgroundPosition: "center",
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
@@ -5642,15 +5644,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
             {session.isGroup ? (
                 <div className="chat-group-info">
-                    <div className="chat-group-announcement">
-                        <span className="chat-group-announcement-tag">群公告</span>
-                        <span className="chat-group-announcement-text">
+                    <div className="chat-group-info-row">
+                        <span className="chat-group-info-tag announce">公告</span>
+                        <span className="chat-group-info-text">
                             {session.groupAnnouncement || "暂无群公告"}
                         </span>
                     </div>
-                    <div className="chat-group-todos">
-                        <span className="chat-group-todos-tag">群待办</span>
-                        {session.groupTodos && session.groupTodos.length > 0 ? (
+                    {session.groupTodos && session.groupTodos.length > 0 ? (
+                        <div className="chat-group-info-row">
+                            <span className="chat-group-info-tag todo">待办</span>
                             <ul className="chat-group-todos-list">
                                 {session.groupTodos.map((todo) => (
                                     <li
@@ -5662,10 +5664,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     </li>
                                 ))}
                             </ul>
-                        ) : (
-                            <span className="chat-group-todos-empty">暂无群待办</span>
-                        )}
-                    </div>
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
 

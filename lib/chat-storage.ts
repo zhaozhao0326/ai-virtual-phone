@@ -42,6 +42,7 @@ export type ChatSession = {
     updatedAt: string; // ISO date
     isPinned: boolean;
     backgroundImage?: string; // Add support for custom background
+    backgroundOpacity?: number; // 聊天背景不透明度 0-1（默认 1=不蒙层；调低时叠加白色蒙层保证文字可读）
     autoReplied?: boolean; // Whether the initial greeting auto-reply has been triggered
     alias?: string;
     videoBackground?: string;
