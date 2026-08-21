@@ -98,6 +98,12 @@ check("applyGroupAdminAction 有 leave_group 执行分支",
   admin.includes('case "leave_group"') && admin.includes('退出了群聊'));
 check("群主退群自动顺延群主给剩余成员",
   admin.includes('群主位置自动顺延') && admin.includes("updates.groupOwnerId = remaining[0]"));
+check("rich-message-parser 公告正则放宽（兼容修改了/改了）",
+  parser.includes("(?:设置了?|修改了?|改了?|更新了?)群公告"));
+check("rich-message-parser 待办正则放宽（兼容修改了/改了）",
+  parser.includes("(?:添加了?|修改了?|改了?|更新了?)群待办"));
+check("rich-message-parser 改名正则放宽（兼容修改了群名为）",
+  parser.includes("将群名改为了?|修改了?群名为?"));
 check("rich-message-parser 有退群标签解析",
   parser.includes('adminAction: "leave_group"'));
 check("builtin-preset 教了退群格式",

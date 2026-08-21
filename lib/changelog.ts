@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.6.1";
+export const APP_VERSION = "1.6.2";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.2",
+    date: "2026-08-21",
+    title: "修复：群公告/群待办的标签识别（兼容「修改了」等口语措辞）",
+    highlights: [
+      "此前模型常用「[A修改了群公告：xxx]」「[A修改了群待办：xxx]」输出，但解析器只认「设置了/添加了」，导致标签被当普通文字显示、群里公告和待办一直是空的",
+      "解析器现已兼容「设置了 / 修改了 / 改了 / 更新了」等多种措辞，改名/群待办完成/删除同理放宽",
+      "提示词同步加入「或 修改了」示例，让模型知道两种写法都可",
+    ],
+  },
   {
     version: "1.6.1",
     date: "2026-08-21",
