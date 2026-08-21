@@ -10,6 +10,41 @@ function errorToMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+// 上游因「参考图 + prompt 组合」返回的安全/不适合生成类错误（OpenAI invalid_request_error 等）。
+// 这类错误去掉参考图（锁脸图/参与者头像）后通常能正常生成，故触发一次自动降级重试。
+// 仅当本次确实传入了参考图时才降级；缺参数、并发锁、网络等其他错误不在降级范围。
+function isReferenceImageRejection(message: string): boolean {
+    return /invalid_request_error|安全政策|不适合.*?图像|safety system|content[ _-]?policy|moderat|rejected as a result|暴.*内容/i.test(message);
+}
+
+type ImageGenResult = NonNullable<Awaited<ReturnType<typeof generateImageFromConfiguredApi>>>;
+
+// 生图 + 参考图降级兜底：带参考图请求被上游安全策略拒绝时，自动重试一次不带参考图。
+// 这样「食物/风景」类 prompt 在 participants 头像被误判为冲突时也能正常出图，而非直接 400。
+async function generateImageWithReferenceFallback(
+    args: Parameters<typeof generateImageFromConfiguredApi>[0],
+): Promise<ImageGenResult> {
+    try {
+        const g = await generateImageFromConfiguredApi(args);
+        if (!g) throw new Error("生图配置未启用或不完整");
+        return g;
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const hadRefs = (args.referenceImages?.length ?? 0) > 0 || args.useReferenceImage === true;
+        if (hadRefs && isReferenceImageRejection(msg)) {
+            console.warn("[IMG-GEN] 带参考图被上游安全策略拒绝，自动降级为无参考图重试", {
+                provider: args.settings?.provider,
+                message: msg.slice(0, 140),
+            });
+            args.onStage?.("参考图被安全政策拦截，自动改用无参考图方式重试…");
+            const g2 = await generateImageFromConfiguredApi({ ...args, referenceImages: undefined, useReferenceImage: false });
+            if (!g2) throw new Error("生图配置未启用或不完整");
+            return g2;
+        }
+        throw error;
+    }
+}
+
 // 从角色人设弱提取性别（仅当未填写「生图形象」时的回退，命中即加入描述）
 function guessGenderFromPersona(persona: string): string | null {
     if (/女|她|姐|妹|妻|母|公主|女王|lady|girl|woman|female/i.test(persona)) return "女生";
@@ -181,7 +216,7 @@ export async function generateAndApplyChatGeneratedImage(
             useReferenceImage: message.mediaData?.useReferenceImage === true,
             provider: settings.provider,
         });
-        const generated = await generateImageFromConfiguredApi({
+        const generated = await generateImageWithReferenceFallback({
             description,
             characterId,
             participantAppearance,
@@ -265,7 +300,7 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
 
     try {
         const settings = { ...loadImageGenerationSettings(), enabled: true };
-        const generated = await generateImageFromConfiguredApi({
+        const generated = await generateImageWithReferenceFallback({
             description,
             characterId: post.authorType === "character" ? post.authorId : undefined,
             participantAppearance: momentAppearance || undefined,
