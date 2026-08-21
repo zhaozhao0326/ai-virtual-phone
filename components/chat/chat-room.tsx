@@ -2394,7 +2394,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         if (!session.isGroup || !data?.adminAction) return null;
         const action = data.adminAction as GroupAdminAction;
         const userN = userIdentity?.name || "用户";
-        const actorKey = resolveGroupMemberKeyByName(session, data.adminActorName || "", userN);
+        let actorKey = resolveGroupMemberKeyByName(session, data.adminActorName || "", userN);
+        // 兼容无角色名前缀的标签（模型漏写名字）：默认用消息发送者本人作为执行人
+        if (!actorKey && (session.participantIds || []).includes(actorCharacterId)) {
+            actorKey = actorCharacterId;
+        }
         // 执行人必须是输出该标签的角色本人
         if (!actorKey || actorKey !== actorCharacterId) return null;
         // 改群名是对群本身操作，执行人即目标，无需解析成员名
@@ -2443,7 +2447,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 return role === "owner" || role === "admin";
             });
         if (!targetGroup) return null;
-        const actorKey = resolveGroupMemberKeyByName(targetGroup, data.adminActorName || "", userN);
+        let actorKey = resolveGroupMemberKeyByName(targetGroup, data.adminActorName || "", userN);
+        // 兼容无角色名前缀的标签：默认用消息发送者本人作为执行人
+        if (!actorKey && (targetGroup.participantIds || []).includes(actorCharacterId)) {
+            actorKey = actorCharacterId;
+        }
         if (!actorKey || actorKey !== actorCharacterId) return null;
         const targetKey = action === "dissolve"
             ? GROUP_SELF_KEY

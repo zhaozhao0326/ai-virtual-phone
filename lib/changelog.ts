@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.6.2";
+export const APP_VERSION = "1.6.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.3",
+    date: "2026-08-21",
+    title: "修复：群公告/群待办标签识别进一步放宽（无角色名前缀、动作可粘连）",
+    highlights: [
+      "此前角色输出「[群待办：xxx]」或「[陈文熙 修改了群待办：xxx]」时，因缺少角色名前缀或动作字粘连，标签被当普通文字显示，群里公告/待办一直为空",
+      "解析器现已兼容：角色名前缀可选、动作关键字（设置/添加/修改/改了/更新）可粘连也可带空格、冒号中英文均可",
+      "缺冒号或内容（如「[陈文熙 修改了群待办]」）仍会被丢弃，不会误触发",
+    ],
+  },
   {
     version: "1.6.2",
     date: "2026-08-21",

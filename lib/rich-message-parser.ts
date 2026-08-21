@@ -362,20 +362,24 @@ const RICH_PATTERNS: {
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim(), newGroupName: m[2]?.trim() } }),
     },
     {
-        regex: /\[([^\]：:]+?)(?:设置了?|修改了?|改了?|更新了?)群公告[：:]([^\]]+?)\]/,
-        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim(), newAnnouncement: m[2]?.trim() } }),
+        // 群公告：可选 [名字 + 空格]、可选 [动作 + 任意空格]、必选「群公告 + 冒号 + 内容」
+        regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:设置了?|修改了?|改了?|更新了?))?\s*群公告[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim() || "", newAnnouncement: m[2]?.trim() } }),
     },
     {
-        regex: /\[([^\]：:]+?)(?:添加了?|修改了?|改了?|更新了?)群待办[：:]([^\]]+?)\]/,
-        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() } }),
+        // 群待办（添加）：同上
+        regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:添加了?|修改了?|改了?|更新了?))?\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     {
-        regex: /\[([^\]：:]+?)(?:完成了?|修改了?|改了?)群待办[：:]([^\]]+?)\]/,
-        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() } }),
+        // 群待办（完成）：同上
+        regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:完成了?|修改了?|改了?))?\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     {
-        regex: /\[([^\]：:]+?)(?:删除了?|修改了?|改了?)群待办[：:]([^\]]+?)\]/,
-        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim(), todoText: m[2]?.trim() } }),
+        // 群待办（删除）：同上
+        regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:删除了?|修改了?|改了?))?\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     // 1:1 简单格式（兼容）
     {
