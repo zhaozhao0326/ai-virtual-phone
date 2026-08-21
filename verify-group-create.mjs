@@ -120,6 +120,8 @@ check("设置面板有背景透明度滑条",
   settings.includes("menu-slider") && settings.includes("背景透明度"));
 check("chat.css 有滑条样式",
   css.includes(".menu-slider {"));
+check("群设置面板有群公告/群待办区块",
+  settings.includes("群公告") && settings.includes("群待办") && settings.includes("chat-group-todos-list"));
 
 // ── 系统更新入口（更新日志可见性）──
 const phoneSettingsFile = ROOT + "components/phone-settings-app.tsx";

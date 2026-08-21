@@ -841,8 +841,39 @@ export function ChatSettingsPanel({
                     )}
                 </div>
 
-                {/* Group member management */}
+                {/* Group info + member management */}
                 {session.isGroup && (
+                    <>
+                    <div className="menu-group">
+                        <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                            <ChatInfoIcon icon={Pin} color={BINDING_ACCENTS.memory} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">群公告</span>
+                                <span className="menu-desc">{session.groupAnnouncement || "暂无群公告"}</span>
+                            </div>
+                        </div>
+                        <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                            <ChatInfoIcon icon={AlertCircle} color={BINDING_ACCENTS.voice} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">群待办</span>
+                                {session.groupTodos && session.groupTodos.length > 0 ? (
+                                    <ul className="chat-group-todos-list" style={{ marginTop: 6 }}>
+                                        {session.groupTodos.map((todo) => (
+                                            <li
+                                                key={todo.id}
+                                                className={`chat-group-todo-item${todo.done ? " done" : ""}`}
+                                            >
+                                                <span className="chat-group-todo-check">{todo.done ? "✓" : "○"}</span>
+                                                <span className="chat-group-todo-text">{todo.text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <span className="menu-desc">暂无群待办</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                     <div className="menu-group">
                         <div className="menu-item" style={{ cursor: "default" }}>
                             <ChatInfoIcon icon={Users} color={BINDING_ACCENTS.preset} />
@@ -915,6 +946,7 @@ export function ChatSettingsPanel({
                             </button>
                         )}
                     </div>
+                    </>
                 )}
 
                 {/* 状态栏（状态区）：原生开关 + 自定义契约/渲染。
