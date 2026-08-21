@@ -25,8 +25,18 @@ type ImageGenResult = NonNullable<Awaited<ReturnType<typeof generateImageFromCon
 export function momentDescriptionImpliesCharacter(description: string, authorName?: string): boolean {
     if (!description?.trim()) return false;
     const d = description.toLowerCase();
+
+    // 明确点名作者角色 → 人物场景
     if (authorName && d.includes(authorName.toLowerCase())) return true;
-    return /我|你|他|她|人物|人|角色|头像|自拍|合影|男生|女生|男孩|女孩|男子|女子|男人|女人|男|女/i.test(d);
+
+    // 明确排除人物/空场景：「空无一人」「无人」「没有人物」等。
+    // 这类 prompt 里即使有「人」字，语义也是不要人，必须优先排除，防止误判。
+    const explicitNoPerson = /无人|空无一人|没有人|没[有]?人|无人物|不含人|不要[出现画有]?人|别[画有]?人|空无一物|空镜|空景|空场|无人的/i;
+    if (explicitNoPerson.test(d)) return false;
+
+    // 人称代词、明确的人物名词或人物关系动作 → 人物场景
+    const personMarker = /我|你|他|她|我们|你们|他们|她们|人物|角色|头像|自拍|合影|合照|一起|搂着|抱着|牵着|对视|男生|女生|男孩|女孩|男子|女子|男人|女人|男性|女性|少男|少女|帅哥|美女|主角|人们|众人|人群/i;
+    return personMarker.test(d);
 }
 
 // 生图 + 参考图降级兜底：带参考图请求被上游安全策略拒绝时，自动重试一次不带参考图。
