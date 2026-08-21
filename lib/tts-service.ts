@@ -15,7 +15,14 @@ export function resolveVoiceConfig(characterId: string, appId?: ContentAppId): V
     if (!slot.voiceConfigId) return null;
 
     const configs = loadVoiceConfigs();
-    return configs.find(c => c.id === slot.voiceConfigId) || null;
+    const config = configs.find(c => c.id === slot.voiceConfigId) || null;
+    if (!config) return null;
+
+    // 角色级朗读语言覆盖：配置绑定里选了语言就用它（覆盖方案的 languageBoost），否则用方案默认
+    if (slot.voiceLanguageBoost !== undefined) {
+        return { ...config, languageBoost: slot.voiceLanguageBoost || config.languageBoost };
+    }
+    return config;
 }
 
 /**

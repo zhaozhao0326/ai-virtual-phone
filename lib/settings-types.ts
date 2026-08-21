@@ -349,6 +349,8 @@ export const CONTENT_APP_LABELS: Record<ContentAppId, string> = {
 export type BindingSlot = {
     apiConfigId?: string;
     voiceConfigId?: string;
+    /** 角色级朗读语言覆盖（如 Chinese,Yue 粤语 / English 英语 / Japanese 日语 / Korean 韩语）；未设则用语音方案默认 */
+    voiceLanguageBoost?: string;
     presetId?: string;
     userIdentityId?: string;
     worldBookIds?: string[];

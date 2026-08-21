@@ -906,6 +906,7 @@ export function resolveBinding(
     const resolved: BindingSlot = {
         apiConfigId: global.apiConfigId,
         voiceConfigId: global.voiceConfigId,
+        voiceLanguageBoost: global.voiceLanguageBoost,
         presetId: global.presetId,
         userIdentityId: global.userIdentityId,
         worldBookIds: global.worldBookIds ? [...global.worldBookIds] : undefined,
@@ -915,6 +916,7 @@ export function resolveBinding(
     const applySlot = (slot: BindingSlot): void => {
         if (slot.apiConfigId) resolved.apiConfigId = slot.apiConfigId;
         if (slot.voiceConfigId) resolved.voiceConfigId = slot.voiceConfigId;
+        if (slot.voiceLanguageBoost !== undefined) resolved.voiceLanguageBoost = slot.voiceLanguageBoost;
         if (slot.presetId) resolved.presetId = slot.presetId;
         if (slot.userIdentityId) resolved.userIdentityId = slot.userIdentityId;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) resolved.worldBookIds = [...slot.worldBookIds];

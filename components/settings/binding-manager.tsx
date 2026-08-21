@@ -64,7 +64,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 
 type Level = "global" | "character" | "app";
-type SingleBindingField = "apiConfigId" | "voiceConfigId" | "presetId" | "userIdentityId";
+type SingleBindingField = "apiConfigId" | "voiceConfigId" | "presetId" | "userIdentityId" | "voiceLanguageBoost";
 type MultiBindingField = "worldBookIds" | "regexIds";
 type BindingField = SingleBindingField | MultiBindingField;
 type AuxBindingField = "memorySummaryApiConfigId" | "embeddingApiConfigId" | "mascotApiConfigId" | "reasoningTranslateApiConfigId" | "qaApiConfigId";
@@ -72,6 +72,7 @@ type AuxBindingField = "memorySummaryApiConfigId" | "embeddingApiConfigId" | "ma
 const BINDING_FIELD_VISUALS: Record<BindingField, { icon: LucideIcon; color: string }> = {
     apiConfigId: { icon: Code2, color: BINDING_ACCENTS.api },
     voiceConfigId: { icon: Mic, color: BINDING_ACCENTS.voice },
+    voiceLanguageBoost: { icon: Languages, color: BINDING_ACCENTS.voice },
     presetId: { icon: Layers, color: BINDING_ACCENTS.preset },
     worldBookIds: { icon: BookOpen, color: BINDING_ACCENTS.worldBook },
     regexIds: { icon: Asterisk, color: BINDING_ACCENTS.regex },
@@ -85,6 +86,22 @@ const AUX_FIELD_VISUALS: Record<AuxBindingField, { icon: LucideIcon; color: stri
     reasoningTranslateApiConfigId: { icon: Languages, color: BINDING_ACCENTS.voice },
     qaApiConfigId: { icon: Wrench, color: BINDING_ACCENTS.api },
 };
+
+/** 朗读语言选项（值与 voice-settings.tsx 的 MINIMAX_LANGUAGE_OPTIONS 保持一致；Minimax language_boost 枚举） */
+const VOICE_LANGUAGE_OPTIONS: { id: string; name: string }[] = [
+    { id: "auto", name: "自动识别" },
+    { id: "Chinese", name: "普通话" },
+    { id: "Chinese,Yue", name: "粤语" },
+    { id: "English", name: "英语" },
+    { id: "Japanese", name: "日语" },
+    { id: "Korean", name: "韩语" },
+    { id: "French", name: "法语" },
+    { id: "German", name: "德语" },
+    { id: "Spanish", name: "西班牙语" },
+    { id: "Thai", name: "泰语" },
+    { id: "Vietnamese", name: "越南语" },
+    { id: "Indonesian", name: "印尼语" },
+];
 
 const APP_OVERRIDE_COLORS = CONTENT_APP_ACCENTS;
 const REGEX_BINDABLE_APP_IDS: ContentAppId[] = ["chat", "group_chat", "story"];
@@ -315,6 +332,7 @@ export function BindingManager() {
         if (!slot) return target;
         if (slot.apiConfigId) target.apiConfigId = slot.apiConfigId;
         if (slot.voiceConfigId) target.voiceConfigId = slot.voiceConfigId;
+        if (slot.voiceLanguageBoost !== undefined) target.voiceLanguageBoost = slot.voiceLanguageBoost;
         if (slot.presetId) target.presetId = slot.presetId;
         if (slot.userIdentityId) target.userIdentityId = slot.userIdentityId;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) target.worldBookIds = [...slot.worldBookIds];
@@ -358,6 +376,7 @@ export function BindingManager() {
         let count = 0;
         if (slot.apiConfigId) count++;
         if (slot.voiceConfigId) count++;
+        if (slot.voiceLanguageBoost) count++;
         if (slot.presetId) count++;
         if (slot.userIdentityId) count++;
         if (slot.worldBookIds && slot.worldBookIds.length > 0) count++;
@@ -371,6 +390,7 @@ export function BindingManager() {
         return Boolean(
             binding.defaults.apiConfigId ||
             binding.defaults.voiceConfigId ||
+            binding.defaults.voiceLanguageBoost ||
             binding.defaults.presetId ||
             binding.defaults.userIdentityId ||
             (binding.defaults.worldBookIds && binding.defaults.worldBookIds.length > 0) ||
@@ -419,6 +439,7 @@ export function BindingManager() {
         switch (field) {
             case "apiConfigId": return "API 配置";
             case "voiceConfigId": return "语音 API";
+            case "voiceLanguageBoost": return "朗读语言";
             case "presetId": return "预设";
             case "userIdentityId": return "用户身份";
             case "worldBookIds": return "世界书";
@@ -430,6 +451,7 @@ export function BindingManager() {
         switch (field) {
             case "apiConfigId": return "全局文本生成接口";
             case "voiceConfigId": return "全局语音合成接口";
+            case "voiceLanguageBoost": return "覆盖语音方案的朗读语言（需 Minimax）";
             case "presetId": return "全局提示词预设";
             case "userIdentityId": return "全局用户身份";
             case "worldBookIds": return "全局启用的世界书";
@@ -463,6 +485,8 @@ export function BindingManager() {
                 return apiConfigs.map(c => ({ id: c.id, name: c.name || c.provider }));
             case "voiceConfigId":
                 return voiceConfigs.map(c => ({ id: c.id, name: c.name || c.provider }));
+            case "voiceLanguageBoost":
+                return VOICE_LANGUAGE_OPTIONS;
             case "presetId":
                 return presets.map(p => ({ id: p.id, name: p.name }));
             case "userIdentityId":
@@ -570,7 +594,7 @@ export function BindingManager() {
         onOpenField: (field: BindingField) => void,
         options?: { includeRegex?: boolean },
     ) => {
-        const primaryFields: BindingField[] = ["apiConfigId", "voiceConfigId"];
+        const primaryFields: BindingField[] = ["apiConfigId", "voiceConfigId", "voiceLanguageBoost"];
         const compactFields: BindingField[] = options?.includeRegex === false
             ? ["presetId", "worldBookIds"]
             : ["presetId", "worldBookIds", "regexIds"];
