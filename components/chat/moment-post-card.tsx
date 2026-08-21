@@ -18,7 +18,7 @@ import { resolveUserIdentity } from "@/lib/settings-storage";
 import { buildTwoLevelMomentThreads } from "@/lib/moments-comment-threading";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
-import { retryMomentGeneratedPhoto } from "@/lib/generated-image-retry";
+import { retryMomentGeneratedPhoto, momentDescriptionImpliesCharacter } from "@/lib/generated-image-retry";
 import { RefreshCw, Trash2, MoreHorizontal, MapPin, Heart, MessageCircle, Pencil, Users } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui";
 
@@ -440,6 +440,16 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                 placeholder="输入图片提示词"
                                 disabled={photoRegenerating}
                             />
+                            {photoPromptDraft.trim() && (
+                                <div
+                                    className="ts-12 opacity-75 text-[var(--c-icon)]"
+                                    style={{ marginTop: 6 }}
+                                >
+                                    {momentDescriptionImpliesCharacter(photoPromptDraft, authorName)
+                                        ? `本次：人物场景（已锁脸 ${authorName || "角色"}）`
+                                        : "本次：纯场景（不注入人物）"}
+                                </div>
+                            )}
                             {photoRetryError && <div className="feed-post-photo-retry-error">生成失败：{photoRetryError}</div>}
                         </div>
                         <div className="modal-footer" data-ui="modal-footer">
