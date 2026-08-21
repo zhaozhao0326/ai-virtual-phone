@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.6.1";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.6.1",
+    date: "2026-08-21",
+    title: "修复：1:1 私聊里也能真正管理群",
+    highlights: [
+      "此前在私聊里让角色「设公告/加待办/改群名」只会被当台词说出来，实际不生效；现在角色会输出真实操作标签并真正写入群设置",
+      "私聊里角色管理群需满足：该角色是你和它共同所在群的群主/管理员；普通成员或不在群里则操作无效",
+      "群公告、群待办现在在「群设置 → 群公告 / 群待办」里查看，和微信入口一致",
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-08-21",
