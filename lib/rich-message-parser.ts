@@ -349,6 +349,10 @@ const RICH_PATTERNS: {
         regex: /\[([^\]]+?)解除了([^\]]+?)的禁言\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "unmute" as const, adminActorName: m[1]?.trim(), adminTargetName: m[2]?.trim() } }),
     },
+    {
+        regex: /\[([^\]]+?)解散了群聊\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "dissolve" as const, adminActorName: m[1]?.trim() } }),
+    },
     // 1:1 简单格式（兼容）
     {
         regex: /\[领取红包\]/,
