@@ -163,6 +163,11 @@ export type MixMaterialMeta = {
      * 能拿来开局，但站内不展示正文、不能编辑、不能导出、不能二次发布。
      */
     imported?: boolean;
+    /**
+     * 私人卡（如酒馆 PNG 导入）：只在自己设备上玩，不进入公开渠道。
+     * 酒柜里单独分区显示；隐藏分享/发布入口——本地导出仍允许（换设备自用）。
+     */
+    private?: boolean;
     createdAt: number;
     updatedAt: number;
 };

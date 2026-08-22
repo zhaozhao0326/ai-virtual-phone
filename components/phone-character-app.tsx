@@ -906,6 +906,7 @@ function CharListView({
 
         // Try extracting embedded SillyTavern world book
         const stWorldBook = extractSillyTavernWorldBookFromPng(buffer);
+        let wbNotice = "";
         if (stWorldBook && stWorldBook.entries.length > 0) {
           try {
             const parsedWb = parseWorldBookFromJson(
@@ -914,13 +915,17 @@ function CharListView({
             if (parsedWb) {
               saveWorldBooks([parsedWb, ...loadWorldBooks()]);
               window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
+              wbNotice = `，世界书「${parsedWb.name}」(${parsedWb.entries.length} 条) 已导入`;
+            } else {
+              wbNotice = "，但内嵌世界书解析失败";
             }
           } catch (e) {
             console.error("Failed to import embedded world book from PNG", e);
+            wbNotice = "，但内嵌世界书导入失败";
           }
         }
 
-        onNotice("点击画布放置角色");
+        onNotice(`点击画布放置角色${wbNotice}`);
       } else if (/\.(docx?|txt)$/i.test(file.name)) {
         const text = await extractTextFromWordFile(file);
         if (!text.trim()) return onNotice("文档内容为空或无法读取");

@@ -199,6 +199,11 @@
     font-weight: 600;
 }
 
+/* 酒柜的 全部/私人 切换条：跟上面的 TAG 胶囊行隔开一点 */
+.mix-cabinet-scope {
+    margin: 2px 0 6px;
+}
+
 .mix-chip-row {
     display: flex;
     gap: 8px;

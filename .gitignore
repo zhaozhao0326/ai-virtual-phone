@@ -1,5 +1,6 @@
 .next
 .next/
+.next_old_*/
 node_modules
 node_modules/
 out

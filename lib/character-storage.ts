@@ -364,9 +364,21 @@ export function extractSillyTavernWorldBookFromPng(
     if (!book || typeof book !== "object") return null;
 
     const bookObj = book as Record<string, unknown>;
+    const rawEntries = Array.isArray(bookObj.entries) ? bookObj.entries : [];
+    // 酒馆条目的扩展字段（extensions/secondary_keys 等）会被世界书导入器
+    // 判为"不支持格式"而整个拒收——这里剥掉，只留本 App 认识的字段。
+    const CLEAN_FIELDS = ["selectiveLogic", "secondary_keys", "extensions", "characterFilter", "vectorized"];
+    const entries = rawEntries
+      .map((e) => {
+        if (!e || typeof e !== "object" || Array.isArray(e)) return e;
+        const rec = { ...(e as Record<string, unknown>) };
+        for (const f of CLEAN_FIELDS) delete rec[f];
+        return rec;
+      })
+      .filter((e): e is unknown => Boolean(e));
     return {
       name: String(bookObj.name || "导入的世界书"),
-      entries: Array.isArray(bookObj.entries) ? bookObj.entries : [],
+      entries,
     };
   } catch {
     return null;

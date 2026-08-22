@@ -256,6 +256,8 @@ export function MixMaterialEditor({ kind, initial, onSave, onCancel }: EditorPro
             name: trimmedName,
             hook: hook.trim() || undefined,
             author: initial?.author,
+            // 私人标记跟着原件走：新建的卡不带，编辑私人卡时保留
+            private: initial?.private,
             tags: tags.length ? tags : undefined,
             // 只有角色卡收封面：其余种类连老材料残留的 cover 也在这一步洗掉
             cover: isCharacter ? cover || undefined : undefined,

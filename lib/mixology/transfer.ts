@@ -6,10 +6,12 @@ import { downloadFile } from "@/lib/download-utils";
 import {
     MIX_SLOT_ORDER,
     createMixId,
+    type MixCharacterCard,
     type MixMaterial,
     type MixMaterialKind,
     type MixRecipe,
     type MixSlotEntry,
+    type MixTextMaterial,
 } from "./types";
 import { getMixMaterial, isMixBuiltinId, loadMixRecipes, MIX_CABINET_UPDATED_EVENT, saveMixMaterial, saveMixRecipe } from "./storage";
 
@@ -18,7 +20,7 @@ const FILE_VERSION = 1;
 
 /** PNG 卡的文本块关键字——自有格式，故意与酒馆卡（chara/ccv3）不同 */
 const PNG_KEYWORD = "float-mixology-card";
-/** 第三方角色卡格式的关键字（SillyTavern V2/V3 等），一律拒收 */
+/** 第三方角色卡格式的关键字（SillyTavern V2/V3 等）：检测到就走酒馆卡解析 */
 const THIRD_PARTY_PNG_KEYWORDS = ["chara", "ccv3"];
 
 type MixTransferFile = {
@@ -122,7 +124,7 @@ function insertPngTextChunk(u8: Uint8Array, keyword: string, text: string): Uint
     return out;
 }
 
-/** 从 PNG 卡解析材料；酒馆卡等第三方格式一律报错 */
+/** 从 PNG 卡解析材料；酒馆卡（SillyTavern V2/V3）自动适配为私人角色卡 */
 export function parseMixMaterialsFromPng(buffer: ArrayBuffer): MixMaterial[] {
     const u8 = new Uint8Array(buffer);
     if (!isPng(u8)) throw new Error("这不是一个有效的 PNG 文件。");
@@ -137,10 +139,177 @@ export function parseMixMaterialsFromPng(buffer: ArrayBuffer): MixMaterial[] {
         }
         return parseMixMaterialsFromJson(json);
     }
-    if (THIRD_PARTY_PNG_KEYWORDS.some((kw) => chunks.has(kw))) {
-        throw new Error("不支持第三方角色卡格式。");
+    for (const kw of THIRD_PARTY_PNG_KEYWORDS) {
+        const third = chunks.get(kw);
+        if (third) {
+            let json: string;
+            try {
+                json = decodeURIComponent(escape(atob(third.trim())));
+            } catch {
+                throw new Error("这张卡的数据已损坏，请重新导出一张。");
+            }
+            const parsed = parseJsonLoose(json);
+            if (!parsed) throw new Error("这张酒馆卡里的数据不是有效的 JSON。");
+            // PNG 本体就是封面
+            const cover = pngToDataUrl(u8);
+            const materials = parseSillyTavernCharacterCard(parsed, cover);
+            if (materials.length) return materials;
+            throw new Error("这张酒馆卡里没有能认出来的角色数据。");
+        }
     }
     throw new Error("这张 PNG 里没有特调卡数据。");
+}
+
+/** PNG 字节 → dataURL（做酒馆卡封面） */
+function pngToDataUrl(u8: Uint8Array): string {
+    let binary = "";
+    for (let i = 0; i < u8.length; i++) binary += String.fromCharCode(u8[i]);
+    return `data:image/png;base64,${btoa(binary)}`;
+}
+
+/** 宽松 JSON 解析：包了 ``` 围栏或带说明文字也能救回来（与 parseMixMaterialsFromJson 同套 repair） */
+function parseJsonLoose(text: string): unknown {
+    try {
+        return JSON.parse(text);
+    } catch {
+        const repaired = repairJsonText(text);
+        if (!repaired) return null;
+        try {
+            return JSON.parse(repaired);
+        } catch {
+            return null;
+        }
+    }
+}
+
+/**
+ * SillyTavern 角色卡 → 独家特调材料。
+ * 兼容 V2（{ spec: "chara_card_v2", data: {...} }）与 V1（平铺字段）。
+ * 产出：一张私人角色卡 + 可选的基底（世界书 / 系统提示）+ 苦精（追加指令）。
+ * 全部打 private 标记：只在酒柜私人区出现，不能发布到公开渠道。
+ */
+function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): MixMaterial[] {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    const root = parsed as Record<string, unknown>;
+    const spec = typeof root.spec === "string" ? root.spec : "";
+    const isV2 = /^chara_card/i.test(spec);
+    // V2 的角色字段在 data 里；V1 平铺在顶层
+    const data = isV2 && root.data && typeof root.data === "object" && !Array.isArray(root.data)
+        ? (root.data as Record<string, unknown>)
+        : root;
+    if (!isV2 && !("first_mes" in data) && !("mes_example" in data)) return [];
+
+    const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+    const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
+    const name = str(data.name);
+    if (!name) return [];
+
+    const now = Date.now();
+    const openings = [str(data.first_mes), ...strArr(data.alternate_greetings)].filter(Boolean);
+    const examples = parseMesExample(str(data.mes_example));
+
+    const card: MixCharacterCard = {
+        kind: "character",
+        id: createMixId("mixmat"),
+        name,
+        charName: name,
+        baseInfo: str(data.description) || undefined,
+        personality: str(data.personality) || undefined,
+        plot: str(data.scenario) || undefined,
+        openings: openings.length ? openings : ["（这张卡没有开场白，先从一句问候开始吧。）"],
+        examples: examples.length ? examples : undefined,
+        tags: strArr(data.tags),
+        author: str(data.creator) || undefined,
+        hook: str(data.creator_notes) || undefined,
+        cover,
+        private: true,
+        createdAt: now,
+        updatedAt: now,
+    };
+    const materials: MixMaterial[] = [card];
+
+    // 内嵌世界书（character_book）→ 基底材料：enabled 条目拼成 【关键词】内容
+    const book = data.character_book;
+    if (book && typeof book === "object" && !Array.isArray(book)) {
+        const entries = (book as Record<string, unknown>).entries;
+        if (Array.isArray(entries)) {
+            const lines: string[] = [];
+            for (const entry of entries) {
+                if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+                const rec = entry as Record<string, unknown>;
+                if (rec.enabled === false) continue;
+                const content = str(rec.content);
+                if (!content) continue;
+                const keys = Array.isArray(rec.keys) ? rec.keys.filter((k): k is string => typeof k === "string") : [];
+                lines.push(keys.length ? `【${keys.join("、")}】${content}` : content);
+            }
+            if (lines.length) {
+                materials.push({
+                    kind: "base",
+                    id: createMixId("mixmat"),
+                    name: `${name}·世界书`,
+                    hook: "从酒馆角色卡导入的世界书",
+                    content: lines.join("\n\n"),
+                    private: true,
+                    createdAt: now,
+                    updatedAt: now,
+                } as MixTextMaterial);
+            }
+        }
+    }
+
+    // system_prompt → 基底材料
+    const systemPrompt = str(data.system_prompt);
+    if (systemPrompt) {
+        materials.push({
+            kind: "base",
+            id: createMixId("mixmat"),
+            name: `${name}·系统提示`,
+            hook: "从酒馆角色卡导入的系统提示",
+            content: systemPrompt,
+            private: true,
+            createdAt: now,
+            updatedAt: now,
+        } as MixTextMaterial);
+    }
+
+    // post_history_instructions → 苦精材料（离生成最近的强化）
+    const phi = str(data.post_history_instructions);
+    if (phi) {
+        materials.push({
+            kind: "strength",
+            id: createMixId("mixmat"),
+            name: `${name}·追加指令`,
+            hook: "从酒馆角色卡导入的追加指令",
+            content: phi,
+            private: true,
+            createdAt: now,
+            updatedAt: now,
+        } as MixTextMaterial);
+    }
+
+    return materials;
+}
+
+/**
+ * 酒馆示例对话（mes_example）→ examples。
+ * 格式：<START> 分隔多段，段内每行以 {{user}}: / {{char}}: 开头。
+ */
+function parseMesExample(text: string): { role: "user" | "char"; text: string }[] {
+    if (!text) return [];
+    const out: { role: "user" | "char"; text: string }[] = [];
+    for (const block of text.split(/<START>/i)) {
+        for (const line of block.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+            const m = trimmed.match(/^\{\{(user|char)\}\}\s*[:：]\s*([\s\S]*)$/i);
+            if (m) {
+                const t = m[2].trim();
+                if (t) out.push({ role: m[1].toLowerCase() === "user" ? "user" : "char", text: t });
+            }
+        }
+    }
+    return out;
 }
 
 /** 把封面 dataURL 画成 PNG 底图；无封面时画一张纯色占位卡 */
@@ -315,7 +484,7 @@ export function parseMixMaterialsFromJson(text: string): MixMaterial[] {
     }
 
     if (materials.length === 0) {
-        // 酒馆卡（SillyTavern V2/V3）等第三方 JSON：给出明确拒收提示而不是"认不出来"
+        // 酒馆卡（SillyTavern V2/V3）等第三方 JSON：自动适配为私人角色卡，而不是"认不出来"
         const isThirdPartyCard = (value: unknown): boolean => {
             if (!value || typeof value !== "object") return false;
             const record = value as Record<string, unknown>;
@@ -325,8 +494,11 @@ export function parseMixMaterialsFromJson(text: string): MixMaterial[] {
             const data = record.data;
             return Boolean(data && typeof data === "object" && "first_mes" in (data as Record<string, unknown>));
         };
-        if (candidates.some(isThirdPartyCard)) {
-            throw new Error("不支持第三方角色卡格式。");
+        const thirdParty = candidates.find(isThirdPartyCard);
+        if (thirdParty) {
+            const mapped = parseSillyTavernCharacterCard(thirdParty);
+            if (mapped.length) return mapped;
+            throw new Error("这张酒馆卡里没有能认出来的角色数据。");
         }
         throw new Error("文件里没有能认出来的材料。");
     }

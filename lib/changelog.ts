@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.1";
+export const APP_VERSION = "1.7.2";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.2",
+    date: "2026-08-22",
+    title: "独家特调支持酒馆 PNG 角色卡导入（私人卡，不公开）",
+    highlights: [
+      "独家特调「从文件导入」现在支持酒馆（SillyTavern）PNG 角色卡：自动适配角色名、人设、性格、剧情、开场白、示例对话、标签等字段",
+      "PNG 内嵌的世界书自动转成基底材料、系统提示转成基底、追加指令转成苦精，随角色卡一起入柜",
+      "导入的角色卡自动标记为「私人」：酒柜新增「全部 / 私人」切换区，私人卡带角标，不提供分享/发布入口，也不会随配方发布上云",
+      "编辑私人卡不会丢失私人标记；复制仍是私人卡；导出 PNG/JSON 保留，方便自己换设备",
+      "修复：角色卡 App 导入酒馆 PNG 时内嵌世界书丢失的问题——酒馆条目的扩展字段（extensions/secondary_keys 等）不再导致世界书被拒收，导入成功会提示「世界书 xx 条已导入」",
+    ],
+  },
   {
     version: "1.7.1",
     date: "2026-08-22",

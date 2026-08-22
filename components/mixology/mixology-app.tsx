@@ -114,6 +114,8 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
     const [recipes, setRecipes] = useState<MixRecipe[]>(() => loadMixRecipes());
     const [sessions, setSessions] = useState<MixSession[]>(() => loadMixSessions());
     const [cabinetKind, setCabinetKind] = useState<MixMaterialKind>("character");
+    /** 酒柜范围：全部 / 私人（酒馆导入等只在自己设备上玩的卡） */
+    const [cabinetScope, setCabinetScope] = useState<"all" | "private">("all");
     // 酒材/配方页手动刷新：令牌触发子组件重拉，loading 驱动头部图标旋转
     const [hallReload, setHallReload] = useState(0);
     const [hallLoading, setHallLoading] = useState(false);
@@ -201,8 +203,8 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
     }, [refresh, showToast]);
 
     const cabinetFiltered = useMemo(
-        () => cabinet.filter((m) => m.kind === cabinetKind),
-        [cabinet, cabinetKind],
+        () => cabinet.filter((m) => m.kind === cabinetKind && (cabinetScope === "all" || m.private === true)),
+        [cabinet, cabinetKind, cabinetScope],
     );
 
     /** 吧台每格已放的材料实体（一格可能叠了多件，按顺序取全） */
@@ -387,6 +389,11 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
 
     const handleShareMaterial = async (material: MixMaterial) => {
         if (sharing) return;
+        // 私人卡（酒馆导入等）只自己玩，不进入公开渠道
+        if (material.private === true) {
+            showToast("这是私人材料，不能发布。");
+            return;
+        }
         setSharing(true);
         try {
             if (material.publishedId) {
@@ -450,11 +457,16 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
             showToast("这杯特调缺角色卡，没法分享。");
             return;
         }
+        // 私人材料（酒馆导入等）只在自己设备上玩，不能进公开渠道
+        if (plan.materials.some((m) => m.private === true)) {
+            showToast("这杯特调里有私人材料，不能发布。");
+            return;
+        }
         setSharing(true);
         try {
             // 第一步：把自己的材料推上云端——没上架的上架，改过的同步（云端丢失就重新上架）
             for (const material of plan.materials) {
-                if (isMixBuiltinId(material.id) || material.imported) continue;
+                if (isMixBuiltinId(material.id) || material.imported || material.private === true) continue;
                 if (!material.publishedId) {
                     const entry = await shareHallMaterial(material);
                     markMixMaterialSynced(material.id, entry.id);
@@ -624,6 +636,12 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                             );
                         })}
                     </div>
+                    {tab === "cabinet" ? (
+                        <div className="mix-scope-toggle mix-cabinet-scope" role="tablist" aria-label="酒柜范围">
+                            <button type="button" data-active={cabinetScope === "all" ? "true" : undefined} onClick={() => setCabinetScope("all")}>全部</button>
+                            <button type="button" data-active={cabinetScope === "private" ? "true" : undefined} onClick={() => setCabinetScope("private")}>私人</button>
+                        </div>
+                    ) : null}
                 </div>
             ) : null}
 
@@ -808,11 +826,13 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                                         tags={material.tags}
                                         cover={material.kind === "character" ? material.cover : undefined}
                                         preview={mixMatHasAutoCover(material) ? <MixMatAutoCover material={material} /> : undefined}
-                                        badge={isMixBuiltinId(material.id)
-                                            ? "官方"
-                                            : material.imported || mixCloudState(material) === "local"
-                                                ? undefined
-                                                : mixCloudState(material) === "dirty" ? "有未上架修改" : "已上架"}
+                                        badge={material.private === true
+                                            ? "私人"
+                                            : isMixBuiltinId(material.id)
+                                                ? "官方"
+                                                : material.imported || mixCloudState(material) === "local"
+                                                    ? undefined
+                                                    : mixCloudState(material) === "dirty" ? "有未上架修改" : "已上架"}
                                         author={!isMixBuiltinId(material.id) ? material.author : undefined}
                                         onClick={() => setDetail(material)}
                                         key={material.id}
@@ -915,6 +935,7 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                         <div className="mix-sheet-head">
                             <div className="mix-sheet-title">
                                 {detail.name}
+                                {detail.private === true ? <span className="mix-mat-badge" style={{ marginLeft: 6 }}>私人</span> : null}
                                 {isMixBuiltinId(detail.id) ? <span className="mix-mat-badge" style={{ marginLeft: 6 }}>官方</span> : null}
                                 {!isMixBuiltinId(detail.id) && !detail.imported && mixCloudState(detail) !== "local" ? (
                                     <span className="mix-cloud-badge" data-dirty={mixCloudState(detail) === "dirty" ? "true" : undefined}>
@@ -966,7 +987,8 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                                     </button>
                                 </>
                             ) : null}
-                            {!isMixBuiltinId(detail.id) && !detail.imported ? (
+                            {/* 私人卡（酒馆导入等）：只自己玩，不提供分享/发布入口 */}
+                            {!isMixBuiltinId(detail.id) && !detail.imported && detail.private !== true ? (
                                 <>
                                     <button
                                         type="button"
