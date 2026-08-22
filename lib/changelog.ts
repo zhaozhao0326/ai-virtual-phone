@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.3";
+export const APP_VERSION = "1.7.4";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.4",
+    date: "2026-08-22",
+    title: "修复 chara_card_v3 JSON 角色卡导入为空壳",
+    highlights: [
+      "问题：chara_card_v3 格式 JSON 角色卡（真实数据嵌套在 data 下）导入后 name/persona 全空，变成空壳角色",
+      "根因：JSON 文本导入走 parseCharacterFromJson，它只拆 schema==\"ai_phone_character\"，不拆 chara_card_v2/v3 的 data 包裹；而 PNG 导入走 parseSillyTavernCharacterData 会拆——两套解析器对 v3 支持不一致",
+      "修复：parseCharacterFromJson 现在识别 spec 以 chara_card 开头、或 data 含 name/description 的卡，统一路由到 parseSillyTavernCharacterData，与 PNG 行为对齐",
+      "注意：头像若为相对路径（如 charaCard/xxx.jpg）导入后会丢失，需手动补头像",
+    ],
+  },
   {
     version: "1.7.3",
     date: "2026-08-22",

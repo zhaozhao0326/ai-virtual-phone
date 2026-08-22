@@ -167,6 +167,17 @@ export function parseCharacterFromJson(
   try {
     const obj = JSON.parse(text) as Record<string, unknown>;
 
+    // SillyTavern chara_card_v2 / v3：真实数据嵌套在 `data` 下。
+    // PNG 导入已走 parseSillyTavernCharacterData 拆这层，JSON 文本导入也必须一致，
+    // 否则 v3 卡（如 chara_card_v3）会被当成空壳角色导入（name/persona 全空）。
+    const isSillyTavernCard =
+      (typeof obj.spec === "string" && obj.spec.startsWith("chara_card")) ||
+      (typeof obj.data === "object" && obj.data !== null &&
+        (("name" in (obj.data as object)) || ("description" in (obj.data as object))));
+    if (isSillyTavernCard) {
+      return parseSillyTavernCharacterData(obj);
+    }
+
     // Helper: validate avatar — only accept data-URLs and http(s) URLs
     function validAvatar(v: unknown): string | null {
       if (typeof v !== "string" || !v.trim()) return null;
