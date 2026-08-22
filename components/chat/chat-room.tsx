@@ -9,6 +9,7 @@ import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
+import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
 import { PhotoInputModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
 import { EmojiPanel, StickerPanel } from "./emoji-panel";
 import { StickerSearchSuggest } from "./sticker-search-suggest";
@@ -1203,6 +1204,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [pendingGenerate, setPendingGenerate] = useState(false);
     const [chatToast, setChatToast] = useState<string | null>(null);
     const chatToastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+    // 自动生图失败：弹一次弹窗提示，关掉即消失（同一轮里多张失败只提示第一条）
+    const [imageGenerationFailure, setImageGenerationFailure] = useState<string | null>(null);
     const [cloudDeletePending, setCloudDeletePending] = useState<{ count: number } | null>(null);
     const [showPlusMenu, setShowPlusMenu] = useState(false);
     const [showNarratorDialog, setShowNarratorDialog] = useState(false);
@@ -2949,6 +2952,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             .catch(error => {
                 if (!isAbortLikeError(error)) {
                     console.warn("[ImageGeneration] Failed to generate chat image:", error);
+                    const reason = error instanceof Error ? error.message : String(error);
+                    setImageGenerationFailure(prev => prev ?? reason);
                 }
                 return null;
             });
@@ -6959,6 +6964,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {imageGenerationFailure && (
+                <GeneratedImageErrorDialog
+                    message={imageGenerationFailure}
+                    onClose={() => setImageGenerationFailure(null)}
+                />
             )}
 
             {/* Chat toast notification (overlay, does not affect layout) */}

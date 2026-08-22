@@ -259,9 +259,11 @@ export function MixSlotEditor({
                     </div>
                     <div className="mix-sheet-body">
                         <div className="mix-struct-note">
-                            {stackMode === "concat"
-                                ? "这一格里条件满足的会全部生效，按下面的顺序依次叠加。"
-                                : "这一格从上往下找，用第一件条件满足的；其余的这一轮不出场。"}
+                            {kind === "ticket" || kind === "encore"
+                                ? "这一格里条件满足的会全部上场，每件各自成块——一轮可以同时带多个状态栏/小剧场，按下面的顺序排列。"
+                                : stackMode === "concat"
+                                    ? "这一格里条件满足的会全部生效，按下面的顺序依次叠加。"
+                                    : "这一格从上往下找，用第一件条件满足的；其余的这一轮不出场。"}
                         </div>
 
                         <div className="mix-stack-list">

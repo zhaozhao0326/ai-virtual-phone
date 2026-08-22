@@ -17,10 +17,11 @@ import {
   Wallpaper,
 } from "lucide-react";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
+import { GlassIcon } from "@/components/ui/glass-icon";
 import { normalizeThemeProfile, resolveActiveIconSkins, DEFAULT_THEME_PROFILE, type ThemeProfile } from "@/lib/theme-types";
 import type { DesktopIconId, IconId } from "@/lib/desktop-config";
 import { DOCK_DEFAULT, PAGE_1_DEFAULT, PAGE_2_DEFAULT, PAGE_3_DEFAULT, ICONS } from "@/lib/desktop-config";
-import type { DesktopIconLayout } from "@/lib/desktop-layout-storage";
+import type { DesktopFolderMap, DesktopIconLayout } from "@/lib/desktop-layout-storage";
 import { CUSTOM_APPS_UPDATED_EVENT, loadInstalledCustomApps } from "@/lib/custom-app-storage";
 import { toCustomAppIconId, type InstalledCustomApp } from "@/lib/custom-app-types";
 import { PageShell } from "@/components/ui/page-shell";
@@ -85,6 +86,7 @@ type PhoneThemeAppProps = {
     widgets: WidgetInstance[];
     iconLayout: DesktopIconLayout;
     dock?: DesktopIconId[];
+    folders?: DesktopFolderMap;
   }) => void;
   pageIcons: DesktopIconLayout;
   iconSkins: Record<string, string | null>;
@@ -138,20 +140,22 @@ function IconReset() {
 const MENU_ITEMS: Array<{
   section: ThemeMenuItemSection;
   icon: () => React.JSX.Element;
+  /** 菜单里用的玻璃图标名，见 assets/glass-icons/ */
+  glass: string;
   label: string;
   desc?: string;
   color?: string;
   glow?: string;
 }> = [
-  { section: "palette", icon: IconPalette, label: "主题色", desc: "调色板预设", color: BINDING_ACCENTS.preset, glow: `color-mix(in srgb, ${BINDING_ACCENTS.preset} 35%, transparent)` },
-  { section: "wallpaper", icon: IconWallpaper, label: "壁纸", desc: "桌面背景", color: BINDING_ACCENTS.api, glow: `color-mix(in srgb, ${BINDING_ACCENTS.api} 35%, transparent)` },
-  { section: "icons", icon: IconGrid, label: "图标", desc: "应用图标", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 35%, transparent)` },
-  { section: "widgets", icon: IconWidgets, label: "桌面组件", desc: "小组件", color: BINDING_ACCENTS.voice, glow: `color-mix(in srgb, ${BINDING_ACCENTS.voice} 35%, transparent)` },
-  { section: "case", icon: IconCase, label: "状态栏", color: BINDING_ACCENTS.memory },
-  { section: "text", icon: IconText, label: "文字", color: BINDING_ACCENTS.identity, glow: `color-mix(in srgb, ${BINDING_ACCENTS.identity} 35%, transparent)` },
-  { section: "css", icon: IconCode, label: "CSS 变量", desc: "自定义全局样式变量", color: BINDING_ACCENTS.embedding, glow: `color-mix(in srgb, ${BINDING_ACCENTS.embedding} 35%, transparent)` },
-  { section: "transfer", icon: IconTransfer, label: "主题导入 / 导出", desc: "备份与迁移", color: BINDING_ACCENTS.api, glow: `color-mix(in srgb, ${BINDING_ACCENTS.api} 35%, transparent)` },
-  { section: "reset", icon: IconReset, label: "恢复默认", desc: "重置外观", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 30%, transparent)` },
+  { section: "palette", icon: IconPalette, label: "主题色", desc: "调色板预设", color: BINDING_ACCENTS.preset, glow: `color-mix(in srgb, ${BINDING_ACCENTS.preset} 35%, transparent)`, glass: "palette" },
+  { section: "wallpaper", icon: IconWallpaper, label: "壁纸", desc: "桌面背景", color: BINDING_ACCENTS.api, glow: `color-mix(in srgb, ${BINDING_ACCENTS.api} 35%, transparent)`, glass: "wallpaper" },
+  { section: "icons", icon: IconGrid, label: "图标", desc: "应用图标", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 35%, transparent)`, glass: "icons" },
+  { section: "widgets", icon: IconWidgets, label: "桌面组件", desc: "小组件", color: BINDING_ACCENTS.voice, glow: `color-mix(in srgb, ${BINDING_ACCENTS.voice} 35%, transparent)`, glass: "widgets" },
+  { section: "case", icon: IconCase, label: "状态栏", color: BINDING_ACCENTS.memory, glass: "status-bar" },
+  { section: "text", icon: IconText, label: "文字", color: BINDING_ACCENTS.identity, glow: `color-mix(in srgb, ${BINDING_ACCENTS.identity} 35%, transparent)`, glass: "text" },
+  { section: "css", icon: IconCode, label: "CSS 变量", desc: "自定义全局样式变量", color: BINDING_ACCENTS.embedding, glow: `color-mix(in srgb, ${BINDING_ACCENTS.embedding} 35%, transparent)`, glass: "css" },
+  { section: "transfer", icon: IconTransfer, label: "主题导入 / 导出", desc: "备份与迁移", color: BINDING_ACCENTS.api, glow: `color-mix(in srgb, ${BINDING_ACCENTS.api} 35%, transparent)`, glass: "theme-transfer" },
+  { section: "reset", icon: IconReset, label: "恢复默认", desc: "重置外观", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 30%, transparent)`, glass: "theme-reset" },
 ];
 
 const menuIconStyle = (color?: string): CSSProperties => ({
@@ -242,7 +246,7 @@ export function PhoneThemeApp({
     setThemeTransferBusy(true);
     try {
       const result = await installThemePackageFile(file);
-      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock });
+      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders });
       await onApply(result.themeProfile);
       onDraftChange(result.themeProfile);
       setShowThemeTransfer(false);
@@ -259,7 +263,7 @@ export function PhoneThemeApp({
     setThemeTransferBusy(true);
     try {
       const result = await resetThemePackageState();
-      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock });
+      onDesktopThemeChange({ widgets: result.widgets, iconLayout: result.iconLayout, dock: result.dock, folders: result.folders });
       await onApply(result.themeProfile);
       onDraftChange(result.themeProfile);
       setConfirmThemeReset(false);
@@ -301,8 +305,8 @@ export function PhoneThemeApp({
                       }
                     }}
                   >
-                    <span className="card-icon" style={menuIconStyle(item.color)}>
-                      <item.icon />
+                    <span className="card-icon card-icon-glass">
+                      <GlassIcon name={item.glass} />
                     </span>
                     <span className="card-card-body">
                       <span className="card-label">{item.label}</span>
@@ -327,7 +331,7 @@ export function PhoneThemeApp({
                         setScreenPref(stored ?? (shellChannel() === "beta" ? "browser" : "fullscreen"));
                         setShowStatusBarAdjust(true);
                       }}>
-                      <span className="card-icon" style={menuIconStyle(caseItem.color)}><caseItem.icon /></span>
+                      <span className="card-icon card-icon-glass"><GlassIcon name={caseItem.glass} /></span>
                       <span className="menu-label appearance-menu-item-label">{caseItem.label}</span>
                       <label
                         className="block w-10 h-[22px] cursor-pointer relative shrink-0 ml-auto"
@@ -370,8 +374,8 @@ export function PhoneThemeApp({
                     type="button"
                     onClick={() => setShowTextAdjust(true)}
                   >
-                    <span className="card-icon" style={menuIconStyle(item.color)}>
-                      <item.icon />
+                    <span className="card-icon card-icon-glass">
+                      <GlassIcon name={item.glass} />
                     </span>
                     <span className="menu-label appearance-menu-item-label">{item.label}</span>
                     <span className="menu-right">
@@ -393,8 +397,8 @@ export function PhoneThemeApp({
                     type="button"
                     onClick={() => setSection("css")}
                   >
-                    <span className="card-icon" style={menuIconStyle(cssItem.color)}>
-                      <cssItem.icon />
+                    <span className="card-icon card-icon-glass">
+                      <GlassIcon name={cssItem.glass} />
                     </span>
                     <div className="card-featured-body">
                       <div className="card-featured-label">{cssItem.label}</div>
@@ -423,8 +427,8 @@ export function PhoneThemeApp({
                       }
                     }}
                   >
-                    <span className="card-icon" style={menuIconStyle(item.color)}>
-                      <item.icon />
+                    <span className="card-icon card-icon-glass">
+                      <GlassIcon name={item.glass} />
                     </span>
                     <span className="card-card-body">
                       <span className="card-label">{item.label}</span>
