@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.4";
+export const APP_VERSION = "1.7.5";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.5",
+    date: "2026-08-22",
+    title: "JSON 角色卡导入也自动导入并绑定内嵌世界书",
+    highlights: [
+      "问题：1.7.3 只给 PNG 导入加了「内嵌世界书自动绑定角色」逻辑，JSON 导入分支（chara_card_v2/v3 JSON）完全没有处理世界书，导致 JSON 卡（如宗政）内嵌的 character_book 被直接丢弃",
+      "修复：把世界书提取从 PNG 专用抽成通用核心 extractSillyTavernWorldBookFromObj，新增 extractSillyTavernWorldBookFromJson；JSON 导入分支现在和 PNG 走完全一致的逻辑——导入世界书 + 自动绑定该角色",
+      "顺手把 PNG/JSON 两处重复的绑定代码抽成共用 helper attachEmbeddedWorldBook，行为统一、避免再次分叉",
+      "现在 PNG 与 JSON 两种卡导入时，内嵌世界书都会提示「世界书 xx 条已导入并绑定该角色」",
+    ],
+  },
   {
     version: "1.7.4",
     date: "2026-08-22",
