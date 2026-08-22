@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.2";
+export const APP_VERSION = "1.7.3";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.3",
+    date: "2026-08-22",
+    title: "导入酒馆 PNG 角色卡时内嵌世界书自动绑定该角色",
+    highlights: [
+      "修复「桥梁没打通」：之前导入角色卡只把内嵌世界书加进全局列表，却没和角色关联，等于没导入（聊天里用不到）",
+      "现在导入成功后，内嵌世界书会同时写入世界书系统、并自动绑定到该角色的配置绑定（defaults.worldBookIds），聊天/朋友圈/各 App 直接生效",
+      "提示文案升级为「世界书 xx 条已导入并绑定该角色」；绑定失败也不影响角色导入，会在提示里告知去「配置绑定」手动绑",
+    ],
+  },
   {
     version: "1.7.2",
     date: "2026-08-22",

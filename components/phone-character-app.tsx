@@ -20,7 +20,7 @@ import {
 import { extractTextFromWordFile } from "@/lib/worldbook-doc-import";
 import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity, createWorldBook, saveWorldBooks, parseWorldBookFromJson, loadWorldBooks } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity, createWorldBook, saveWorldBooks, parseWorldBookFromJson, loadWorldBooks, loadBindingConfig, saveBindingConfig, getCharacterBinding, setCharacterBinding } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
 import {
   addCharacterWorldRelation,
@@ -915,7 +915,22 @@ function CharListView({
             if (parsedWb) {
               saveWorldBooks([parsedWb, ...loadWorldBooks()]);
               window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
-              wbNotice = `，世界书「${parsedWb.name}」(${parsedWb.entries.length} 条) 已导入`;
+
+              // 桥梁：把内嵌世界书绑定到该角色，使其在聊天/各 App 中自动生效
+              // （否则世界书只会被加进全局列表、却没和角色关联，等于没导入）
+              try {
+                const bc = loadBindingConfig();
+                const cb = getCharacterBinding(bc, c.id);
+                const prev = cb.defaults.worldBookIds || [];
+                if (!prev.includes(parsedWb.id)) {
+                  cb.defaults = { ...cb.defaults, worldBookIds: [...prev, parsedWb.id] };
+                  saveBindingConfig(setCharacterBinding(bc, cb));
+                }
+                wbNotice = `，世界书「${parsedWb.name}」(${parsedWb.entries.length} 条) 已导入并绑定该角色`;
+              } catch (be) {
+                console.error("Failed to bind embedded world book to character", be);
+                wbNotice = `，世界书「${parsedWb.name}」已导入（但自动绑定失败，可在「配置绑定」手动绑定）`;
+              }
             } else {
               wbNotice = "，但内嵌世界书解析失败";
             }
