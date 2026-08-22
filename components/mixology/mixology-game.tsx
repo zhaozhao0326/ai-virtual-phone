@@ -11,7 +11,7 @@ import { getMixMaterial, getMixSession, listMixPickables, MIX_CABINET_UPDATED_EV
 import { applyMixMacros, MIX_DEFAULT_USER_NAME } from "@/lib/mixology/assembler";
 import { buildMixConditionContext, pickActiveMixMaterials } from "@/lib/mixology/state";
 import { scopeMixCss } from "@/lib/mixology/css-scope";
-import { MIX_KIND_LABELS, MIX_SLOT_MAX, MIX_SLOT_ORDER, mixEncoreRenderHtml, mixPanelLayoutOf, mixSlotEntries, mixTurnEncoreBlocks, mixTurnTicketBlocks, type MixCharacterCard, type MixFilterRule, type MixMaterialKind, type MixMechanismMaterial, type MixPanelLayout, type MixSession, type MixSlotEntry, type MixState, type MixTicketMaterial, type MixTurn } from "@/lib/mixology/types";
+import { MIX_KIND_LABELS, MIX_SLOT_ORDER, mixEncoreRenderHtml, mixPanelLayoutOf, mixSlotEntries, mixTurnEncoreBlocks, mixTurnTicketBlocks, type MixCharacterCard, type MixFilterRule, type MixMaterialKind, type MixMechanismMaterial, type MixPanelLayout, type MixSession, type MixSlotEntry, type MixState, type MixTicketMaterial, type MixTurn } from "@/lib/mixology/types";
 import { applyMixFilterRules, mixStreamText } from "@/lib/mixology/prose";
 import { MixProseView } from "./prose-view";
 import { MixRichText } from "./rich-text";
@@ -20,9 +20,6 @@ import { MixTicketFrame } from "./ticket-frame";
 import { MixMechanismPanel } from "./mechanism-panel";
 
 /** 当前真正挂着的对局：严格模式的重复挂载靠它区分「真退出」与「假卸载」 */
-/** 同时活动的常驻界面上限：每件一个 iframe，手机上多开吃内存，屏幕也摆不下 */
-const MIX_PANEL_MAX = 3;
-
 const liveMixGames = new Set<string>();
 
 type GameProps = {
@@ -220,7 +217,8 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
 
     /**
      * 条件命中、且写了界面的机括：这些是要常驻在对局画面上的界面。
-     * 上限 3 件——每件一个 iframe，手机上多开吃内存。
+     * 不设数量上限——每件一个 iframe，多开吃内存是玩家自己的选择，
+     * 真糊满屏幕还有「一键收起」的逃生口。
      * 摆放取材料自己写的那份；玩家在这一局里拖动过的，以拖过的为准。
      */
     const panels = useMemo(() => {
@@ -235,8 +233,7 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
                 const moved = session.panelBox?.[material.id];
                 return { material, layout: moved ? { ...base, ...moved } : base };
             })
-            .filter((item): item is { material: MixMechanismMaterial; layout: MixPanelLayout } => item !== null)
-            .slice(0, MIX_PANEL_MAX);
+            .filter((item): item is { material: MixMechanismMaterial; layout: MixPanelLayout } => item !== null);
     }, [session, cabinetTick]);
 
     /**
@@ -572,10 +569,6 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
             onToast("已移出，下一轮生效。");
             return;
         }
-        if (entries.length >= MIX_SLOT_MAX) {
-            onToast(`一格最多放 ${MIX_SLOT_MAX} 件，先移出一件。`);
-            return;
-        }
         // 追加在末尾：叠放是按顺序依次生效的，新加的排在已有的后面
         writeSlot(kind, [...entries, { materialId }]);
         onToast("已加入，下一轮生效。");
@@ -880,7 +873,7 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
                     <div className="mix-sheet" onClick={(e) => e.stopPropagation()}>
                         <div className="mix-sheet-head">
                             <div className="mix-sheet-title">
-                                {MIX_KIND_LABELS[slotPick]} · 已放 {mixSlotEntries(session.recipe.slots, slotPick).length}/{MIX_SLOT_MAX}
+                                {MIX_KIND_LABELS[slotPick]} · 已放 {mixSlotEntries(session.recipe.slots, slotPick).length} 件
                             </div>
                             <button type="button" className="mix-icon-btn" onClick={() => setSlotPick(null)} aria-label="关闭"><X size={18} /></button>
                         </div>

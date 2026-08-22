@@ -12,7 +12,6 @@ import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-react";
 import { describeMixCondition } from "@/lib/mixology/state";
 import {
     MIX_KIND_LABELS,
-    MIX_SLOT_MAX,
     MIX_SLOT_STACK,
     type MixCompareOp,
     type MixCondition,
@@ -225,7 +224,6 @@ export function MixSlotEditor({
 }) {
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const stackMode = MIX_SLOT_STACK[kind];
-    const full = entries.length >= MIX_SLOT_MAX;
 
     const move = (index: number, delta: number) => {
         const target = index + delta;
@@ -295,9 +293,9 @@ export function MixSlotEditor({
                             })}
                         </div>
 
-                        <button type="button" className="mix-stack-add" onClick={onPickMore} disabled={full}>
+                        <button type="button" className="mix-stack-add" onClick={onPickMore}>
                             <Plus size={16} />
-                            {full ? `一格最多放 ${MIX_SLOT_MAX} 件` : "再加一件"}
+                            再加一件
                         </button>
                     </div>
                 </div>

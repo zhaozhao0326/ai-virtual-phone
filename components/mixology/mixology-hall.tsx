@@ -43,7 +43,6 @@ import {
     type MixMaterial,
     type MixMaterialKind,
     type MixRecipe,
-    MIX_SLOT_MAX,
     mixKindRunsActiveCode,
     type MixCondition,
     type MixSlotEntry,
@@ -445,7 +444,6 @@ export function MixologyHall({
             // 一格可能叠了多件，按线上顺序依次落格；作者设的生效条件跟着一起带过来
             const pushSlot = (kind: MixMaterialKind, materialId: string, when?: MixCondition) => {
                 const list = slots[kind] ?? [];
-                if (list.length >= MIX_SLOT_MAX) return;
                 list.push(when ? { materialId, when } : { materialId });
                 slots[kind] = list;
             };

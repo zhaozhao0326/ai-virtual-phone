@@ -56,9 +56,6 @@ export const MIX_KIND_SECTION_LABELS: Record<MixMaterialKind, string> = {
 /** 必选槽：没配齐不能开局；其余槽可留空 */
 export const MIX_REQUIRED_KINDS: MixMaterialKind[] = ["character"];
 
-/** 一格最多叠几件 */
-export const MIX_SLOT_MAX = 3;
-
 /**
  * 叠放语义：
  * concat = 这一格里条件满足的全部生效，按顺序依次拼接（多段文风叠加、主装饰 + 补丁装饰；
@@ -519,7 +516,7 @@ export function mixSlotFirstId(slots: MixSlotsRaw | undefined, kind: MixMaterial
 export function normalizeMixSlots(slots: MixSlotsRaw | undefined): Partial<Record<MixMaterialKind, MixSlotEntry[]>> {
     const out: Partial<Record<MixMaterialKind, MixSlotEntry[]>> = {};
     for (const kind of MIX_SLOT_ORDER) {
-        const entries = mixSlotEntries(slots, kind).slice(0, MIX_SLOT_MAX);
+        const entries = mixSlotEntries(slots, kind);
         if (entries.length) out[kind] = entries;
     }
     return out;
@@ -529,7 +526,7 @@ export function normalizeMixSlots(slots: MixSlotsRaw | undefined): Partial<Recor
 export type MixRecipe = {
     id: string;
     name: string;
-    /** kind → 这一格叠的材料（有序，最多 MIX_SLOT_MAX 件）；角色卡必有，其余可缺 */
+    /** kind → 这一格叠的材料（有序，不设数量上限）；角色卡必有，其余可缺 */
     slots: Partial<Record<MixMaterialKind, MixSlotEntry[]>>;
     /** 作者署名与头像：从配方页入柜时带回；自己的配方展示本地创作者资料 */
     author?: string;

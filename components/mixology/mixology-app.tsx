@@ -63,7 +63,6 @@ import {
     type MixMaterialKind,
     type MixRecipe,
     type MixSession,
-    MIX_SLOT_MAX,
     mixSlotEntries,
     mixSlotFirstId,
     type MixSlotEntry,
@@ -670,7 +669,7 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                                 <span style={{ textDecoration: "underline", cursor: "pointer" }} onClick={() => { setBarEditing(null); setBarSlots({}); }}>放弃</span>
                             </div>
                         ) : null}
-                        <div className="mix-bar-hint">左右滑动切换槽位 · 点击槽位选材料 · 一格最多叠 3 件</div>
+                        <div className="mix-bar-hint">左右滑动切换槽位 · 点击槽位选材料 · 一格可以叠多件</div>
                         <div className="mix-wheel" ref={wheelRef} onScroll={handleWheelScroll}>
                             {MIX_SLOT_ORDER.map((kind) => {
                                 const stack = slotMaterials[kind] ?? [];
@@ -1255,12 +1254,9 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                                             onClick={() => {
                                                 setBarSlots((prev) => {
                                                     const current = mixSlotEntries(prev, slotPicker);
-                                                    // 已经在这一格里就不重复加；满了就换掉最后一件
+                                                    // 已经在这一格里就不重复加
                                                     if (current.some((e) => e.materialId === material.id)) return prev;
-                                                    const next = current.length >= MIX_SLOT_MAX
-                                                        ? [...current.slice(0, MIX_SLOT_MAX - 1), { materialId: material.id }]
-                                                        : [...current, { materialId: material.id }];
-                                                    return { ...prev, [slotPicker]: next };
+                                                    return { ...prev, [slotPicker]: [...current, { materialId: material.id }] };
                                                 });
                                                 setSlotPicker(null);
                                             }}
