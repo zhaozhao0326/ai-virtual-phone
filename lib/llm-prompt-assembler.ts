@@ -410,7 +410,7 @@ function getMarkerContent(
 ): string | null {
     switch (identifier) {
         case "charDescription":
-            return `You are ${character.name}.\n${character.persona}`;
+            return `You are ${character.name}.\n${character.persona}\n\n[角色演绎锚定] 以上是你扮演「${character.name}」的核心身份与性格底色。请始终以此为基础去"准确演绎"这个角色——保持人设连贯一致；同时像真实的人一样，根据当下对话情境自然、灵活地回应，可以有情绪起伏、会即兴、会随着相处而成长，不要生硬照搬设定或背诵固定台词。`;
         case "charPersonality":
             return character.personality?.trim() || null;
         case "personaDescription":
