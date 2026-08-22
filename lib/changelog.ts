@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.8";
+export const APP_VERSION = "1.7.9";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.9",
+    date: "2026-08-22",
+    title: "修复：文档导入的世界书默认常驻（不再静默失效）",
+    highlights: [
+      "问题：从 Word/文档导入的世界书条目生成时 constant=false 且 key 为空，而 isWorldBookEntryActivated 对空 key 条目直接返回 false → 导入的文档世界书（如说话风格指南、行为准则）永远不会注入，看起来像没生效",
+      "修复：buildWorldBookFromDoc 生成的条目默认 constant=true（常驻），文档导入的世界书一导入即可用；如需按关键词触发，在世界书编辑里关闭「常驻」并填关键词即可",
+      "文档世界书定位 before_char（角色设定前），符合文档自带的最高优先级要求，无需再调",
+    ],
+  },
   {
     version: "1.7.8",
     date: "2026-08-22",

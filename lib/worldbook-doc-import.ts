@@ -131,7 +131,10 @@ export async function buildWorldBookFromDoc(file: File): Promise<WorldBookConfig
         comment: `来源：${file.name}`,
         use_regex: false,
         disable: false,
-        constant: false,
+        // 文档导入的世界书本质是「常驻参考/行为准则」（如说话风格指南），不是按关键词触发的
+        // 情境设定；空 key + constant=false 会导致 isWorldBookEntryActivated 永远返回 false
+        // （静默不生效）。因此默认 constant=true（常驻），用户可在世界书编辑里按需关闭。
+        constant: true,
         position: "before_char",
         depth: 0,
         probability: 100,
