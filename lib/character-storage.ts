@@ -200,6 +200,58 @@ export function parseCharacterFromJson(
   }
 }
 
+// ── SillyTavern / 酒馆 PNG character card support ────
+
+function parseSillyTavernCharacterData(
+  obj: Record<string, unknown>
+): CharacterImportData | null {
+  // SillyTavern V2 wraps actual data in a "data" field
+  const src =
+    typeof obj.data === "object" && obj.data !== null
+      ? (obj.data as Record<string, unknown>)
+      : obj;
+
+  function validAvatar(v: unknown): string | null {
+    if (typeof v !== "string" || !v.trim()) return null;
+    const s = v.trim();
+    if (s === "none") return null;
+    if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
+    return null;
+  }
+
+  const name = String(src.name ?? "");
+  if (!name.trim()) return null;
+
+  // description = main persona block; personality = traits summary
+  const description = String(src.description ?? "");
+  const personality = String(src.personality ?? "");
+
+  // Merge scenario / example dialogue so nothing is lost
+  let persona = description;
+  const scenario = String(src.scenario ?? "");
+  const mesExample = String(src.mes_example ?? src.example_dialogue ?? "");
+  if (scenario.trim()) {
+    persona += `\n\n【场景】${scenario.trim()}`;
+  }
+  if (mesExample.trim()) {
+    persona += `\n\n【示例对话】\n${mesExample.trim()}`;
+  }
+
+  return {
+    name,
+    persona: persona.trim(),
+    avatar: validAvatar(src.avatar),
+    appearance:
+      typeof src.appearance === "string" && src.appearance.trim()
+        ? src.appearance
+        : undefined,
+    personality: personality.trim() || undefined,
+    tags: Array.isArray(src.tags) ? src.tags.map(String) : [],
+    wechatID: undefined,
+    timeZone: undefined,
+  };
+}
+
 // ── PNG import/export ────────────────────────────────
 
 function readPngTextChunk(u8: Uint8Array, keyword: string): string | null {
@@ -265,14 +317,58 @@ export function parseCharacterFromPng(
   buffer: ArrayBuffer
 ): CharacterImportData | null {
   const u8 = new Uint8Array(buffer);
-  const charaBase64 = readPngTextChunk(u8, "ai_phone_character");
+
+  // 1. Native ai_phone_character format
+  const nativeBase64 = readPngTextChunk(u8, "ai_phone_character");
+  if (nativeBase64) {
+    try {
+      const jsonStr = decodeURIComponent(escape(atob(nativeBase64)));
+      return parseCharacterFromJson(jsonStr);
+    } catch (e) {
+      if (e instanceof Error && e.message === CHAR_BLOCKED_FIELDS) throw e;
+      return null;
+    }
+  }
+
+  // 2. SillyTavern / 酒馆 PNG character card (keyword = "chara")
+  const charaBase64 = readPngTextChunk(u8, "chara");
+  if (charaBase64) {
+    try {
+      const jsonStr = decodeURIComponent(escape(atob(charaBase64)));
+      const obj = JSON.parse(jsonStr) as Record<string, unknown>;
+      return parseSillyTavernCharacterData(obj);
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export function extractSillyTavernWorldBookFromPng(
+  buffer: ArrayBuffer
+): { name: string; entries: unknown[] } | null {
+  const u8 = new Uint8Array(buffer);
+  const charaBase64 = readPngTextChunk(u8, "chara");
   if (!charaBase64) return null;
 
   try {
     const jsonStr = decodeURIComponent(escape(atob(charaBase64)));
-    return parseCharacterFromJson(jsonStr);
-  } catch (e) {
-    if (e instanceof Error && e.message === CHAR_BLOCKED_FIELDS) throw e;
+    const obj = JSON.parse(jsonStr) as Record<string, unknown>;
+    const src =
+      typeof obj.data === "object" && obj.data !== null
+        ? (obj.data as Record<string, unknown>)
+        : obj;
+
+    const book = src.character_book;
+    if (!book || typeof book !== "object") return null;
+
+    const bookObj = book as Record<string, unknown>;
+    return {
+      name: String(bookObj.name || "导入的世界书"),
+      entries: Array.isArray(bookObj.entries) ? bookObj.entries : [],
+    };
+  } catch {
     return null;
   }
 }

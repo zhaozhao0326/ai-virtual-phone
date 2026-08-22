@@ -12,6 +12,7 @@ import {
   saveCharacters,
   loadBackgroundItems,
   saveBackgroundItems,
+  extractSillyTavernWorldBookFromPng,
   type CharacterImportData,
 
   CHAR_BLOCKED_FIELDS,
@@ -19,7 +20,7 @@ import {
 import { extractTextFromWordFile } from "@/lib/worldbook-doc-import";
 import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity, createWorldBook, saveWorldBooks, parseWorldBookFromJson, loadWorldBooks } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
 import {
   addCharacterWorldRelation,
@@ -902,6 +903,23 @@ function CharListView({
         const c = createCharacter({ ...data, avatar });
         c.polaroidStyle = styleIdx;
         onStartCharPlacement(c);
+
+        // Try extracting embedded SillyTavern world book
+        const stWorldBook = extractSillyTavernWorldBookFromPng(buffer);
+        if (stWorldBook && stWorldBook.entries.length > 0) {
+          try {
+            const parsedWb = parseWorldBookFromJson(
+              JSON.stringify({ name: stWorldBook.name, entries: stWorldBook.entries })
+            );
+            if (parsedWb) {
+              saveWorldBooks([parsedWb, ...loadWorldBooks()]);
+              window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
+            }
+          } catch (e) {
+            console.error("Failed to import embedded world book from PNG", e);
+          }
+        }
+
         onNotice("点击画布放置角色");
       } else if (/\.(docx?|txt)$/i.test(file.name)) {
         const text = await extractTextFromWordFile(file);

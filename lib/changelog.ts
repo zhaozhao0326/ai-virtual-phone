@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.0";
+export const APP_VERSION = "1.7.1";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.1",
+    date: "2026-08-22",
+    title: "支持 SillyTavern / 酒馆 PNG 角色卡一键导入（含内嵌世界书）",
+    highlights: [
+      "导入角色卡现在支持 SillyTavern 风格的 PNG 角色卡：自动识别 PNG 中 chara 关键字，解析 name / description / personality / tags 等字段",
+      "description 映射为人设（persona），personality 映射为性格；scenario 和示例对话也会合并进 persona，确保不丢失",
+      "如果 PNG 中内嵌了 character_book（世界书），导入角色时会自动一并提取并创建世界书",
+      "本 App 自有的 ai_phone_character PNG 格式仍完全兼容，不受影响",
+    ],
+  },
   {
     version: "1.7.0",
     date: "2026-08-22",
