@@ -33,6 +33,7 @@ import {
     resolveUserIdentity,
 } from "./settings-storage";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
+import { estimateMessagesTokens } from "./token-counter";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -1903,7 +1904,7 @@ export async function buildChatPromptMessages(
         )
         : "";
 
-    const llmMessages = assemblePromptPayload({
+    let llmMessages = assemblePromptPayload({
         character,
         history: promptHistory,
         preset,
@@ -1946,6 +1947,17 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+
+    // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，
+    // 否则模型会直接报错"超出 token 上限"而无法回复。超出时优先裁掉
+    // 最旧的聊天历史消息（系统设定/角色卡/记忆保持不动）。
+    const maxContext = (preset?.openai_max_context && preset.openai_max_context > 0)
+        ? preset.openai_max_context
+        : 100000;
+    const GENERATION_RESERVE = 2000;
+    const tokenBudget = Math.max(2000, maxContext - GENERATION_RESERVE);
+    llmMessages = enforceTotalTokenBudget(llmMessages, tokenBudget);
+
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",
@@ -2678,4 +2690,38 @@ export async function previewPromptRequestSnapshot(
         },
         requestKind: "completion",
     });
+}
+
+/**
+ * 总 token 刹车：当拼装后的 prompt 总 token 超过 budget 时，
+ * 优先从最旧的聊天历史消息开始裁掉（保留 system/角色卡/记忆等设定类内容），
+ * 直到降到预算内或已无可裁的历史。避免超出模型上下文窗口导致回复失败。
+ */
+function enforceTotalTokenBudget(messages: LLMMessage[], budget: number): LLMMessage[] {
+    let total = estimateMessagesTokens(
+        messages.map(m => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })),
+    );
+    if (total <= budget) return messages;
+
+    const result = [...messages];
+    // 从最旧（数组头部）的非系统消息开始裁，系统消息最后才动。
+    for (let i = 0; i < result.length && total > budget; i += 1) {
+        const msg = result[i];
+        if (msg.role === "system") continue;
+        const dropTokens = estimateMessagesTokens([{ role: msg.role, content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }]);
+        result.splice(i, 1);
+        i -= 1;
+        total -= dropTokens;
+    }
+    if (total > budget) {
+        // 仍超限（极端情况下连历史都裁光了）：从最旧系统消息继续裁。
+        for (let i = 0; i < result.length && total > budget; i += 1) {
+            const msg = result[i];
+            const dropTokens = estimateMessagesTokens([{ role: msg.role, content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }]);
+            result.splice(i, 1);
+            i -= 1;
+            total -= dropTokens;
+        }
+    }
+    return result;
 }

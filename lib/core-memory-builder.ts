@@ -4,6 +4,7 @@ import {
     loadMemoryConfig,
     loadMemoryEntriesByType,
     saveMemoryEntry,
+    deleteMemoryEntries,
     getCoreMemoryCounter,
     resetCoreMemoryCounter,
     getLastCoreSummarizedTimestamp,
@@ -137,7 +138,58 @@ export async function runCoreMemoryPipeline(
         resetCoreMemoryCounter(characterId);
     }
 
+    // 核心记忆封顶：超过上限时把最旧的若干条合并成一条压缩摘要，
+    // 避免无限累积导致注入 prompt 膨胀、超出模型上下文窗口。
+    await enforceCoreMemoryCap(characterId, characterName);
+
     return { success: true, rebuiltCount: 1 };
+}
+
+async function enforceCoreMemoryCap(characterId: string, characterName: string): Promise<void> {
+    const config = loadMemoryConfig();
+    const cap = config.maxCoreEntries && config.maxCoreEntries > 0 ? config.maxCoreEntries : 50;
+    const allCore = await loadMemoryEntriesByType(characterId, "core");
+    if (allCore.length <= cap) return;
+
+    const overflow = allCore.length - cap;
+    const sorted = allCore.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const oldest = sorted.slice(0, overflow);
+    if (oldest.length === 0) return;
+
+    const apiConfig = resolveAuxiliaryApiConfig("memorySummaryApiConfigId");
+    if (!apiConfig) {
+        // 没有辅助 API 就直接丢弃最旧的，避免无限膨胀（内容已沉淀进更新的核心记忆）。
+        await deleteMemoryEntries(oldest.map(e => e.id));
+        return;
+    }
+
+    const mergedText = oldest.map(e => `- ${e.content}`).join("\n");
+    const prompt = `你是一个核心记忆整理助手。以下是对${characterName}较早时期的多条核心记忆，请将它们压缩合并为一条更精炼的核心记忆，保留仍然成立的关键事实与关系状态，去掉已被后续记忆覆盖或重复的细节。\n\n${mergedText}\n\n合并后的核心记忆：`;
+
+    const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.3 });
+    if (!result.content || result.wasTruncated) {
+        // 合并失败则保守丢弃最旧条目，不阻塞主流程。
+        await deleteMemoryEntries(oldest.map(e => e.id));
+        return;
+    }
+
+    const now = new Date().toISOString();
+    const mergedEntry: MemoryEntry = {
+        id: `mem_core_merged_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        characterId,
+        sourceApp: oldest[0].sourceApp,
+        type: "core",
+        content: result.content.trim(),
+        importance: 0.95,
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+            mergedFrom: oldest.length,
+            timeSpan: `${oldest[0].createdAt} ~ ${oldest[oldest.length - 1].createdAt}`,
+        },
+    };
+    await deleteMemoryEntries(oldest.map(e => e.id));
+    await saveMemoryEntry(mergedEntry);
 }
 
 export async function maybeRunCoreMemoryPipeline(

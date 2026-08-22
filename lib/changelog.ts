@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.5";
+export const APP_VERSION = "1.7.6";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.6",
+    date: "2026-08-22",
+    title: "记忆防爆：核心记忆封顶合并 + 拼装后总 token 刹车",
+    highlights: [
+      "问题：长期聊天后核心记忆(core)无上限无限累积；且拼装发给模型的 prompt 由短期(10万)+长期(10万)+核心(10万)三块各自独立预算叠加，可冲到约 30 万 token，远超模型上下文窗口(默认 10 万)，导致偶发「超出 token 上限、无法回复」",
+      "修复①核心记忆封顶：新增 maxCoreEntries(默认50)，core 记忆超上限时把最旧的若干条用辅助 API 合并成一条压缩摘要(保留仍成立的关键事实)，避免无限膨胀；无辅助 API 时保守丢弃最旧条目",
+      "修复②总 token 刹车：assemblePromptPayload 返回后读取预设 openai_max_context，按 (上限-2000 生成预留) 估算总 token，超出时优先裁掉最旧的聊天历史消息(系统设定/角色卡/记忆保持不动)，确保不再触顶",
+      "这层刹车是纯本地、零外部依赖、零风险，跟之前评估的 OB 外部记忆服务无关",
+    ],
+  },
   {
     version: "1.7.5",
     date: "2026-08-22",

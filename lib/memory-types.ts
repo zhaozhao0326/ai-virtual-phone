@@ -21,6 +21,7 @@ export type MemoryConfig = {
     autoBuildCoreEnabled: boolean;          // whether core memories rebuild after long-term summarization
     vectorRecallEnabled: boolean;           // whether vector embedding recall is used for memory retrieval
     maxLongTermEntries: number;
+    maxCoreEntries: number;                 // cap on core memories; oldest are merged when exceeded
     summarizationEventInterval: number;     // trigger summarization every N events
     coreSummarizationInterval: number;      // trigger core-memory rebuild every N new long-term memories
     shortTermTokenBudget: number;           // token limit for short-term event log
@@ -108,6 +109,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
     maxLongTermEntries: 500,
+    maxCoreEntries: 50,
     summarizationEventInterval: 80,
     coreSummarizationInterval: 5,
     shortTermTokenBudget: 100000,
