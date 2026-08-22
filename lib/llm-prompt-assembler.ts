@@ -1324,12 +1324,9 @@ export function isWorldBookEntryActivated(entry: WorldBookEntry, contextText: st
 
     if (!keyMatch) return false;
 
-    // Probability gate: if useProbability is enabled, roll a random check
-    if (entry.useProbability && typeof entry.probability === "number" && entry.probability < 100) {
-        if (entry.probability <= 0) return false;
-        if (Math.random() * 100 >= entry.probability) return false;
-    }
-
+    // Probability gate removed: a random roll made persona details appear/disappear
+    // inconsistently across sessions (same card, different runs). Matched entries now
+    // always activate so the character stays consistent.
     return true;
 }
 

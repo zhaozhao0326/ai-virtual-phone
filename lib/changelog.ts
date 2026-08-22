@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.6";
+export const APP_VERSION = "1.7.7";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.7",
+    date: "2026-08-22",
+    title: "抓人设：世界书激活去随机门 + 核心记忆强化语气维度",
+    highlights: [
+      "问题：世界书条目激活带 Math.random 概率门，导致同一角色卡在不同会话里人设细节随机出现/消失（同卡同模型表现不一的根因之一）；且核心记忆底稿偏流水账，缺少角色「活」的语气特征",
+      "修复①世界书去随机门：isWorldBookEntryActivated 移除概率随机分支，关键词匹配到的条目现在永远激活，消除人设随机缺失",
+      "修复②核心记忆强化语气：DEFAULT_CORE_MEMORY_PROMPT 新增「保留角色标志性口头禅、语气词、说话节奏与风格特征」，让角色「是谁」的底稿从干巴巴事实变成有灵魂",
+      "温度(模型采样)与角色卡语气示例属用户设置层，仍由用户在「模型温度」与角色卡里自行调整；本次只动代码层确定性的两部分",
+      "注：世界书当前仍是精确关键词/正则匹配（非语义召回），语义召回需 worldBook 条目接 embedding 向量，属更大改造，留作下一步",
+    ],
+  },
   {
     version: "1.7.6",
     date: "2026-08-22",
