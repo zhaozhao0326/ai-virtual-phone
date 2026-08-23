@@ -361,6 +361,31 @@ const RICH_PATTERNS: {
         regex: /\[([^\]：:]+?)(?:将群名改为了?|修改了?群名为?|改了?群名为?)[「"]?([^」"\]]+?)[」"]?\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim(), newGroupName: m[2]?.trim() } }),
     },
+    // ── 紧贴口语版（名字与动词之间无空格，模型常见输出）──
+    // 优先匹配，避免被下面"要求名字后有空格"的规则漏掉
+    // 名字至少 2 字符：避免「修/改/设」等单字动词首字被误当名字
+    {
+        regex: /\[([^\]：:]{2,}?)(?:设置了?|修改了?|改了?|更新了?)\s*群公告[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim() || "", newAnnouncement: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[([^\]：:]{2,}?)(?:添加了?|修改了?|改了?|更新了?)\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[([^\]：:]{2,}?)(?:完成了?|搞定了?)\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        regex: /\[([^\]：:]{2,}?)(?:删除了?|移除了?|取消了?)\s*群待办[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
+    },
+    {
+        // 紧贴口语改群名：名字+「改了/修改了/更新了」+群名:新名字
+        regex: /\[([^\]：:]{2,}?)(?:改了?|修改了?|更新了?)\s*群名[：:]([^\]]+?)\]/,
+        build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim() || "", newGroupName: m[2]?.trim() } }),
+    },
+    // 口语版（名字与动词之间有空格）—— 保留原有兼容
     {
         // 群公告：可选 [名字 + 空格]、可选 [动作 + 任意空格]、必选「群公告 + 冒号 + 内容」
         regex: /\[(?:([^\]：:]+?)\s+)?(?:\s*(?:设置了?|修改了?|改了?|更新了?))?\s*群公告[：:]([^\]]+?)\]/,
