@@ -29,3 +29,6 @@ tools/weixin-local-assistant/config.txt
 *.ts.net.crt
 *.ts.net.key
 /public/models/world-builder/
+
+# 内部交接文档，不入仓库
+docs/交接文档.md
