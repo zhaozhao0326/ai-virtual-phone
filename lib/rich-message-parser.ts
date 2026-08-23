@@ -382,24 +382,25 @@ const RICH_PATTERNS: {
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     // ── 管道符结构化格式（与建群同款，模型不易变形）──
+    // 动作动词放宽：模型口语习惯常写「修改了/改了/更新」，与管道符混用时也需识别
     {
-        regex: /\[(?:([^\]|]+?)\s+)?设置群公告[|｜]内容[:：]([^\]]+?)\]/,
+        regex: /\[(?:([^\]|]+?)\s+)?(?:设置|修改了|修改|改了|改|更新)群公告[|｜]内容[:：]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "set_announcement" as const, adminActorName: m[1]?.trim() || "", newAnnouncement: m[2]?.trim() } }),
     },
     {
-        regex: /\[(?:([^\]|]+?)\s+)?添加群待办[|｜]内容[:：]([^\]]+?)\]/,
+        regex: /\[(?:([^\]|]+?)\s+)?(?:添加|修改了|修改|改了|改|更新)群待办[|｜]内容[:：]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "add_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     {
-        regex: /\[(?:([^\]|]+?)\s+)?完成群待办[|｜]内容[:：]([^\]]+?)\]/,
+        regex: /\[(?:([^\]|]+?)\s+)?(?:完成|搞定)群待办[|｜]内容[:：]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "complete_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     {
-        regex: /\[(?:([^\]|]+?)\s+)?删除群待办[|｜]内容[:：]([^\]]+?)\]/,
+        regex: /\[(?:([^\]|]+?)\s+)?(?:删除|移除|取消)群待办[|｜]内容[:：]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "remove_todo" as const, adminActorName: m[1]?.trim() || "", todoText: m[2]?.trim() } }),
     },
     {
-        regex: /\[(?:([^\]|]+?)\s+)?改群名[|｜]群名[:：]([^\]]+?)\]/,
+        regex: /\[(?:([^\]|]+?)\s+)?(?:改|修改|更改|更新)群名[|｜]群名[:：]([^\]]+?)\]/,
         build: (m) => ({ content: "", mediaType: "group_admin_notice" as const, mediaData: { adminAction: "rename" as const, adminActorName: m[1]?.trim() || "", newGroupName: m[2]?.trim() } }),
     },
     {
