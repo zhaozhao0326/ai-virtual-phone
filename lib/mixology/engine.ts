@@ -24,6 +24,7 @@ import {
     mixTurnTicketBlocks,
     type MixCharacterCard,
     type MixEncoreMaterial,
+    type MixFilterRule,
     type MixMaterial,
     type MixMechanismMaterial,
     type MixState,
@@ -107,11 +108,13 @@ function blockText(open: string, close: string, block: MixTurnBlock, named: bool
 }
 
 /**
- * 还原一条消息的"原始输出"：assistant 轮把剥掉的状态栏/小剧场块拼回去。
- * 历史回放与「编辑原始输出」共用——编辑时看到的就是模型当初写的完整样子。
+ * 一条消息的"原始输出"。存了真原文（rawText，新数据）就直接给——机括标记行、
+ * 被滤网洗掉的字只存在于这一份里，拼装还原不出来。
+ * 老数据没有 rawText，退回把剥掉的状态栏/小剧场块拼回去的近似还原。
  */
 export function mixTurnRawText(turn: MixTurn): string {
     if (turn.role !== "assistant") return turn.text;
+    if (turn.rawText !== undefined) return turn.rawText;
     // 顺序与输出要求一致：状态栏在正文前、小剧场在正文后——历史回放就是模型的"输出习惯"示范
     const tickets = mixTurnTicketBlocks(turn);
     const encores = mixTurnEncoreBlocks(turn);
@@ -445,6 +448,24 @@ function orderMixBlocks(blocks: MixTurnBlock[], mats: { id: string }[]): MixTurn
 }
 
 /**
+ * 把一份"模型原文"过一遍剥离管线：剥块 → 对号入座 → 按槽位归位 → 滤网清洗正文。
+ * 出杯与「编辑原始输出」共用同一条管线——编辑保存等于拿新原文当一次模型输出重跑，
+ * 剥离与渲染（渲染是块原文 + 渲染皮现算的）自然全部重来。
+ */
+function stripMixReply(
+    raw: string,
+    ticketPool: { id: string; name: string }[],
+    encorePool: { id: string; name: string }[],
+    filterRules: MixFilterRule[] | undefined,
+): { text: string; ticketBlocks: MixTurnBlock[]; encoreBlocks: MixTurnBlock[] } {
+    const extracted = extractMixBlocks(raw);
+    const ticketBlocks = orderMixBlocks(matchMixBlocks(extracted.tickets, ticketPool), ticketPool);
+    const encoreBlocks = orderMixBlocks(matchMixBlocks(extracted.encores, encorePool), encorePool);
+    const text = applyMixFilterRules(extracted.text, filterRules?.length ? filterRules : undefined, "context");
+    return { text, ticketBlocks, encoreBlocks };
+}
+
+/**
  * 用这一轮的块推进记住的值：每张小票只认自己那块的原文。
  * 单张小票时没归属的块也算它的（老格式输出没有名字）。
  */
@@ -538,21 +559,24 @@ async function runMixGeneration(
     } else {
         raw = await sendLLMRequest(apiConfig, null, messages, [], meta, llmOptions);
     }
-    const extracted = extractMixBlocks(raw);
     // 块对号入座：有契约的小票/尾调才是块的候选归属（纯静态小品不收块）
     const contractTickets = tickets.filter((t) => t.contract.trim());
     const contractEncores = encores.filter((e) => e.contract?.trim());
-    let ticketBlocks = matchMixBlocks(extracted.tickets, contractTickets);
-    let encoreBlocks = matchMixBlocks(extracted.encores, contractEncores);
     // 滤网「进上下文」模式：拆完块后清洗正文再入库，历史发回模型的就是洗过的。
     // 这一格是累加型，条件命中的几张滤网按顺序串联清洗。
     const filterRules = (active.filter ?? [])
         .flatMap((m) => (m.kind === "filter" ? m.rules : []));
-    const text = applyMixFilterRules(extracted.text, filterRules.length ? filterRules : undefined, "context");
+    const stripped = stripMixReply(raw, contractTickets, contractEncores, filterRules);
+    let ticketBlocks = stripped.ticketBlocks;
+    const encoreBlocks = stripped.encoreBlocks;
+    const text = stripped.text;
     if (!text && !ticketBlocks.length) {
         throw new ChatEngineError("模型没有给出内容，请再试一次。");
     }
-    // 状态栏补写：逐张核对，漏了哪张就单独把哪张要回来
+    // 状态栏补写：逐张核对，漏了哪张就单独把哪张要回来。
+    // 补出的块同时并进"原始输出"存档——它算这一轮产出的一部分，不并进去的话
+    // 玩家编辑一次别的字，重跑剥离管线时这一块就凭空消失了。
+    const repairedTexts: string[] = [];
     if (text) {
         const missing = contractTickets.filter(
             (ticket) => ticket.renderHtml.trim() && !ticketBlocks.some((b) => b.id === ticket.id),
@@ -562,7 +586,11 @@ async function runMixGeneration(
                 for (const ticket of missing) {
                     emitMixRepair({ sessionId: working.id, name: ticket.name });
                     const repaired = await repairMixTicket(apiConfig, working, ticket, text, signal);
-                    if (repaired) ticketBlocks.push({ id: ticket.id, raw: repaired });
+                    if (repaired) {
+                        const block: MixTurnBlock = { id: ticket.id, raw: repaired };
+                        ticketBlocks.push(block);
+                        repairedTexts.push(blockText(MIX_TICKET_OPEN, MIX_TICKET_CLOSE, block, contractTickets.length > 1));
+                    }
                 }
             } finally {
                 // 无论补成没补成都要收 toast，别让它挂在屏幕上过夜
@@ -571,7 +599,8 @@ async function runMixGeneration(
         }
     }
     ticketBlocks = orderMixBlocks(ticketBlocks, contractTickets);
-    encoreBlocks = orderMixBlocks(encoreBlocks, contractEncores);
+    // 原始输出存档：模型原文 + 按规范位置（回复最开头）并进去的补写块
+    const rawStored = repairedTexts.length ? [...repairedTexts, raw].join("\n\n") : raw;
     // 记住的值：用这一轮各张小票自己的块更新，抽不到的保留上一轮；顺带把结果快照在这一轮上，
     // 回溯/重说/编辑时直接取剩下最后一轮的快照还原。
     const stateFromTicket = advanceMixStateWithBlocks(working.state, contractTickets, ticketBlocks);
@@ -595,6 +624,8 @@ async function runMixGeneration(
         id: createMixId("mixturn"),
         role: "assistant",
         text: finalText,
+        // 真原文存档：机括改写/摘标记行之前的那份，「编辑原始输出」展示的就是它
+        rawText: rawStored,
         // 单块字段冗余存第一块：老读取路径与跨版本数据都还认得
         ticketRaw: keptTickets[0]?.raw,
         encoreRaw: keptEncores[0]?.raw,
@@ -756,7 +787,6 @@ export function editMixTurn(sessionId: string, turnId: string, newText: string):
     const kept = current.turns.slice(0, idx);
     let edited: MixTurn;
     if (current.turns[idx].role === "assistant") {
-        const parsed = extractMixBlocks(trimmed);
         // 块归属候选：这一轮原本的供稿材料在前（换过装的旧轮编辑后皮不跑偏），
         // 再补当前槽位里的材料（编辑时条件现场已不可考，名字对得上就认）
         const tickets = sessionTickets(current).filter((t) => t.contract.trim());
@@ -772,21 +802,36 @@ export function editMixTurn(sessionId: string, turnId: string, newText: string):
             }
             return pool;
         };
-        const ticketBlocks = matchMixBlocks(parsed.tickets, withPrior(mixTurnTicketBlocks(current.turns[idx]), tickets));
-        const encoreBlocks = matchMixBlocks(parsed.encores, withPrior(mixTurnEncoreBlocks(current.turns[idx]), encores));
-        // 状态栏被手工改过，这一轮的快照要按新原文重算，否则数字和界面对不上
-        const before = withRolledBackState(current, kept).state;
+        // 编辑保存 = 拿新原文当一次模型输出重跑剥离管线（滤网也过，与出杯同一口径）。
+        // 滤网条件按"这一轮之前的历史 + 回滚后的记住的值"重建的现场判——
+        // 与真实出杯时判条件看到的现场同构（出杯时回复也还不存在）。
+        const rolled = withRolledBackState(current, kept);
+        const activeNow = pickActiveMixMaterials(
+            resolveMixRecipeMaterials(current.recipe).entries,
+            buildMixConditionContext(rolled),
+        );
+        const filterRules = (activeNow.filter ?? []).flatMap((m) => (m.kind === "filter" ? m.rules : []));
+        const stripped = stripMixReply(
+            trimmed,
+            withPrior(mixTurnTicketBlocks(current.turns[idx]), tickets),
+            withPrior(mixTurnEncoreBlocks(current.turns[idx]), encores),
+            filterRules,
+        );
         edited = {
             ...current.turns[idx],
-            text: parsed.text,
-            ticketRaw: ticketBlocks[0]?.raw,
-            encoreRaw: encoreBlocks[0]?.raw,
-            ticketRaws: ticketBlocks.length ? ticketBlocks : undefined,
-            encoreRaws: encoreBlocks.length ? encoreBlocks : undefined,
+            text: stripped.text,
+            // 编辑后的正文就是新的"原始输出"：下次再编辑看到的还是这一份，
+            // 机括标记行可往返改（本局带钩子机括时，调用方随后会跑 runMixEditSync 收数摘行）
+            rawText: trimmed,
+            ticketRaw: stripped.ticketBlocks[0]?.raw,
+            encoreRaw: stripped.encoreBlocks[0]?.raw,
+            ticketRaws: stripped.ticketBlocks.length ? stripped.ticketBlocks : undefined,
+            encoreRaws: stripped.encoreBlocks.length ? stripped.encoreBlocks : undefined,
             // 换装戳作废：编辑后的块自带归属，旧戳留着会把渲染指错皮
             ticketId: undefined,
             encoreId: undefined,
-            state: advanceMixStateWithBlocks(before, tickets, ticketBlocks),
+            // 状态栏被手工改过，这一轮的快照要按新原文重算，否则数字和界面对不上
+            state: advanceMixStateWithBlocks(rolled.state, tickets, stripped.ticketBlocks),
         };
     } else {
         edited = { ...current.turns[idx], text: trimmed };
