@@ -58,12 +58,20 @@ const MEMORY_CARE_MIN_IDLE_MS = 6 * 60 * 60 * 1000;
 const MEMORY_CARE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 同一角色 24h 内最多主动关心一次
 const MEMORY_CARE_LAST_TS_PREFIX = "ai_phone_mem_care_last_";
 const MEMORY_CARE_ENABLED_KEY = "ai_phone_mem_care_enabled";
+const MEMORY_CARE_ENABLED_PER_CHAR_PREFIX = "ai_phone_mem_care_enabled_char_";
 
-/** 用户级硬开关：默认开启，用户在「人物聊天设置栏」可关闭。 */
-export function isMemoryCareEnabled(): boolean {
+/**
+ * 每角色独立硬开关（人物聊天设置栏可单独关掉某个角色）：
+ * - 传 characterId：优先读该角色自己的 key，缺省回退全局默认（兼容老数据）
+ * - 不传：读全局默认（"我"页的全局开关，作为所有角色的默认值）
+ */
+export function isMemoryCareEnabled(characterId?: string): boolean {
     if (typeof window === "undefined") return true;
     try {
-        const v = localStorage.getItem(MEMORY_CARE_ENABLED_KEY);
+        const raw = characterId
+            ? localStorage.getItem(MEMORY_CARE_ENABLED_PER_CHAR_PREFIX + characterId)
+            : null;
+        const v = raw ?? localStorage.getItem(MEMORY_CARE_ENABLED_KEY);
         if (v === null) return true; // 默认开启
         return v !== "0" && v !== "false";
     } catch {
@@ -71,10 +79,13 @@ export function isMemoryCareEnabled(): boolean {
     }
 }
 
-export function setMemoryCareEnabled(enabled: boolean): void {
+export function setMemoryCareEnabled(enabled: boolean, characterId?: string): void {
     if (typeof window === "undefined") return;
     try {
-        localStorage.setItem(MEMORY_CARE_ENABLED_KEY, enabled ? "1" : "0");
+        const key = characterId
+            ? MEMORY_CARE_ENABLED_PER_CHAR_PREFIX + characterId
+            : MEMORY_CARE_ENABLED_KEY;
+        localStorage.setItem(key, enabled ? "1" : "0");
     } catch {
         // ignore
     }
@@ -416,7 +427,6 @@ function setLastMemoryCareTs(characterId: string, ts: number) {
 function pollMemoryCare(now: number) {
     if (now - lastMemoryCarePollAt < MEMORY_CARE_POLL_INTERVAL_MS) return;
     lastMemoryCarePollAt = now;
-    if (!isMemoryCareEnabled()) return;
 
     const sessions = loadChatSessions()
         .filter(session => !session.isGroup && !!session.contactId)
@@ -424,6 +434,8 @@ function pollMemoryCare(now: number) {
 
     for (const session of sessions) {
         const characterId = session.contactId!;
+        // 每角色独立开关：该角色关闭则跳过（缺省回退全局默认）
+        if (!isMemoryCareEnabled(characterId)) continue;
         if (memoryCareFiringSet.has(characterId)) continue;
         if (now - getLastMemoryCareTs(characterId) < MEMORY_CARE_COOLDOWN_MS) continue;
 

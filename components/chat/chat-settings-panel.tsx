@@ -43,7 +43,8 @@ import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Brain, type LucideIcon } from "lucide-react";
+import { isMemoryCareEnabled, setMemoryCareEnabled } from "@/lib/follow-up-service";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -296,6 +297,8 @@ export function ChatSettingsPanel({
     const [videoBackground, setVideoBackground] = useState<string>(session.videoBackground || "");
     const [voiceBackground, setVoiceBackground] = useState<string>(session.voiceBackground || "");
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
+    // 每角色独立开关：角色主动想起我（记忆唤起主动关心）
+    const [memoryCareOn, setMemoryCareOn] = useState(() => isMemoryCareEnabled(session.contactId));
     // 自定义状态栏（状态区）
     const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
@@ -1005,6 +1008,21 @@ export function ChatSettingsPanel({
 
                 {/* Toggles */}
                 <div className="menu-group">
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Brain} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">角色主动想起我</span>
+                                <span className="menu-desc">久未联系时，TA 会基于长期记忆主动私聊你、提起共同经历（24h 最多一次）</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle
+                                    checked={memoryCareOn}
+                                    onChange={c => { setMemoryCareOn(c); setMemoryCareEnabled(c, session.contactId); }}
+                                />
+                            </div>
+                        </div>
+                    )}
                     <div className="menu-item">
                         <ChatInfoIcon icon={Pin} color={BINDING_ACCENTS.preset} />
                         <div className="menu-label-group"><span className="menu-label">置顶聊天</span></div>
