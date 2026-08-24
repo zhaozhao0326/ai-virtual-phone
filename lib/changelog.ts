@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.15";
+export const APP_VERSION = "1.7.16";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.16",
+    date: "2026-08-24",
+    title: "TikHub 代理改用 Authorization Header 传 Key（修复 401 missing token）",
+    highlights: [
+      "原因：TikHub 新版拒绝 query string 里的 api_key 参数（返回 401「API token is missing in the request Header or Cookie」），现在改为走 Authorization: Bearer header，符合官方要求",
+      "TikHub 插件升级 v3.1.1：修正设置项类型（string → text），key 输入框现在能在设置页正常显示与保存",
+    ],
+  },
   {
     version: "1.7.15",
     date: "2026-08-24",

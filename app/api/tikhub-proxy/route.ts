@@ -50,13 +50,12 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "缺少 url 参数" }, { status: 400, headers: corsHeaders() });
     }
 
-    const keyParam = encodeURIComponent(apiKey);
     let tikhubUrl = "";
     if (platform === "xhs") {
         const ep = noteType === "video" ? "get_video_note_detail" : "get_image_note_detail";
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}&api_key=${keyParam}`;
+        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}`;
     } else if (platform === "bili") {
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}&api_key=${keyParam}`;
+        tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}`;
     } else {
         return NextResponse.json(
             { ok: false, error: "不支持的平台（platform 应为 xhs 或 bili）" },
@@ -67,9 +66,13 @@ export async function GET(req: NextRequest) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 18_000);
     try {
+        // TikHub 新版要求 api_key 走 Authorization Bearer header（query string 已被拒绝，返回 401）
         const res = await fetch(tikhubUrl, {
             signal: controller.signal,
-            headers: { "User-Agent": "ai-virtual-phone-tikhub-proxy" },
+            headers: {
+                "User-Agent": "ai-virtual-phone-tikhub-proxy",
+                "Authorization": `Bearer ${apiKey}`,
+            },
         });
         clearTimeout(timeout);
 
