@@ -58,6 +58,8 @@ import {
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
+import { computeRelationshipGrowth, type RelationshipGrowth } from "@/lib/relationship-growth";
+import type { RelationshipStage } from "@/lib/character-types";
 
 type ViewType = "list" | "detail";
 
@@ -1815,6 +1817,26 @@ function DraggableNode({
 
 // ── 绝密档案视图（详情页面） ─────────────────────────────────────────
 
+/** 关系阶段徽章：展示当前阶段名 + 阶段色 */
+function RelationshipStageBadge({ growth }: { growth: RelationshipGrowth | null }) {
+  if (!growth) return <span className="char-archive-val opacity-50 ts-11">—</span>;
+  const stageColors: Record<string, string> = {
+    "初识": "#8a8a8a",
+    "熟悉": "#4a90d9",
+    "亲近": "#e07a3f",
+    "羁绊": "#c0392b",
+  };
+  const color = stageColors[growth.stage] || "#8a8a8a";
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 ts-11 font-semibold"
+      style={{ color, background: `${color}1f`, border: `1px solid ${color}40` }}
+    >
+      {growth.stage}
+    </span>
+  );
+}
+
 function CharArchiveView({
   char,
   isEditing = false,
@@ -1872,6 +1894,9 @@ function CharArchiveView({
   const [tagInput, setTagInput] = useState("");
   const [showTimeZonePicker, setShowTimeZonePicker] = useState(false);
   const [timeZoneSearch, setTimeZoneSearch] = useState(char.timeZone || "");
+  const [growth, setGrowth] = useState<RelationshipGrowth | null>(null);
+  const [growthEnabled, setGrowthEnabled] = useState(char.relationshipGrowthEnabled !== false);
+  const [initialStage, setInitialStage] = useState<RelationshipStage | undefined>(char.initialRelationshipStage);
   const [avatar, setAvatar] = useState<string | null>(char.avatar || null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -1928,6 +1953,8 @@ function CharArchiveView({
     if (avatar !== (char.avatar || null)) return true;
     const origTags = char.tags || [];
     if (tags.length !== origTags.length || tags.some((t, i) => t !== origTags[i])) return true;
+    if (growthEnabled !== (char.relationshipGrowthEnabled !== false)) return true;
+    if ((initialStage || undefined) !== (char.initialRelationshipStage || undefined)) return true;
     return false;
   }
 
@@ -1953,8 +1980,19 @@ function CharArchiveView({
       setShowTimeZonePicker(false);
       setTags(char.tags || []);
       setAvatar(char.avatar || null);
+      setGrowthEnabled(char.relationshipGrowthEnabled !== false);
+      setInitialStage(char.initialRelationshipStage);
     }
   }, [isEditing, char]);
+
+  // 关系成长档案：计算相识天数/共同经历/关系阶段（纯展示，复用记忆数据）
+  useEffect(() => {
+    let cancelled = false;
+    computeRelationshipGrowth(char.id)
+      .then(g => { if (!cancelled) setGrowth(g); })
+      .catch(() => { if (!cancelled) setGrowth(null); });
+    return () => { cancelled = true; };
+  }, [char.id]);
 
   async function handleAvatarFile(file: File) {
     const url = await fileToDataUrl(file);
@@ -1997,7 +2035,9 @@ function CharArchiveView({
         timeZone: normalizedTimeZone,
         tags,
         birthday: birthday.trim() || undefined,
-        avatar: avatar ?? null
+        avatar: avatar ?? null,
+        relationshipGrowthEnabled: growthEnabled !== false ? undefined : false,
+        initialRelationshipStage: initialStage || undefined,
       }, createVersion);
     }
   }
@@ -2381,6 +2421,77 @@ function CharArchiveView({
               </div>
             ) : (
               <span className="char-archive-val">{timeZone || "SYSTEM"}</span>
+            )}
+          </div>
+        </div>
+
+        {/* 关系成长档案：角色与用户一起成长（纯展示，复用记忆数据；人设优先可关闭/设初始） */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>关系成长</span>
+              {isEditing && (
+                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                  <input
+                    type="checkbox"
+                    checked={growthEnabled}
+                    onChange={e => setGrowthEnabled(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  启用
+                </label>
+              )}
+              {growthEnabled && <RelationshipStageBadge growth={growth} />}
+            </div>
+
+            {!growthEnabled ? (
+              <div className="mt-2 ts-11 opacity-60">
+                已关闭：该角色不显示关系成长，聊天也不会注入关系阶段（人设说了算）。
+                {isEditing && "（勾选上方「启用」可恢复）"}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-4 mt-2">
+                  <span className="char-archive-val ts-12">相识 <b>{growth ? growth.daysKnown : "—"}</b> 天</span>
+                  <span className="char-archive-val ts-12">共同经历 <b>{growth ? growth.memoryCount : "—"}</b> 件事</span>
+                </div>
+                {growth && growth.nextStage && (
+                  <div className="flex flex-col gap-1 mt-2">
+                    <div className="flex justify-between ts-10 opacity-70">
+                      <span>距离「{growth.nextStage}」</span>
+                      <span>{Math.round(growth.progress * 100)}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-[color-mix(in_srgb,var(--c-card-border)_40%,transparent)] overflow-hidden">
+                      <div className="h-full rounded-full bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_70%,transparent)] transition-all"
+                           style={{ width: `${Math.round(growth.progress * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="char-archive-val ts-11 opacity-70">初始关系</span>
+                  {isEditing ? (
+                    <select
+                      className="char-timezone-trigger"
+                      value={initialStage || "自动"}
+                      onChange={e => setInitialStage(e.target.value === "自动" ? undefined : e.target.value as RelationshipStage)}
+                    >
+                      <option value="自动">自动（随相处成长）</option>
+                      <option value="初识">初识</option>
+                      <option value="熟悉">熟悉</option>
+                      <option value="亲近">亲近</option>
+                      <option value="羁绊">羁绊</option>
+                    </select>
+                  ) : (
+                    <span className="char-archive-val ts-12">{initialStage || "自动（随相处成长）"}</span>
+                  )}
+                </div>
+                {initialStage && (
+                  <div className="mt-1 ts-10 opacity-50">已按人设设定初始关系，从「{initialStage}」起步（例如情侣可设「羁绊」）。</div>
+                )}
+                <div className="mt-2 ts-10 opacity-50">
+                  关系随相处自动加深：聊得越多、记住的事越多，关系阶段越高，角色也会越来越懂你。
+                </div>
+              </>
             )}
           </div>
         </div>

@@ -1,3 +1,6 @@
+/** 关系成长阶段：角色与用户关系的自然进阶（人设优先，随机应变） */
+export type RelationshipStage = "初识" | "熟悉" | "亲近" | "羁绊";
+
 export type Character = {
   id: string;
   name: string;
@@ -21,6 +24,13 @@ export type Character = {
   canvasRot?: number;
   canvasZIndex?: number;
   polaroidStyle?: number; // 用户选择的拍立得样式索引
+
+  // 关系成长档案（角色与用户一起成长）
+  // 缺省 = 开启；false = 该角色不显示/不注入关系成长（人设优先，随机应变）
+  relationshipGrowthEnabled?: boolean;
+  // 初始关系阶段：缺省 = 自动（按相识天数+共同经历累计成长）；
+  // 设定具体阶段则直接以该阶段起步（如人设里就是情侣 → 设「羁绊」）
+  initialRelationshipStage?: RelationshipStage;
 };
 
 export type CanvasBgItem = {

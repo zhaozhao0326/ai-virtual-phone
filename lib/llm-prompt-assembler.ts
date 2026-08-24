@@ -83,6 +83,7 @@ export interface AssemblerInput {
     vnBeats?: string;                      // formatted beats outline for {{vnBeats}} macro
     vnCurrentBeat?: string;                // current beat title+description for {{vnCurrentBeat}} macro
     affinity?: string;                     // character's affinity toward user (0-100) for {{affinity}} macro
+    relationshipGrowth?: string;           // 关系成长背景（相识天数/共同经历/关系阶段），注入 {{relationshipGrowth}} 段落
     tools?: string;                          // formatted tool definitions for {{tools}} macro
     cocreateWriteActions?: string;           // full co-create action set for {{cocreateWriteActions}} macro (write mode)
     cocreateReadActions?: string;            // read-only co-create action set for {{cocreateReadActions}} macro (discuss mode)
@@ -408,6 +409,7 @@ function getMarkerContent(
     regexCtx?: RegexContext,
     characterRelations?: string,
     dwellingContext?: string,
+    relationshipGrowth?: string,
 ): string | null {
     switch (identifier) {
         case "charDescription": {
@@ -443,6 +445,8 @@ function getMarkerContent(
             const relations = characterRelations?.trim() || formatCharacterRelationsForPrompt(character.id).trim();
             return relations || null;
         }
+        case "relationshipGrowth":
+            return relationshipGrowth?.trim() || null;
         case "dwellingContext": {
             if (dwellingContext?.trim()) return dwellingContext;
             // Auto-load from in-memory cache if not explicitly provided
@@ -775,6 +779,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                     regexes, { macroEngine: engine, activeTags },
                     input.characterRelations,
                     input.dwellingContext,
+                    input.relationshipGrowth,
                 );
                 if (markerContent) {
                     // Expand macros in marker content ({{char}}/{{user}} in char descriptions etc.)

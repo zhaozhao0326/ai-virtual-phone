@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.23";
+export const APP_VERSION = "1.7.24";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.24",
+    date: "2026-08-24",
+    title: "角色档案新增「关系成长」：角色会和你一起成长",
+    highlights: [
+      "角色档案里新增「关系成长」：显示相识天数、共同经历条数，以及关系阶段（初识/熟悉/亲近/羁绊）",
+      "关系随相处自动加深：聊得越多、记住的事越多，阶段越高",
+      "聊天时角色会自然体现出当前的关系阶段，越来越懂你",
+      "可整体关闭（人设优先），也可设定初始关系（如设定就是情侣可直接设为「羁绊」）",
+    ],
+  },
   {
     version: "1.7.23",
     date: "2026-08-24",

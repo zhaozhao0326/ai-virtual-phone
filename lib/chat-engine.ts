@@ -60,6 +60,7 @@ import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
 import { parseActionTags, dispatchActions } from "./action-parser";
 import { findEnabledToolForSchema, getEnabledTools, type EnabledTool } from "./tool-storage";
+import { computeRelationshipGrowth, relationshipStagePromptLine } from "./relationship-growth";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
 import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults } from "./tool-executor";
 import type { ToolCall, ToolResult } from "./tool-executor";
@@ -1870,15 +1871,17 @@ export async function buildChatPromptMessages(
         }
     }
 
-    const [memResults, coreResults, musicLocal, musicCloud] = await Promise.all([
+    const [memResults, coreResults, musicLocal, musicCloud, growthResult] = await Promise.all([
         retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
         retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
+        computeRelationshipGrowth(character.id).catch(() => null),
     ]);
 
     const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
+    const relationshipGrowthPrompt = growthResult ? relationshipStagePromptLine(growthResult) : "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
@@ -1946,6 +1949,7 @@ export async function buildChatPromptMessages(
         offlineBilingualInstruction,
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
+        relationshipGrowth: relationshipGrowthPrompt,
     });
 
     // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，

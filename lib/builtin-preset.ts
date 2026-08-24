@@ -41,6 +41,7 @@ export function createBuiltinPreset(): PresetConfig {
             { identifier: "calendarSchedule", enabled: true },
             { identifier: "memoryCore", enabled: true },
             { identifier: "memoryLongTerm", enabled: true },
+            { identifier: "relationshipGrowth", enabled: true },
 
             // ── Divider ──
             { identifier: "shortTermMemory", enabled: true },
