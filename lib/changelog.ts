@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.13";
+export const APP_VERSION = "1.7.14";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.14",
+    date: "2026-08-24",
+    title: "紧急修复：网易云工具参数 schema 导致 Gemini 400（角色说不了话）",
+    highlights: [
+      "问题：音乐工具的参数 schema 里写了 `type: [\"number\", \"string\"]`（JSON Schema 联合类型），Google Gemini 只接受单一 type，遇到即返回 400「Proto field is not repeating, cannot start list」→ 整个对话请求失败，角色无法回复",
+      "修复：4 处联合类型改为单一 `type: \"string\"`（songId/playlistId，数字可写作字符串如 \"12345\"）；工具执行侧本就兼容字符串（Number()/String() 处理），无需改动执行逻辑",
+      "全仓库已排查无其他 anyOf/oneOf/nullable/联合 type 残留",
+    ],
+  },
   {
     version: "1.7.13",
     date: "2026-08-24",

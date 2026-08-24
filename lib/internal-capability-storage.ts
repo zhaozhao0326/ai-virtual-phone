@@ -433,7 +433,7 @@ const MUSIC_OVERVIEW_PARAMETER_SCHEMA = JSON.stringify({
 const MUSIC_PLAYLIST_TRACKS_PARAMETER_SCHEMA = JSON.stringify({
     type: "object",
     properties: {
-        playlistId: { type: ["number", "string"], description: "网易云歌单 ID" },
+        playlistId: { type: "string", description: "网易云歌单 ID（数字可写作字符串，如 \"12345\"）" },
         offset: { type: "number", description: "从第几首开始，默认 0" },
         limit: { type: "number", description: "返回数量，1-50，默认 30" },
     },
@@ -454,7 +454,7 @@ const MUSIC_PLAY_PARAMETER_SCHEMA = JSON.stringify({
     properties: {
         query: { type: "string", description: "歌曲关键词" },
         source: { type: "string", description: "按 ID 播放时填写 local 或 netease" },
-        songId: { type: ["number", "string"], description: "本地歌曲 ID 或网易云歌曲 ID" },
+        songId: { type: "string", description: "本地歌曲 ID 或网易云歌曲 ID（数字可写作字符串，如 \"12345\"）" },
     },
 });
 
@@ -463,8 +463,8 @@ const MUSIC_QUEUE_PARAMETER_SCHEMA = JSON.stringify({
     properties: {
         query: { type: "string", description: "搜索关键词" },
         source: { type: "string", description: "按 ID 添加时填写 local 或 netease" },
-        songId: { type: ["number", "string"], description: "本地歌曲 ID 或网易云歌曲 ID" },
-        playlistId: { type: ["number", "string"], description: "网易云歌单 ID；填写后加入该歌单歌曲" },
+        songId: { type: "string", description: "本地歌曲 ID 或网易云歌曲 ID（数字可写作字符串，如 \"12345\"）" },
+        playlistId: { type: "string", description: "网易云歌单 ID（数字可写作字符串，如 \"12345\"）；填写后加入该歌单歌曲" },
         limit: { type: "number", description: "从搜索或歌单加入多少首，1-50，默认 10" },
         replace: { type: "boolean", description: "是否替换当前播放列表，默认 false" },
         playFirst: { type: "boolean", description: "是否立即播放加入的第一首，默认 false" },
