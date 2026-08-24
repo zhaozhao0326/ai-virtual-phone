@@ -31,6 +31,14 @@ export type Character = {
   // 初始关系阶段：缺省 = 自动（按相识天数+共同经历累计成长）；
   // 设定具体阶段则直接以该阶段起步（如人设里就是情侣 → 设「羁绊」）
   initialRelationshipStage?: RelationshipStage;
+
+  // Auto Memory 认知档案（角色对用户的长期认知，六分类+三级优先）
+  // 缺省 = 开启；false = 该角色完全不注入/不写入认知档案（人设优先可关）
+  autoMemoryEnabled?: boolean;
+
+  // 相遇纪念日（可选）：首次"正式认识"的日子，纯展示用。
+  // 缺省 = 按角色创建时间（createdAt）推算；设定后以手动值为准
+  firstMetAt?: string;
 };
 
 export type CanvasBgItem = {

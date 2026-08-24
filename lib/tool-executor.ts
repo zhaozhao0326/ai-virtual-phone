@@ -27,8 +27,10 @@ import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_
 import { applyAIProactiveGroupCreate } from "./group-admin";
 import { bridgeConnection, loadBridgeDataItems, loadBridgeShortcutActions, readAllBridgeStateSnapshots, readBridgeStateSnapshot } from "./reality-bridge/storage";
 import { createShortcutCommand, deliverShortcutCommand, waitForShortcutCommand } from "./shortcut-command-client";
-import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
+import { loadMemoryEntriesByType, saveMemoryEntry, saveAutoMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
+import type { AutoMemoryEntry, AutoMemoryCategory, AutoMemoryPriority } from "./auto-memory-types";
+import { AUTO_MEMORY_CATEGORIES, AUTO_MEMORY_CATEGORY_LABELS } from "./auto-memory-types";
 import { loadCharacters } from "./character-storage";
 import {
     deleteCalendarScheduleItem,
@@ -89,6 +91,10 @@ export type MemoryWriteRequest = {
     content: string;
     importance: number;
     reason?: string;
+    /** Auto Memory 认知档案写入：目标分类（work/personal/top_of_mind/history/background/instructions）。
+     *  带该参数时写入角色的认知档案（auto_memory），而非长期记忆。 */
+    autoMemoryCategory?: string;
+    autoMemoryPriority?: string;
 };
 
 export type ToolExecutionContext = {
@@ -2986,6 +2992,14 @@ async function executeMemoryWriteTool(
         content,
         importance,
         ...(reason ? { reason } : {}),
+        // Auto Memory 认知档案写入（可选）：AI 在对话中判断"这对了解我有长期价值"时，
+        // 可带 autoMemory 分类写入认知档案（经用户审批，走同一链路）
+        ...(typeof args.autoMemory === "string" && args.autoMemory.trim()
+            ? { autoMemoryCategory: String(args.autoMemory).trim() }
+            : {}),
+        ...(typeof args.autoMemoryPriority === "string" && ["always", "normal", "low"].includes(args.autoMemoryPriority)
+            ? { autoMemoryPriority: String(args.autoMemoryPriority) }
+            : {}),
     };
 
     if (capability.mode === "confirm") {
@@ -3089,6 +3103,37 @@ async function persistMemoryWriteRequest(
     request: MemoryWriteRequest,
     options?: { approvedByUser?: boolean },
 ): Promise<ToolResult> {
+    // Auto Memory 认知档案写入：带 autoMemoryCategory 时写入该角色的认知档案（auto_memory 表）
+    if (request.autoMemoryCategory) {
+        const category = AUTO_MEMORY_CATEGORIES.includes(request.autoMemoryCategory as AutoMemoryCategory)
+            ? (request.autoMemoryCategory as AutoMemoryCategory)
+            : "background";
+        const priority: AutoMemoryPriority =
+            request.autoMemoryPriority === "always" || request.autoMemoryPriority === "low"
+                ? request.autoMemoryPriority
+                : "normal";
+        const now = new Date().toISOString();
+        const amEntry: AutoMemoryEntry = {
+            id: `am_tool_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            characterId: request.characterId,
+            category,
+            priority,
+            content: request.content.trim(),
+            createdAt: now,
+            updatedAt: now,
+            source: "chat",
+        };
+        await saveAutoMemoryEntry(amEntry);
+        return {
+            name: "写入认知档案",
+            success: true,
+            data: `认知档案已写入「${AUTO_MEMORY_CATEGORY_LABELS[category]}」：${request.content}`,
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: options?.approvedByUser ? "已写入角色的认知档案" : "已自动写入角色的认知档案",
+        };
+    }
+
     const duplicate = await isDuplicateLongTermMemory(request.characterId, request.content);
     if (duplicate) {
         return {

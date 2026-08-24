@@ -17,6 +17,8 @@ import {
 import MusicCommentsPage from "./music-comments";
 import MusicArtistPage from "./music-artist";
 import { loadMusicBg, playerBgStyle, MUSIC_BG_EVENT, type MusicBgConfig } from "@/lib/music-bg";
+import { getListenTogetherCharacterId, setListenTogether, getListenTogetherMinutes } from "@/lib/music-together";
+import { loadCharacters } from "@/lib/character-storage";
 
 const PLAY_MODE_ICONS: Record<PlayMode, { svg: string; label: string }> = {
     sequence: {
@@ -98,6 +100,36 @@ export default function MusicPlayer() {
     const [pendingPlayTrackId, setPendingPlayTrackId] = useState<string | null>(null);
     const musicToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const musicLoadingFallbackRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // ── 一起听：配对角色共享正在播放 ──
+    const [togetherCharId, setTogetherCharId] = useState<string | null>(() => getListenTogetherCharacterId());
+    const [togetherShowPicker, setTogetherShowPicker] = useState(false);
+    const [togetherMin, setTogetherMin] = useState(0);
+    useEffect(() => {
+        if (!togetherCharId) return;
+        setTogetherMin(getListenTogetherMinutes());
+        const timer = setInterval(() => setTogetherMin(getListenTogetherMinutes()), 30000);
+        return () => clearInterval(timer);
+    }, [togetherCharId]);
+    const togetherChars = useMemo(() => {
+        try {
+            return loadCharacters().filter(c => c.id).map(c => ({ id: c.id, name: c.name || "未命名" }));
+        } catch {
+            return [];
+        }
+    }, []);
+    const togetherChar = togetherCharId ? togetherChars.find(c => c.id === togetherCharId) : undefined;
+    const handleTogetherPair = (id: string) => {
+        setListenTogether(id);
+        setTogetherCharId(id);
+        setTogetherShowPicker(false);
+        setTogetherMin(getListenTogetherMinutes());
+    };
+    const handleTogetherEnd = () => {
+        setListenTogether(null);
+        setTogetherCharId(null);
+        setTogetherShowPicker(false);
+    };
 
     const currentTime = isDragging ? dragTime : player.currentTime;
     const progress = player.duration > 0 ? currentTime / player.duration : 0;
@@ -460,6 +492,16 @@ export default function MusicPlayer() {
                     </button>
                 </div>
                 <div className="mp-top-actions">
+                    <button
+                        className="music-player-ctrl-btn mp-top-btn"
+                        onClick={() => setTogetherShowPicker(true)}
+                        title={togetherChar ? `正在和 ${togetherChar.name} 一起听` : "一起听：邀请一位角色共享正在播放"}
+                        style={togetherChar ? { color: "var(--mp-accent, #4a3f2f)", opacity: 1 } : undefined}
+                    >
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20.4S4.6 15.9 2.9 11.6C1.7 8.5 3.5 5.6 6.4 5.2c1.9-.26 3.7.62 4.8 2.15C12.3 5.82 14.1 4.94 16 5.2c2.9.4 4.7 3.3 3.5 6.4-1.7 4.3-9.1 8.8-9.1 8.8z" />
+                        </svg>
+                    </button>
                     <button className="music-player-ctrl-btn mp-top-btn" onClick={togglePlayerStyle} title={playerStyle === "vinyl" ? "切换现代样式" : "切换黑胶样式"}>
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                             <circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
@@ -478,6 +520,19 @@ export default function MusicPlayer() {
                     </button>
                 </div>
             </div>
+
+            {/* 一起听配对状态：正在和某位角色共享此刻 */}
+            {togetherChar && (
+                <div className="flex items-center justify-center gap-2 px-4 pb-1" style={{ fontSize: 12, opacity: 0.75 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                        <path d="M12 20.4S4.6 15.9 2.9 11.6C1.7 8.5 3.5 5.6 6.4 5.2c1.9-.26 3.7.62 4.8 2.15C12.3 5.82 14.1 4.94 16 5.2c2.9.4 4.7 3.3 3.5 6.4-1.7 4.3-9.1 8.8-9.1 8.8z" />
+                    </svg>
+                    <span>正在和 <b>{togetherChar.name}</b> 一起听 · {togetherMin} 分钟</span>
+                    <button onClick={handleTogetherEnd} title="结束一起听" style={{ opacity: 0.65 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            )}
 
             {/* Body — cover / vinyl / glow lyrics */}
             <div className="mp-body">
@@ -751,6 +806,52 @@ export default function MusicPlayer() {
             {addResult && (
                 <div className={`music-toast ${addResult.ok ? "music-toast-ok" : "music-toast-err"}`}>
                     {addResult.ok ? "✓ " : "✗ "}{addResult.message}
+                </div>
+            )}
+
+            {/* 一起听：选择一位角色配对 */}
+            {togetherShowPicker && (
+                <div
+                    className="absolute inset-0 z-30 flex items-end justify-center"
+                    style={{ background: "rgba(0,0,0,0.35)", backdropFilter: "blur(4px)" }}
+                    onClick={() => setTogetherShowPicker(false)}
+                >
+                    <div
+                        className="w-full max-w-sm mx-4 mb-6 rounded-2xl overflow-hidden"
+                        style={{ background: "var(--mp-bg, #fff)", border: "0.5px solid var(--mp-line, rgba(0,0,0,0.12))" }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="px-4 pt-3 pb-2 text-center" style={{ fontSize: 13, fontWeight: 500 }}>
+                            一起听 · 邀请一位角色共享正在播放
+                        </div>
+                        <div className="max-h-72 overflow-y-auto px-2 pb-2">
+                            {togetherChars.length === 0 ? (
+                                <div className="px-3 py-4 text-center" style={{ fontSize: 12, opacity: 0.6 }}>
+                                    还没有可配对的角色，先去创建角色吧
+                                </div>
+                            ) : togetherChars.map(c => (
+                                <button
+                                    key={c.id}
+                                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:opacity-70 text-left"
+                                    onClick={() => handleTogetherPair(c.id)}
+                                    style={togetherCharId === c.id ? { background: "color-mix(in srgb, var(--mp-accent, #4a3f2f) 12%, transparent)" } : undefined}
+                                >
+                                    <span className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: "color-mix(in srgb, var(--mp-accent, #4a3f2f) 18%, transparent)", fontSize: 13 }}>
+                                        {c.name.slice(0, 1)}
+                                    </span>
+                                    <span className="flex-1" style={{ fontSize: 13 }}>{c.name}</span>
+                                    {togetherCharId === c.id && <span style={{ fontSize: 11, opacity: 0.7 }}>正在一起听</span>}
+                                </button>
+                            ))}
+                        </div>
+                        {togetherCharId && (
+                            <button
+                                className="w-full py-3 text-center"
+                                style={{ fontSize: 13, opacity: 0.8, borderTop: "0.5px solid var(--mp-line, rgba(0,0,0,0.1))" }}
+                                onClick={handleTogetherEnd}
+                            >结束一起听</button>
+                        )}
+                    </div>
                 </div>
             )}
 

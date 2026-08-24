@@ -61,6 +61,8 @@ import { prepareShortTermContext } from "./short-term-assembler";
 import { parseActionTags, dispatchActions } from "./action-parser";
 import { findEnabledToolForSchema, getEnabledTools, type EnabledTool } from "./tool-storage";
 import { computeRelationshipGrowth, relationshipStagePromptLine } from "./relationship-growth";
+import { retrieveAutoMemoryForPrompt } from "./auto-memory-service";
+import { buildListenTogetherPrompt } from "./music-together";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
 import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults } from "./tool-executor";
 import type { ToolCall, ToolResult } from "./tool-executor";
@@ -1892,17 +1894,25 @@ export async function buildChatPromptMessages(
         }
     }
 
-    const [memResults, coreResults, musicLocal, musicCloud, growthResult] = await Promise.all([
+    const [memResults, coreResults, musicLocal, musicCloud, growthResult, autoMemoryPrompt, musicTogetherPrompt] = await Promise.all([
         retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
         retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
         buildMusicLocalMacro(),
         buildMusicCloudMacro(),
         computeRelationshipGrowth(character.id).catch(() => null),
+        // Auto Memory 认知档案：角色级开关 false 时不注入（缺省开启，无档案返回 null）
+        character.autoMemoryEnabled === false
+            ? Promise.resolve(null)
+            : retrieveAutoMemoryForPrompt(character.id, wbActivationContext).catch(() => null),
+        // 音乐一起听：配对角色 + 正在播放 → 注入共享时刻（无配对/未播放返回 null）
+        buildListenTogetherPrompt(),
     ]);
 
     const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
     const coreMemories = coreResults ? formatCoreMemories(coreResults) : "";
     const relationshipGrowthPrompt = growthResult ? relationshipStagePromptLine(growthResult) : "";
+    const autoMemoryPromptText = autoMemoryPrompt?.trim() || "";
+    const musicTogetherPromptText = musicTogetherPrompt?.trim() || "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
@@ -1971,6 +1981,8 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
         relationshipGrowth: relationshipGrowthPrompt,
+        autoMemory: autoMemoryPromptText,
+        musicTogether: musicTogetherPromptText,
     });
 
     // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，

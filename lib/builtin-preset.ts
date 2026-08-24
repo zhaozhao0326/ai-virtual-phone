@@ -42,6 +42,8 @@ export function createBuiltinPreset(): PresetConfig {
             { identifier: "memoryCore", enabled: true },
             { identifier: "memoryLongTerm", enabled: true },
             { identifier: "relationshipGrowth", enabled: true },
+            { identifier: "autoMemory", enabled: true },
+            { identifier: "musicTogether", enabled: true },
 
             // ── Divider ──
             { identifier: "shortTermMemory", enabled: true },

@@ -60,6 +60,12 @@ import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { computeRelationshipGrowth, type RelationshipGrowth } from "@/lib/relationship-growth";
 import type { RelationshipStage } from "@/lib/character-types";
+import { loadAutoMemoryEntries, deleteAutoMemoryEntry } from "@/lib/memory-storage";
+import { upsertAutoMemoryEntry } from "@/lib/auto-memory-service";
+import { AUTO_MEMORY_CATEGORIES, AUTO_MEMORY_CATEGORY_LABELS, AUTO_MEMORY_PRIORITY_LABELS, type AutoMemoryCategory, type AutoMemoryPriority, type AutoMemoryEntry } from "@/lib/auto-memory-types";
+import { loadLetters, markLetterRead, deleteLetter } from "@/lib/letter-storage";
+import { requestLetter, getLetterCooldownRemaining } from "@/lib/letter-service";
+import type { LetterEntry } from "@/lib/letter-storage";
 
 type ViewType = "list" | "detail";
 
@@ -1897,6 +1903,20 @@ function CharArchiveView({
   const [growth, setGrowth] = useState<RelationshipGrowth | null>(null);
   const [growthEnabled, setGrowthEnabled] = useState(char.relationshipGrowthEnabled !== false);
   const [initialStage, setInitialStage] = useState<RelationshipStage | undefined>(char.initialRelationshipStage);
+  // Auto Memory 认知档案（每角色独立：角色对用户的长期认知）
+  const [autoMemEnabled, setAutoMemEnabled] = useState(char.autoMemoryEnabled !== false);
+  const [autoMemEntries, setAutoMemEntries] = useState<AutoMemoryEntry[]>([]);
+  const [autoMemEditing, setAutoMemEditing] = useState(false);
+  const [autoMemDraft, setAutoMemDraft] = useState<{ id?: string; category: AutoMemoryCategory; priority: AutoMemoryPriority; content: string }>({
+    category: "background",
+    priority: "normal",
+    content: "",
+  });
+  // 信箱（Letters 异步信）：角色基于了解写信，用户拆信阅读
+  const [letters, setLetters] = useState<LetterEntry[]>([]);
+  const [openLetterId, setOpenLetterId] = useState<string | null>(null);
+  const [letterBusy, setLetterBusy] = useState(false);
+  const [letterCooldown, setLetterCooldown] = useState(0);
   const [avatar, setAvatar] = useState<string | null>(char.avatar || null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [urlInput, setUrlInput] = useState("");
@@ -1954,6 +1974,7 @@ function CharArchiveView({
     const origTags = char.tags || [];
     if (tags.length !== origTags.length || tags.some((t, i) => t !== origTags[i])) return true;
     if (growthEnabled !== (char.relationshipGrowthEnabled !== false)) return true;
+    if (autoMemEnabled !== (char.autoMemoryEnabled !== false)) return true;
     if ((initialStage || undefined) !== (char.initialRelationshipStage || undefined)) return true;
     return false;
   }
@@ -1982,6 +2003,7 @@ function CharArchiveView({
       setAvatar(char.avatar || null);
       setGrowthEnabled(char.relationshipGrowthEnabled !== false);
       setInitialStage(char.initialRelationshipStage);
+      setAutoMemEnabled(char.autoMemoryEnabled !== false);
     }
   }, [isEditing, char]);
 
@@ -1993,6 +2015,78 @@ function CharArchiveView({
       .catch(() => { if (!cancelled) setGrowth(null); });
     return () => { cancelled = true; };
   }, [char.id]);
+
+  // Auto Memory 认知档案：加载该角色条目
+  useEffect(() => {
+    let cancelled = false;
+    loadAutoMemoryEntries(char.id)
+      .then(entries => { if (!cancelled) setAutoMemEntries(entries); })
+      .catch(() => { if (!cancelled) setAutoMemEntries([]); });
+    return () => { cancelled = true; };
+  }, [char.id]);
+
+  // 信箱：加载信件 + 冷却倒计时
+  useEffect(() => {
+    let cancelled = false;
+    loadLetters(char.id)
+      .then(ls => { if (!cancelled) setLetters(ls); })
+      .catch(() => { if (!cancelled) setLetters([]); });
+    const tick = () => setLetterCooldown(getLetterCooldownRemaining(char.id));
+    tick();
+    const timer = setInterval(tick, 10000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [char.id]);
+
+  async function handleRequestLetter() {
+    if (letterBusy || letterCooldown > 0) return;
+    setLetterBusy(true);
+    try {
+      const letter = await requestLetter(char.id);
+      if (letter) {
+        setLetters(prev => [letter, ...prev]);
+        setOpenLetterId(letter.id);
+      }
+      setLetterCooldown(getLetterCooldownRemaining(char.id));
+    } finally {
+      setLetterBusy(false);
+    }
+  }
+
+  async function handleOpenLetter(id: string) {
+    setOpenLetterId(id);
+    const letter = letters.find(l => l.id === id);
+    if (letter && !letter.read) {
+      await markLetterRead(id);
+      setLetters(prev => prev.map(l => l.id === id ? { ...l, read: true } : l));
+    }
+  }
+
+  async function handleDeleteLetter(id: string) {
+    await deleteLetter(id);
+    setLetters(prev => prev.filter(l => l.id !== id));
+    if (openLetterId === id) setOpenLetterId(null);
+  }
+
+  async function handleAutoMemSave() {
+    const content = autoMemDraft.content.trim();
+    if (!content) return;
+    await upsertAutoMemoryEntry({
+      id: autoMemDraft.id,
+      characterId: char.id,
+      category: autoMemDraft.category,
+      priority: autoMemDraft.priority,
+      content,
+      source: "manual",
+    });
+    setAutoMemEditing(false);
+    setAutoMemDraft({ category: "background", priority: "normal", content: "" });
+    setAutoMemEntries(await loadAutoMemoryEntries(char.id));
+  }
+
+  async function handleAutoMemDelete(id: string) {
+    await deleteAutoMemoryEntry(id);
+    setAutoMemEntries(await loadAutoMemoryEntries(char.id));
+  }
 
   async function handleAvatarFile(file: File) {
     const url = await fileToDataUrl(file);
@@ -2038,6 +2132,7 @@ function CharArchiveView({
         avatar: avatar ?? null,
         relationshipGrowthEnabled: growthEnabled !== false ? undefined : false,
         initialRelationshipStage: initialStage || undefined,
+        autoMemoryEnabled: autoMemEnabled !== false ? undefined : false,
       }, createVersion);
     }
   }
@@ -2451,8 +2546,34 @@ function CharArchiveView({
               </div>
             ) : (
               <>
+                {/* 相遇纪念：头像对 + 相识天数 + 相遇日期（纯展示） */}
+                <div className="flex items-center gap-3 mt-2 py-2 px-3 rounded-xl bg-[color-mix(in_srgb,var(--c-card-border)_10%,transparent)]">
+                  <div className="flex items-center -space-x-2 shrink-0">
+                    <span className="w-9 h-9 rounded-full border-2 border-[var(--c-card-bg,#fff)] overflow-hidden bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_20%,transparent)] flex items-center justify-center">
+                      {char.avatar ? (
+                        <img src={char.avatar} alt="" className="w-full h-full object-cover" draggable={false} />
+                      ) : (
+                        <span className="ts-11 opacity-70">{char.name?.slice(0, 1) || "?"}</span>
+                      )}
+                    </span>
+                    <span className="w-9 h-9 rounded-full border-2 border-[var(--c-card-bg,#fff)] overflow-hidden bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_35%,transparent)] flex items-center justify-center">
+                      <span className="ts-10 opacity-80">我</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="ts-12 font-semibold">和 {char.name} 相遇 {growth ? growth.daysKnown : "—"} 天</span>
+                    <span className="ts-10 opacity-60">
+                      {(() => {
+                        const met = char.firstMetAt || char.createdAt;
+                        if (!met) return "相遇日期：—";
+                        const d = new Date(met);
+                        if (Number.isNaN(d.getTime())) return "相遇日期：—";
+                        return `相遇日期：${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+                      })()}
+                    </span>
+                  </div>
+                </div>
                 <div className="flex items-center gap-4 mt-2">
-                  <span className="char-archive-val ts-12">相识 <b>{growth ? growth.daysKnown : "—"}</b> 天</span>
                   <span className="char-archive-val ts-12">共同经历 <b>{growth ? growth.memoryCount : "—"}</b> 件事</span>
                 </div>
                 {growth && growth.nextStage && (
@@ -2492,6 +2613,198 @@ function CharArchiveView({
                   关系随相处自动加深：聊得越多、记住的事越多，关系阶段越高，角色也会越来越懂你。
                 </div>
               </>
+            )}
+          </div>
+        </div>
+
+        {/* 认知档案（Auto Memory）：角色对用户的长期认知（六分类+三级优先；人设优先可关闭） */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>认知档案</span>
+              {isEditing && (
+                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                  <input
+                    type="checkbox"
+                    checked={autoMemEnabled}
+                    onChange={e => setAutoMemEnabled(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  启用
+                </label>
+              )}
+              {autoMemEnabled && autoMemEntries.length > 0 && (
+                <span className="ts-10 opacity-50">共 {autoMemEntries.length} 条</span>
+              )}
+            </div>
+
+            {!autoMemEnabled ? (
+              <div className="mt-2 ts-11 opacity-60">
+                已关闭：该角色不维护认知档案，聊天也不会注入（人设说了算）。
+                {isEditing && "（勾选上方「启用」可恢复）"}
+              </div>
+            ) : autoMemEntries.length === 0 ? (
+              <div className="mt-2 ts-11 opacity-60">
+                还没有认知档案条目。角色在聊天中会经你确认后写入「对你的了解」（如你的职业、口味、约定的规则），
+                也可以点下方按钮手动添加。
+                {!isEditing && "（进入编辑模式可管理）"}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 mt-2">
+                {AUTO_MEMORY_CATEGORIES.map(cat => {
+                  const items = autoMemEntries.filter(e => e.category === cat);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={cat} className="flex flex-col gap-1">
+                      <div className="ts-10 opacity-60 font-semibold">{AUTO_MEMORY_CATEGORY_LABELS[cat]}</div>
+                      {items.map(entry => (
+                        <div key={entry.id} className="flex items-start gap-2 py-1">
+                          <span className={`mt-1 shrink-0 ts-9 px-1.5 rounded-full border ${
+                            entry.priority === "always"
+                              ? "border-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_60%,transparent)] text-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_80%,transparent)]"
+                              : "border-[color-mix(in_srgb,var(--c-card-border)_80%,transparent)] opacity-70"
+                          }`}>
+                            {AUTO_MEMORY_PRIORITY_LABELS[entry.priority]}
+                          </span>
+                          <span className="flex-1 ts-12 leading-relaxed whitespace-pre-wrap break-words">{entry.content}</span>
+                          {isEditing && (
+                            <button
+                              className="ts-10 opacity-50 hover:opacity-100 shrink-0 mt-0.5"
+                              onClick={() => {
+                                setAutoMemDraft({ id: entry.id, category: entry.category, priority: entry.priority, content: entry.content });
+                                setAutoMemEditing(true);
+                              }}
+                            >编辑</button>
+                          )}
+                          {isEditing && (
+                            <button
+                              className="ts-10 opacity-50 hover:opacity-100 shrink-0 mt-0.5"
+                              onClick={() => handleAutoMemDelete(entry.id)}
+                            >删除</button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {isEditing && autoMemEnabled && (
+              autoMemEditing ? (
+                <div className="flex flex-col gap-2 mt-3 p-2.5 rounded-lg bg-[color-mix(in_srgb,var(--c-card-border)_12%,transparent)]">
+                  <textarea
+                    className="w-full char-archive-input resize-y"
+                    rows={3}
+                    placeholder="这条档案的内容（角色对用户的长期认知）"
+                    value={autoMemDraft.content}
+                    onChange={e => setAutoMemDraft(d => ({ ...d, content: e.target.value }))}
+                  />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      className="char-timezone-trigger"
+                      value={autoMemDraft.category}
+                      onChange={e => setAutoMemDraft(d => ({ ...d, category: e.target.value as AutoMemoryCategory }))}
+                    >
+                      {AUTO_MEMORY_CATEGORIES.map(c => (
+                        <option key={c} value={c}>{AUTO_MEMORY_CATEGORY_LABELS[c]}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="char-timezone-trigger"
+                      value={autoMemDraft.priority}
+                      onChange={e => setAutoMemDraft(d => ({ ...d, priority: e.target.value as AutoMemoryPriority }))}
+                    >
+                      <option value="normal">常态</option>
+                      <option value="always">核心（每轮必注入）</option>
+                      <option value="low">低优先</option>
+                    </select>
+                    <div className="flex-1" />
+                    <button className="ts-11 px-2 py-1 rounded-md border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)]" onClick={() => setAutoMemEditing(false)}>取消</button>
+                    <button
+                      className="ts-11 px-2.5 py-1 rounded-md text-[var(--c-text-title)] font-semibold bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_18%,transparent)]"
+                      onClick={handleAutoMemSave}
+                    >保存</button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className="mt-2 ts-11 px-2.5 py-1 rounded-md border border-dashed border-[color-mix(in_srgb,var(--c-card-border)_70%,transparent)] opacity-70 hover:opacity-100"
+                  onClick={() => setAutoMemEditing(true)}
+                >+ 添加档案条目</button>
+              )
+            )}
+
+            {autoMemEnabled && (
+              <div className="mt-2 ts-10 opacity-50">
+                认知档案是角色「对你的了解」：工作、个人、心头事、历史、背景、指令。核心条目每轮对话都会注入，是角色越来越懂你的依据；聊天中角色会在你确认后自主更新。
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 信箱（Letters 异步信）：角色基于对你的了解写信投递，拆信阅读 */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>信箱</span>
+              {letters.length > 0 && <span className="ts-10 opacity-50">共 {letters.length} 封</span>}
+              <button
+                className="ml-auto ts-11 px-2.5 py-1 rounded-md font-semibold bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_18%,transparent)] disabled:opacity-40"
+                disabled={letterBusy || letterCooldown > 0}
+                onClick={handleRequestLetter}
+              >
+                {letterBusy ? "写信中…" : letterCooldown > 0 ? `稍后再写（${Math.ceil(letterCooldown / 1000)}s）` : "请 TA 写封信"}
+              </button>
+            </div>
+
+            {letters.length === 0 ? (
+              <div className="mt-2 ts-11 opacity-60">
+                信箱还空着。点「请 TA 写封信」，角色会基于对小手机里你的了解（聊天、记忆、认知档案）给你写一封可以慢慢读的信。
+              </div>
+            ) : openLetterId ? (
+              (() => {
+                const letter = letters.find(l => l.id === openLetterId);
+                if (!letter) return null;
+                const d = new Date(letter.createdAt);
+                return (
+                  <div className="mt-2 flex flex-col gap-2 p-3 rounded-xl bg-[color-mix(in_srgb,var(--c-card-border)_10%,transparent)]">
+                    <div className="flex items-center gap-2">
+                      <span className="ts-11 font-semibold">{letter.from} 的来信</span>
+                      <span className="ts-10 opacity-50">{Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`}</span>
+                      <div className="flex-1" />
+                      <button className="ts-10 opacity-50 hover:opacity-100" onClick={() => setOpenLetterId(null)}>收起</button>
+                      <button className="ts-10 opacity-50 hover:opacity-100" onClick={() => handleDeleteLetter(letter.id)}>删除</button>
+                    </div>
+                    <div className="ts-13 leading-relaxed whitespace-pre-wrap break-words">{letter.content}</div>
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="flex flex-col gap-1.5 mt-2">
+                {letters.map(letter => (
+                  <button
+                    key={letter.id}
+                    className="flex items-center gap-2.5 py-2 px-2.5 rounded-lg text-left hover:opacity-75 bg-[color-mix(in_srgb,var(--c-card-border)_8%,transparent)]"
+                    onClick={() => handleOpenLetter(letter.id)}
+                  >
+                    <span className={`shrink-0 ts-9 px-1.5 py-0.5 rounded border ${
+                      letter.read
+                        ? "border-[color-mix(in_srgb,var(--c-card-border)_80%,transparent)] opacity-50"
+                        : "border-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_60%,transparent)] text-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_85%,transparent)] font-semibold"
+                    }`}>
+                      {letter.read ? "已读" : "新信"}
+                    </span>
+                    <span className="flex-1 ts-12 truncate">{letter.content.replace(/\s+/g, " ").slice(0, 40)}{letter.content.length > 40 ? "…" : ""}</span>
+                    <span className="ts-10 opacity-40 shrink-0">
+                      {(() => {
+                        const dd = new Date(letter.createdAt);
+                        return Number.isNaN(dd.getTime()) ? "" : `${dd.getMonth() + 1}/${dd.getDate()}`;
+                      })()}
+                    </span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>

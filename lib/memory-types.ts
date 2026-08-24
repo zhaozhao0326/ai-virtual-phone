@@ -31,6 +31,15 @@ export type MemoryEntry = {
     sourceMessageIds?: string[];
     /** 关系图谱维度：该记忆涉及的人物/地点/事物等关系事实（长期记忆抽取，可选） */
     relations?: MemoryRelation[];
+    /** 情感坐标（可选，0-1）：valence=情绪效价(0消极~1积极)，arousal=唤醒度(0平静~1强烈)。
+     *  高唤醒记忆在召回时权重更高；缺省按中性处理，老记忆无需迁移。 */
+    valence?: number;
+    arousal?: number;
+    /** 是否已解决。未解决的记忆衰减更慢、更容易被想起（如未化解的约定/矛盾）。缺省 false */
+    resolved?: boolean;
+    /** 被召回激活次数与最近激活时间：软饱和（激活越多权重趋稳）+ 反疲劳（2h 内高频激活降权）。可选 */
+    activationCount?: number;
+    lastActivated?: string;
     metadata?: Record<string, unknown>;
 };
 

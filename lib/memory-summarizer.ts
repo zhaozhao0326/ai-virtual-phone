@@ -136,6 +136,16 @@ export async function runSummarizationPipeline(
         }
     }
 
+    // 情感坐标抽取（best-effort，不阻断主流程）：长期记忆落地 valence/arousal
+    // 高唤醒/未解决的记忆在召回时权重更高（见 memory-service computeEmotionalScore）
+    let emotionCoords: { valence: number; arousal: number; resolved: boolean } | undefined;
+    try {
+        const emo = await extractEmotionFromSummary(summary, apiConfig);
+        if (emo) emotionCoords = emo;
+    } catch {
+        /* 情感抽取失败不影响主流程 */
+    }
+
     // Generate embedding for the summary (only if vector recall is enabled)
     let embedding: number[] | undefined;
     const embeddingApiConfig = config.vectorRecallEnabled ? resolveAuxiliaryApiConfig("embeddingApiConfigId") : null;
@@ -173,6 +183,9 @@ export async function runSummarizationPipeline(
         embedding,
         importance: 0.8,
         relations,
+        valence: emotionCoords?.valence,
+        arousal: emotionCoords?.arousal,
+        resolved: emotionCoords?.resolved,
         createdAt: now,
         updatedAt: now,
         metadata: {
@@ -252,6 +265,46 @@ function parseRelationJsonArray(text: string): any[] | null {
         const json = match ? match[0] : text.trim();
         const data = JSON.parse(json);
         return Array.isArray(data) ? data : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * 从长期记忆总结中抽取情感坐标（valence/arousal/resolved）。
+ * 仅 best-effort：任何失败都返回 null，绝不阻断主总结流程。
+ * 高唤醒、未解决的记忆会在召回排序中加权（memory-service.computeEmotionalScore）。
+ */
+async function extractEmotionFromSummary(
+    summary: string,
+    apiConfig: ApiConfig,
+): Promise<{ valence: number; arousal: number; resolved: boolean } | null> {
+    const prompt = `你是情绪标注助手。阅读下方角色记忆总结，判断这段经历的情绪基调与状态。
+
+记忆总结：
+${summary}
+
+输出严格 JSON 对象（不要任何其他文字）：
+{"valence": 0-1数字（情绪效价：0=消极/负面，1=积极/正面，中性约0.5）, "arousal": 0-1数字（唤醒度/情绪强度：0=平静平淡，1=强烈激烈）, "resolved": true或false（这段经历是否已告一段落/已解决；未完成的事、未化解的矛盾、悬而未决的约定为 false）}
+
+示例：{"valence":0.8,"arousal":0.6,"resolved":true}`;
+
+    try {
+        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2 });
+        if (!result.content) return null;
+        const match = result.content.match(/\{[\s\S]*\}/);
+        const json = match ? match[0] : result.content.trim();
+        const data = JSON.parse(json);
+        if (!data || typeof data !== "object") return null;
+        const clamp = (v: unknown, fallback: number) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : fallback;
+        };
+        return {
+            valence: clamp(data.valence, 0.5),
+            arousal: clamp(data.arousal, 0.3),
+            resolved: data.resolved !== false,
+        };
     } catch {
         return null;
     }

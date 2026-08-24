@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useState, useRef, useCallback, useEffect, useMemo, type ReactNode } from "react";
 import type { MusicTrack } from "./music-storage";
+import { setNowPlayingForPrompt } from "./music-together";
 import { getAudioBlob, markTrackPlayed } from "./music-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteasePlayInfo, getNeteaseSongDetail } from "./music-service";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
@@ -110,6 +111,11 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         persistQueue(queue);
     }, [queue]);
+
+    // 正在播放桥接：播放状态写入模块级单例，供 chat-engine prompt 组装（「一起听」注入）
+    useEffect(() => {
+        setNowPlayingForPrompt(isPlaying ? currentTrack : null);
+    }, [currentTrack, isPlaying]);
 
     /** Wrapped setQueue with max size enforcement */
     const setQueue = useCallback((tracks: MusicTrack[]) => {

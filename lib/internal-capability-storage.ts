@@ -40,6 +40,14 @@ const MEMORY_WRITE_PARAMETER_SCHEMA = JSON.stringify({
             type: "string",
             description: "简短说明为什么这条信息值得长期记住",
         },
+        autoMemory: {
+            type: "string",
+            description: "可选。若这条信息是「你（角色）对用户的长期认知」而非共同经历（例如用户的职业、口味、性格、与你约定的规则），填目标分类：work（工作）/ personal（个人）/ top_of_mind（心头事）/ history（历史）/ background（背景）/ instructions（指令）。填写后写入角色的认知档案，注入优先级高于长期记忆。",
+        },
+        autoMemoryPriority: {
+            type: "string",
+            description: "可选，仅在填写 autoMemory 时使用。always=核心事实（最多3条，每轮必注入）/ normal=常态（默认）/ low=低优先（仅强相关时浮现）",
+        },
     },
     required: ["content"],
 });
@@ -54,6 +62,12 @@ const MEMORY_WRITE_USAGE_GUIDE = [
     "- 双方做出的明确约定或承诺",
     "- 关系中的明确里程碑",
     "- 对后续互动长期有帮助的稳定事实",
+    "",
+    "认知档案（可选参数 autoMemory）：",
+    "- 若信息是「你（角色）对用户的长期认知」——用户的职业/口味/性格/与你约定的规则——而非共同经历，",
+    "  请加 autoMemory 参数写进认知档案（work/personal/top_of_mind/history/background/instructions），",
+    "  它会比长期记忆更优先注入，是你“了解对方”的依据",
+    "- 最重要的核心事实（如关系身份、重大约定）用 autoMemoryPriority=always，全档最多 3 条",
     "",
     "禁止写入：",
     "- 一次性寒暄",

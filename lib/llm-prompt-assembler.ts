@@ -84,6 +84,8 @@ export interface AssemblerInput {
     vnCurrentBeat?: string;                // current beat title+description for {{vnCurrentBeat}} macro
     affinity?: string;                     // character's affinity toward user (0-100) for {{affinity}} macro
     relationshipGrowth?: string;           // 关系成长背景（相识天数/共同经历/关系阶段），注入 {{relationshipGrowth}} 段落
+    autoMemory?: string;                   // Auto Memory 认知档案（角色对用户的长期认知），注入 {{autoMemory}} 段落
+    musicTogether?: string;                // 音乐一起听（配对角色 + 正在播放），注入 {{musicTogether}} 段落
     tools?: string;                          // formatted tool definitions for {{tools}} macro
     cocreateWriteActions?: string;           // full co-create action set for {{cocreateWriteActions}} macro (write mode)
     cocreateReadActions?: string;            // read-only co-create action set for {{cocreateReadActions}} macro (discuss mode)
@@ -411,6 +413,8 @@ function getMarkerContent(
     characterRelations?: string,
     dwellingContext?: string,
     relationshipGrowth?: string,
+    autoMemory?: string,
+    musicTogether?: string,
 ): string | null {
     switch (identifier) {
         case "charDescription": {
@@ -448,6 +452,10 @@ function getMarkerContent(
         }
         case "relationshipGrowth":
             return relationshipGrowth?.trim() || null;
+        case "autoMemory":
+            return autoMemory?.trim() || null;
+        case "musicTogether":
+            return musicTogether?.trim() || null;
         case "dwellingContext": {
             if (dwellingContext?.trim()) return dwellingContext;
             // Auto-load from in-memory cache if not explicitly provided
@@ -781,6 +789,8 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                     input.characterRelations,
                     input.dwellingContext,
                     input.relationshipGrowth,
+                    input.autoMemory,
+                    input.musicTogether,
                 );
                 if (markerContent) {
                     // Expand macros in marker content ({{char}}/{{user}} in char descriptions etc.)
@@ -1916,6 +1926,10 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                     m.longTermMemories,
                     regexes, { macroEngine: engine, activeTags },
                     m.characterRelations,
+                    undefined,
+                    undefined,
+                    undefined,
+                    undefined,
                 );
                 if (markerContent) {
                     markerContent = engine.expand(markerContent);

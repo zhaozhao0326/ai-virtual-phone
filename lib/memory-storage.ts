@@ -3,14 +3,16 @@
 
 import type { MemoryEntry, MemoryConfig } from "./memory-types";
 import { DEFAULT_MEMORY_CONFIG } from "./memory-types";
+import type { AutoMemoryEntry } from "./auto-memory-types";
 import { kvGet, kvSet, registerKvMigration, registerDynamicPrefix } from "./kv-db";
 import { openIndexedDbAtLeast } from "./idb-open";
 
 // ── Long-term memory DB (unchanged from v1) ──
 
 const DB_NAME = "ai_phone_memory_db_v1";
-const DB_VERSION = 3;
+const DB_VERSION = 4; // v4: + auto_memory store（Auto Memory 认知档案）
 const STORE_NAME = "memories";
+const AUTO_MEMORY_STORE_NAME = "auto_memory";
 
 const CONFIG_KEY = "ai_phone_memory_config_v1";
 
@@ -30,6 +32,22 @@ function ensureMemoryIndexes(store: IDBObjectStore): void {
     }
 }
 
+function ensureAutoMemoryStore(db: IDBDatabase, tx: IDBTransaction | null): void {
+    if (!db.objectStoreNames.contains(AUTO_MEMORY_STORE_NAME)) {
+        const store = db.createObjectStore(AUTO_MEMORY_STORE_NAME, { keyPath: "id" });
+        store.createIndex("by_character", "characterId", { unique: false });
+        store.createIndex("by_character_priority", ["characterId", "priority"], { unique: false });
+    } else if (tx) {
+        const store = tx.objectStore(AUTO_MEMORY_STORE_NAME);
+        if (!store.indexNames.contains("by_character")) {
+            store.createIndex("by_character", "characterId", { unique: false });
+        }
+        if (!store.indexNames.contains("by_character_priority")) {
+            store.createIndex("by_character_priority", ["characterId", "priority"], { unique: false });
+        }
+    }
+}
+
 async function openDb(): Promise<IDBDatabase | null> {
     if (!hasBrowserApi()) return null;
     // Open at >= DB_VERSION: a backup restore may have bumped the stored version
@@ -42,6 +60,7 @@ async function openDb(): Promise<IDBDatabase | null> {
             store = tx!.objectStore(STORE_NAME);
         }
         ensureMemoryIndexes(store);
+        ensureAutoMemoryStore(db, tx);
     }).catch(() => null);
 }
 
@@ -259,4 +278,57 @@ export function getLastCoreSummarizedTimestamp(characterId: string): string | nu
 export function setLastCoreSummarizedTimestamp(characterId: string, ts: string): void {
     if (typeof window === "undefined") return;
     kvSet(LAST_CORE_SUMMARY_TS_PREFIX + characterId, ts);
+}
+
+// ── Auto Memory（认知档案）CRUD ──
+// 每个角色独立的「认知档案」条目（六分类 + 三级优先）。存同一 DB 的 auto_memory 仓。
+
+export async function saveAutoMemoryEntry(entry: AutoMemoryEntry): Promise<void> {
+    const db = await openDb();
+    if (!db) return;
+    try {
+        const tx = db.transaction(AUTO_MEMORY_STORE_NAME, "readwrite");
+        tx.objectStore(AUTO_MEMORY_STORE_NAME).put(entry);
+        await new Promise<void>((res, rej) => {
+            tx.oncomplete = () => res();
+            tx.onerror = () => rej(tx.error);
+        });
+    } finally {
+        db.close();
+    }
+}
+
+export async function loadAutoMemoryEntries(characterId: string): Promise<AutoMemoryEntry[]> {
+    const db = await openDb();
+    if (!db) return [];
+    try {
+        const store = db.transaction(AUTO_MEMORY_STORE_NAME).objectStore(AUTO_MEMORY_STORE_NAME);
+        const req: IDBRequest<AutoMemoryEntry[]> = store.index("by_character").getAll(characterId);
+        const entries = await runRequest(req);
+        return entries.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } catch {
+        return [];
+    } finally {
+        db.close();
+    }
+}
+
+export async function deleteAutoMemoryEntry(id: string): Promise<void> {
+    const db = await openDb();
+    if (!db) return;
+    try {
+        const tx = db.transaction(AUTO_MEMORY_STORE_NAME, "readwrite");
+        tx.objectStore(AUTO_MEMORY_STORE_NAME).delete(id);
+        await new Promise<void>((res, rej) => {
+            tx.oncomplete = () => res();
+            tx.onerror = () => rej(tx.error);
+        });
+    } finally {
+        db.close();
+    }
+}
+
+export async function getAutoMemoryCount(characterId: string): Promise<number> {
+    const entries = await loadAutoMemoryEntries(characterId);
+    return entries.length;
 }
