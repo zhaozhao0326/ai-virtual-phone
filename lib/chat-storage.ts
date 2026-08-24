@@ -270,6 +270,8 @@ export type ChatMessage = {
         externalId?: string;
         direction?: "inbound" | "outbound" | "local";
         syncedAt?: string;
+        /** 云端主动回复对应的本地触发消息，用于跨时钟因果排序。 */
+        replyAfterLocalMessageId?: string;
     };
     // Group chat fields
     senderCharacterId?: string; // which character sent this assistant message in a group chat

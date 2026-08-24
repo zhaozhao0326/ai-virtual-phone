@@ -47,8 +47,9 @@ import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, re
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
-import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
+import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
+import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { addFriendRequest, getPendingFriendRequests, dispatchFriendRequestUpdated } from "@/lib/friend-request-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
@@ -266,7 +267,6 @@ function getChatFlowVisibleContent(msg: ChatMessage, displayContent?: string): s
 function isChatVisualMedia(msg: ChatMessage): boolean {
     return !!msg.mediaType && CHAT_VISUAL_MEDIA_TYPES.has(msg.mediaType);
 }
-
 /** 思维链触发条的单行摘要：取首个非空行并剥离 markdown 标记（**、`、# 等），避免星号原样显示 */
 function reasoningPreviewLine(text: string): string {
     for (const rawLine of text.split("\n")) {
@@ -1582,6 +1582,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         window.addEventListener("followup-started", onStarted);
         window.addEventListener("followup-message-saved", onMessageSaved);
         window.addEventListener("followup-fired", onFired);
+        // 生成中途才进入聊天室会错过 followup-started 事件，
+        // 挂载时主动查一次后台生成状态，把「正在输入」补回来
+        if (isBackgroundReplyGenerating(session.id)) {
+            setIsGenerating(true);
+        }
         return () => {
             window.removeEventListener("followup-started", onStarted);
             window.removeEventListener("followup-message-saved", onMessageSaved);
@@ -2839,6 +2844,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
     const clearStuckGeneration = () => {
         const cancelledRun = cancelGenerationRun(session.id);
+        cancelBackgroundGeneration(session.id);
+        cancelBailoutKey(`reply:${session.id}`);
         if (cancelledRun?.pendingNativeToolCalls.length) {
             for (const call of cancelledRun.pendingNativeToolCalls) {
                 pushChatMessage({
@@ -4838,7 +4845,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         rawResponseText: segment.responseText,
                         responseBatchId,
                         statusPanel: attachHere && statusPanel ? statusPanel : undefined,
-                    statusRegionMode: customStatusActive && attachHere && statusPanel ? "custom" as const : undefined,
+                        statusRegionMode: customStatusActive && attachHere && statusPanel ? "custom" as const : undefined,
                         innerMonologue: attachHere && innerMonologue ? innerMonologue : undefined,
                         stateValues: attachHere && stateValues.length > 0 ? stateValues : undefined,
                         freshStateValues: attachHere ? freshStateValues : undefined,
@@ -5057,7 +5064,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         if (!targetMsg) return;
         void deleteWeixinCloudBeforeLocal([targetMsg], () => {
             deleteChatMessage(msgId);
-            setMessages(prev => prev.filter(m => m.id !== msgId));
+            syncMessagesFromStorage();
         });
     };
 
@@ -5079,10 +5086,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         ));
         void deleteWeixinCloudBeforeLocal(targetMessages, () => {
             deleteChatMessagesFrom(msgId);
-            setMessages(prev => {
-                const idx = prev.findIndex(m => m.id === msgId);
-                return idx >= 0 ? prev.slice(0, idx) : prev;
-            });
+            syncMessagesFromStorage();
         });
     };
 
@@ -5110,8 +5114,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         return wrapperRef.current ? createPortal(menu, wrapperRef.current) : menu;
     };
 
+    const getStoredActionMessageId = (msg: ChatMessage | RenderChatMessage): string => {
+        return "displaySourceId" in msg && msg.displaySourceId ? msg.displaySourceId : msg.id;
+    };
+
     /** Reusable context menu for user/assistant bubbles */
     const renderBubbleContextMenu = (m: ChatMessage, options?: { allowMultiSelect?: boolean }) => {
+        const storedMessageId = getStoredActionMessageId(m);
         const menu = (
             <div
                 onPointerDown={e => e.stopPropagation()}
@@ -5146,10 +5155,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         <button onClick={() => { setVoiceTextIds(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); setActiveMessageId(null); }} className="ctx-menu-btn">转文字</button>
                     )}
                     {m.role === "user" && (
-                        <button onClick={() => handleRetractMessage(m.id)} className="ctx-menu-btn">撤回消息</button>
+                        <button onClick={() => handleRetractMessage(storedMessageId)} className="ctx-menu-btn">撤回消息</button>
                     )}
                     {m.role === "assistant" && (
-                        <button onClick={() => handleRetry(m.id)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
+                        <button onClick={() => handleRetry(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">重试以下</button>
                     )}
                 </div>
                 <div className="flex">
@@ -5157,8 +5166,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     {options?.allowMultiSelect !== false && (
                         <button onClick={() => startMultiSelectFromMessage(m)} className="ctx-menu-btn">多选</button>
                     )}
-                    <button onClick={() => handleDeleteMessage(m.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
-                    <button onClick={() => handleDeleteMessagesFrom(m.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
+                    <button onClick={() => handleDeleteMessage(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
+                    <button onClick={() => handleDeleteMessagesFrom(storedMessageId)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
                 </div>
                 {(() => {
                     // 聊天插件注册的消息操作菜单项
@@ -5217,6 +5226,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     const renderSystemContextMenu = (msg: ChatMessage) => {
+        const storedMessageId = getStoredActionMessageId(msg);
         if (isSystemInstructionMessage(msg)) {
             const instructionMenu = (
                 <div
@@ -5240,7 +5250,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     >编辑</button>
                     <button
                         onClick={() => {
-                            handleDeleteMessage(msg.id);
+                            handleDeleteMessage(storedMessageId);
                             closeContextMenu();
                         }}
                         className="ctx-menu-btn ctx-menu-btn-danger"
@@ -5284,7 +5294,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 >多选</button>
                 <button
                     onClick={() => {
-                        handleDeleteMessage(msg.id);
+                        handleDeleteMessage(storedMessageId);
                         closeContextMenu();
                     }}
                     className="ctx-menu-btn ctx-menu-btn-danger"
@@ -6030,7 +6040,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                         {...(activeMessageId === gMsg.id ? { "data-active": "" } : {})}
                                                     >
                                                         {formatSysMsgForUI(gMsg.content, gMsg)}
-                                                        {activeMessageId === gMsg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(gMsg.id))}
+                                                        {activeMessageId === gMsg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(getStoredActionMessageId(gMsg)))}
                                                     </div>
                                                 </div>
                                             ) : (
@@ -6220,7 +6230,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                     >
                                         {msg.role === "user" ? "你" : (character?.name || "对方")}撤回了一条消息
-                                        {activeMessageId === msg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(msg.id), () => startMultiSelectFromMessage(msg))}
+                                        {activeMessageId === msg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(getStoredActionMessageId(msg)), () => startMultiSelectFromMessage(msg))}
                                     </div>
                                 ) : (
                                     <>
@@ -6251,7 +6261,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                     {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                                 >
                                                     <span className="chat-monologue-heart ts-18 leading-none inline-block" {...(expandedMonologueId === msg.id ? { "data-active": "" } : {})}><svg viewBox="0 0 16 16" width="18" height="18" style={{display:"block"}}><path d="M8 14s-6-4-6-8c0-2.5 1.5-4 3.5-4 1 0 2 .5 2.5 1.5C8.5 2.5 9.5 2 10.5 2 12.5 2 14 3.5 14 6c0 4-6 8-6 8z" fill="currentColor"/></svg></span>
-                                                    {activeMessageId === msg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(msg.id), () => startMultiSelectFromMessage(msg))}
+                                                    {activeMessageId === msg.id && renderDeleteOnlyContextMenu(() => handleDeleteMessage(getStoredActionMessageId(msg)), () => startMultiSelectFromMessage(msg))}
                                                 </div>
                                             ) : (
                                                 <div className="chat-msg-avatar flex flex-col items-center gap-1 shrink-0">
