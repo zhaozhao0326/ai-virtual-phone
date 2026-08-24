@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.16";
+export const APP_VERSION = "1.7.17";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.17",
+    date: "2026-08-24",
+    title: "TikHub 代理解析重写：小红书/B站内容稳定可读，不再因嵌套结构误报「无法解析」",
+    highlights: [
+      "重写 /api/tikhub-proxy 的归一化逻辑：TikHub 返回层级不统一，旧代码只剥一层 data 且把点赞数读成顶层字段（实为 interact_info 内），导致稳定命中「数据无法解析」、角色看不到内容",
+      "新版用「候选路径 + 递归兜底」定位笔记对象，兼容 data / data.data / data.note_list[0] / data.items[0] 等嵌套，并正确读取 interact_info 互动数据、desc/content 正文、user.nickname 作者、image_list 图片、tag_list 标签",
+      "TikHub 插件升 v3.1.2：卡片解析失败时改为一行安静小字 + 原链接，不再显示刺眼红框，保证「开了插件永远不比不开差」",
+      "目标：角色能「看」到小红书/B站链接的真实标题与正文并自然回应；图卡为附加项，失败不影响内容注入",
+    ],
+  },
   {
     version: "1.7.16",
     date: "2026-08-24",

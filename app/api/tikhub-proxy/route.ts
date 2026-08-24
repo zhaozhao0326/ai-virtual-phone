@@ -103,18 +103,21 @@ export async function GET(req: NextRequest) {
     }
 }
 
-// ── 归一化：把 TikHub 返回的复杂结构压成插件直接可用的干净对象 ──
+// ── 归一化：把 TikHub 返回的嵌套结构压成插件直接可用的干净对象 ──
+// TikHub 各端点笔记对象的层级不统一（data / data.data / data.note_list[0] /
+// data.items[0] / response 等），互动数据在 interact_info 里，正文字段叫 desc/content/body。
+// 这里用「候选路径 + 递归兜底」避免单一层级假设导致解析失败。
 
 function stat(n: any, label: string): string | null {
     const num = typeof n === "number" ? n : parseInt(String(n ?? ""), 10);
     if (!num || num <= 0) return null;
-    return `${num} ${label}`;
+    return `${num.toLocaleString("en-US")} ${label}`;
 }
 
 function normalizeTags(t: any): string[] {
     if (!t) return [];
     if (Array.isArray(t)) {
-        return t.map((x) => (typeof x === "string" ? x : x?.name || x?.tag || "")).filter(Boolean).slice(0, 10);
+        return t.map((x) => (typeof x === "string" ? x : x?.name || x?.tag || x?.title || "")).filter(Boolean).slice(0, 10);
     }
     if (typeof t === "string") {
         return t
@@ -126,49 +129,104 @@ function normalizeTags(t: any): string[] {
     return [];
 }
 
-function pick(j: any): any {
+// 深度优先找到「看起来像笔记」的对象：含 title / note_id / desc / content 之一即可。
+function findNote(obj: any, depth = 0): any {
+    if (!obj || typeof obj !== "object" || depth > 7) return null;
+    if (obj.title || obj.note_id || obj.note_id_str || obj.desc || obj.content || obj.caption) return obj;
+    if (Array.isArray(obj)) {
+        for (const it of obj) {
+            const r = findNote(it, depth + 1);
+            if (r) return r;
+        }
+        return null;
+    }
+    for (const k of Object.keys(obj)) {
+        const r = findNote(obj[k], depth + 1);
+        if (r) return r;
+    }
+    return null;
+}
+
+function locateNote(j: any): any {
     if (!j) return null;
-    const data = j.data || j.response || j;
-    if (data && (data.title || data.desc || data.content || data.note_id || data.bvid)) return data;
+    const candidates = [
+        j?.data?.data,
+        j?.data?.note,
+        j?.data?.note_list?.[0],
+        j?.data?.notes?.[0],
+        j?.data?.items?.[0],
+        j?.data?.list?.[0],
+        Array.isArray(j?.data) ? j.data[0] : null,
+        j?.data,
+        j?.response?.data,
+        j?.response,
+        j,
+    ];
+    for (const c of candidates) {
+        const f = findNote(c);
+        if (f) return f;
+    }
     return null;
 }
 
 function normalize(platform: string, j: any, rawUrl: string): any {
-    const data = pick(j);
-    if (!data) return null;
+    const note = locateNote(j);
+    if (!note) return null;
 
     if (platform === "xhs") {
-        const images = Array.isArray(data.images) ? data.images : data.imageList || [];
-        const cover = data.cover || (images[0] && (images[0].url || images[0])) || "";
-        const imageList = images.map((im: any) => (typeof im === "string" ? im : im?.url || "")).filter(Boolean);
+        const images = Array.isArray(note.image_list)
+            ? note.image_list
+            : Array.isArray(note.images)
+              ? note.images
+              : note.imageList || [];
+        const imageList = images
+            .map((im: any) => (typeof im === "string" ? im : im?.url || im?.src || ""))
+            .filter(Boolean);
+        const cover = note.cover || note.cover_url || imageList[0] || "";
+        const interact = note.interact_info || note.interaction_info || note.interactionInfo || {};
+        const descRaw = note.desc || note.content || note.body || note.note_desc || note.caption || note.summary || "";
+        const stats = [
+            stat(note.liked_count ?? interact.liked_count ?? interact.likedCount, "赞"),
+            stat(note.collected_count ?? interact.collected_count ?? interact.collectedCount, "收藏"),
+            stat(note.comment_count ?? interact.comment_count ?? interact.commentCount, "评论"),
+            stat(note.share_count ?? interact.share_count ?? interact.shareCount, "分享"),
+        ]
+            .filter(Boolean)
+            .join(" · ");
         return {
             platform: "xhs",
             url: rawUrl,
-            title: data.title || "",
-            author: data.nickname || data.user?.nickname || "",
-            desc: data.desc || data.content || "",
-            tags: normalizeTags(data.tag_list),
+            title: note.title || note.caption || "",
+            author: note.user?.nickname || note.user?.name || note.nickname || note.author || "",
+            desc: typeof descRaw === "string" ? descRaw : "",
+            tags: normalizeTags(note.tag_list || note.tags || note.topic_list),
             cover,
             images: imageList,
-            stats: [stat(data.liked_count, "赞"), stat(data.collected_count, "收藏"), stat(data.comment_count, "评论")]
-                .filter(Boolean)
-                .join(" · "),
-            noteType: data.video ? "video" : "image",
+            stats,
+            noteType: note.video || note.type === "video" ? "video" : "image",
         };
     }
 
-    const owner = data.owner?.name || data.owner_name || "";
-    const statObj = data.stat || {};
+    // bili
+    const owner = note.owner?.name || note.owner_name || note.author || note.uploader || "";
+    const st = note.stat || note.statistic || note.archive_stat || {};
+    const descRaw = note.desc || note.description || "";
     return {
         platform: "bili",
         url: rawUrl,
-        title: data.title || "",
+        title: note.title || "",
         author: owner,
-        desc: data.desc || "",
-        tags: [],
-        cover: data.pic || "",
-        images: data.pic ? [data.pic] : [],
-        stats: [stat(statObj.view, "播放"), stat(statObj.danmaku, "弹幕"), stat(statObj.like, "赞")].filter(Boolean).join(" · "),
+        desc: typeof descRaw === "string" ? descRaw : "",
+        tags: normalizeTags(note.tag || note.tags),
+        cover: note.pic || note.cover || "",
+        images: note.pic ? [note.pic] : [],
+        stats: [
+            stat(st.view ?? st.view_count ?? note.view, "播放"),
+            stat(st.danmaku ?? note.danmaku, "弹幕"),
+            stat(st.like ?? st.liked_count ?? note.like, "赞"),
+        ]
+            .filter(Boolean)
+            .join(" · "),
         noteType: "video",
     };
 }
