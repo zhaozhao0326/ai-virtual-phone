@@ -623,10 +623,50 @@ const BUILTIN_SEARCH: RestToolConfig = {
     updatedAt: 0,
 };
 
+const BUILTIN_TIKHUB_FEED: RestToolConfig = {
+    id: "builtin_tikhub_feed",
+    name: "小红书推荐",
+    description: "抓取小红书首页推荐信息流（无需关键词的「有意思内容」），让角色挑一条主动发给你。需在设置中填入 TikHub API Key，并在 Vercel 配 TIKHUB_API_KEY 亦可。",
+    endpoint: "/api/tikhub-proxy?mode=homefeed&platform=xhs&page=1",
+    method: "GET",
+    parameterSchema: JSON.stringify({ type: "object", properties: {} }),
+    fixedParams: { api_key: "" },  // 用户需在「聊天工具箱」该工具设置中填入 TikHub API Key
+    directFetch: true,
+    enabled: false,
+    builtIn: true,
+    createdBy: "ai",
+    createdAt: 0,
+    updatedAt: 0,
+};
+
+const BUILTIN_TIKHUB_SEARCH: RestToolConfig = {
+    id: "builtin_tikhub_search",
+    name: "小红书搜索",
+    description: "按关键词搜索小红书笔记（角色可基于人设/兴趣生成关键词），挑相关的发给你。需在设置中填入 TikHub API Key。",
+    endpoint: "/api/tikhub-proxy?mode=search&platform=xhs&page=1&keyword={{{keyword}}}",
+    method: "GET",
+    parameterSchema: JSON.stringify({
+        type: "object",
+        properties: {
+            keyword: { type: "string", description: "搜索关键词，如「美食推荐」「穿搭」「周末去哪玩」" },
+        },
+        required: ["keyword"],
+    }),
+    fixedParams: { api_key: "" },  // 用户需在「聊天工具箱」该工具设置中填入 TikHub API Key
+    directFetch: true,
+    enabled: false,
+    builtIn: true,
+    createdBy: "ai",
+    createdAt: 0,
+    updatedAt: 0,
+};
+
 const BUILTIN_REST_TOOLS: RestToolConfig[] = [
     BUILTIN_WEB_READER,
     BUILTIN_WEATHER,
     BUILTIN_SEARCH,
+    BUILTIN_TIKHUB_FEED,
+    BUILTIN_TIKHUB_SEARCH,
 ];
 
 function mergeBuiltinRestTool(existing: RestToolConfig | undefined, builtin: RestToolConfig): RestToolConfig {

@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.19";
+export const APP_VERSION = "1.7.20";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.20",
+    date: "2026-08-24",
+    title: "内置「小红书推荐 / 小红书搜索」角色工具，开箱即用",
+    highlights: [
+      "把 TikHub 抓取做成内置 REST 工具（builtin_tikhub_feed / builtin_tikhub_search），用户打开「聊天工具箱」即可看到，无需手动粘贴 JSON 配置",
+      "「小红书推荐」走首页推荐流（mode=homefeed，无需关键词）；「小红书搜索」按关键词搜（mode=search，角色可基于人设生成关键词）",
+      "两个工具默认关闭，在设置里填 TikHub API Key 后一键开启；角色 preset 含 {{tools}} 宏，启用即能调，不用改角色卡",
+      "配合 1.7.19 的代理「抓一批」能力，实现「角色主动抓有意思的小红书发给你」",
+    ],
+  },
   {
     version: "1.7.19",
     date: "2026-08-24",
