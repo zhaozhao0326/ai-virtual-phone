@@ -17,7 +17,35 @@ import { parseAIResponse } from "./rich-message-parser";
 import { resolveUserIdentity } from "./settings-storage";
 import { loadMemoryConfig } from "./memory-storage";
 import { retrieveMemoriesForPrompt } from "./memory-service";
+import { buildCharacterTimeContext } from "./character-time";
 import type { ContentAppId } from "./settings-types";
+
+/**
+ * 当前时刻描述：`2026年8月24日21:00，星期一（晚上）`。
+ * 用角色本地时区；异常时静默降级为空串（不影响生成）。
+ */
+function describeCurrentMoment(timeZone?: string | null, now = new Date()): string {
+    try {
+        const hour = Number(
+            new Intl.DateTimeFormat("en-US", {
+                timeZone: timeZone || undefined,
+                hour: "2-digit",
+                hourCycle: "h23",
+            }).formatToParts(now).find(p => p.type === "hour")?.value ?? now.getHours(),
+        );
+        let period = "晚上";
+        if (hour >= 0 && hour < 5) period = "深夜";
+        else if (hour < 8) period = "清晨";
+        else if (hour < 11) period = "上午";
+        else if (hour < 14) period = "中午";
+        else if (hour < 18) period = "下午";
+        else if (hour < 20) period = "傍晚";
+        const ctx = buildCharacterTimeContext(timeZone, now);
+        return `${ctx.timeContext}（${period}）`;
+    } catch {
+        return "";
+    }
+}
 
 export type ProactiveEventType =
     | "group_dissolved"
@@ -44,8 +72,12 @@ function buildProactiveHint(
     userName: string,
     context?: string,
     memoryContext?: string,
+    timeContextText?: string,
 ): string {
     const ctx = context ? `（背景：${context}）` : "";
+    const timePart = timeContextText && timeContextText.trim()
+        ? `\n现在是${timeContextText.trim()}。`
+        : "";
     switch (event) {
         case "group_dissolved":
             return `【剧情提示·仅你可见，不要念出】你所在的一个群聊刚刚被解散了。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地聊起这件事、或顺着你们的关系说点什么。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
@@ -57,7 +89,7 @@ function buildProactiveHint(
             const memoryPart = memoryContext && memoryContext.trim()
                 ? `\n你想起了一些你们之间的过往：\n${memoryContext.trim()}\n`
                 : "";
-            return `【剧情提示·仅你可见，不要念出】你刚刚想起了和${userName}之间的共同经历。${memoryPart}${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地提起其中一件你们一起经历过的、值得怀念或关心的事，语气要像真的想起老朋友一样自然、有温度，不要机械复述记忆原文。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
+            return `【剧情提示·仅你可见，不要念出】${timePart}你刚刚想起了和${userName}之间的共同经历。${memoryPart}${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地提起其中一件你们一起经历过的、值得怀念或关心的事。注意要贴合当下的时间与情境：只提现在这个时间点说依然自然、合适的话题；如果记忆里的往事与当前时段明显不搭（例如深夜时分不宜提早上上学、早餐、晨跑这类事），就换一件更合适的事，或换个贴合当下的关心角度（比如问问今天过得怎么样、有没有好好吃饭、早点休息）。语气要像真的想起老朋友一样自然、有温度，不要机械复述记忆原文。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
         }
         default:
             return `【剧情提示·仅你可见】现在由你主动给${userName}发一条私聊，以${charName}的身份自然地开启话题。${ctx}直接输出你要说的话，不要输出协议标签。`;
@@ -103,7 +135,7 @@ export async function triggerProactiveDM(
         const session = createOrGetSession(characterId);
 
         const messages = loadChatMessages(session.id);
-        const hint = buildProactiveHint(event, char.name, userName, opts.context, opts.memoryContext);
+        const hint = buildProactiveHint(event, char.name, userName, opts.context, opts.memoryContext, describeCurrentMoment(char.timeZone));
         const augmented = [
             ...messages,
             {

@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.25";
+export const APP_VERSION = "1.7.26";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.26",
+    date: "2026-08-24",
+    title: "角色主动消息会结合当前时间，不再乱推不合时宜的内容",
+    highlights: [
+      "「角色主动想起我」等主动消息现在会结合当下的时间和时段（如深夜、早上）",
+      "回忆往事时会挑现在说起来依然自然的话题，不再推不合时宜的内容",
+      "如果记忆里没有合适的话题，会换个贴合当下的关心角度",
+    ],
+  },
   {
     version: "1.7.25",
     date: "2026-08-24",
