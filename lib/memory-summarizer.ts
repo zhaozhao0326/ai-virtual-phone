@@ -2,7 +2,8 @@
 // Auto-summarization engine: summarizes short-term events into long-term memories.
 // Trigger: every N events (configurable). Short-term events are NOT deleted after summarization.
 
-import type { MemoryEntry } from "./memory-types";
+import type { MemoryEntry, MemoryRelation, MemoryRelationEntityType } from "./memory-types";
+import type { ApiConfig } from "./settings-types";
 import { DEFAULT_SUMMARIZATION_PROMPT } from "./memory-types";
 import {
     loadMemoryConfig,
@@ -119,6 +120,22 @@ export async function runSummarizationPipeline(
 
     const summary = result.content;
 
+    // 关系图谱抽取（best-effort，不阻断主流程）：长期记忆落地关系维度
+    let relations: MemoryRelation[] | undefined;
+    if (config.relationRecallEnabled) {
+        try {
+            const extracted = await extractRelationsFromSummary(
+                summary,
+                characterName,
+                apiConfig,
+                config.relationMinConfidence,
+            );
+            if (extracted.length > 0) relations = extracted;
+        } catch {
+            /* 关系抽取失败不影响主流程 */
+        }
+    }
+
     // Generate embedding for the summary (only if vector recall is enabled)
     let embedding: number[] | undefined;
     const embeddingApiConfig = config.vectorRecallEnabled ? resolveAuxiliaryApiConfig("embeddingApiConfigId") : null;
@@ -155,6 +172,7 @@ export async function runSummarizationPipeline(
         content: summary,
         embedding,
         importance: 0.8,
+        relations,
         createdAt: now,
         updatedAt: now,
         metadata: {
@@ -181,4 +199,60 @@ export async function runSummarizationPipeline(
 
     console.log(`[MemorySummarizer] Summarized ${allEntries.length} entries → 1 long-term memory`);
     return { success: true };
+}
+
+/**
+ * 从长期记忆总结中抽取关系事实（人物/地点/事物/事件/概念等）。
+ * 仅 best-effort：任何失败都返回空数组，绝不阻断主总结流程。
+ * 用置信度阈值过滤玩笑、比喻、一次性情绪等不可信关系。
+ */
+export async function extractRelationsFromSummary(
+    summary: string,
+    characterName: string,
+    apiConfig: ApiConfig,
+    minConfidence: number,
+): Promise<MemoryRelation[]> {
+    const prompt = `你是关系抽取助手。从下方角色记忆总结中，抽取其中涉及的"关系事实"——即角色与某个人/地点/事物/事件/概念之间的稳定关系，或不同实体之间的关系。
+
+角色：${characterName}
+记忆总结：
+${summary}
+
+要求：
+- 只抽取明确、稳定、可信的关系（如"认识小明""小明是用户的弟弟""常去某咖啡馆"），不要抽取玩笑、比喻、一次性情绪或推测。
+- 每条关系输出四个字段：entity（实体名，如"小明""公司楼下咖啡馆"）、entityType（person / place / thing / event / concept 之一）、relation（关系简述，如"用户弟弟""常去地点"）、confidence（0-1 数字，你对该关系真实稳定的置信度）。
+- 只输出 JSON 数组，不要任何额外文字或解释。置信度低于 ${minConfidence} 的关系不要输出。
+- 最多 8 条。
+格式示例：[{"entity":"小明","entityType":"person","relation":"用户弟弟","confidence":0.9}]`;
+
+    try {
+        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2 });
+        if (!result.content) return [];
+        const parsed = parseRelationJsonArray(result.content);
+        if (!parsed) return [];
+        return parsed
+            .filter(r => r && typeof r.entity === "string" && typeof r.confidence === "number")
+            .map(r => ({
+                entity: String(r.entity).trim(),
+                entityType: (["person", "place", "thing", "event", "concept"].includes(r.entityType) ? r.entityType : "thing") as MemoryRelationEntityType,
+                relation: typeof r.relation === "string" ? r.relation.trim() : "",
+                confidence: Math.max(0, Math.min(1, Number(r.confidence) || 0)),
+            }))
+            .filter(r => r.entity.length >= 1 && r.relation.length >= 1 && r.confidence >= minConfidence)
+            .slice(0, 8);
+    } catch {
+        return [];
+    }
+}
+
+/** 从 LLM 可能夹带的解释文字中提纯 JSON 数组。 */
+function parseRelationJsonArray(text: string): any[] | null {
+    try {
+        const match = text.match(/\[[\s\S]*\]/);
+        const json = match ? match[0] : text.trim();
+        const data = JSON.parse(json);
+        return Array.isArray(data) ? data : null;
+    } catch {
+        return null;
+    }
 }

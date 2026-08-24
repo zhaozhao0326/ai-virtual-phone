@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.20";
+export const APP_VERSION = "1.7.21";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.21",
+    date: "2026-08-24",
+    title: "长期记忆新增关系图谱维度，按人物/地点等关系关联召回",
+    highlights: [
+      "长期记忆新增关系图谱层：总结时抽取人物/地点/事物等关系事实并标注置信度",
+      "检索时按对话上下文命中的关系实体做关联加权，把相关记忆一并召回",
+      "新增「关系图谱召回」开关与置信度阈值，过滤玩笑/比喻类低置信关系",
+    ],
+  },
   {
     version: "1.7.20",
     date: "2026-08-24",

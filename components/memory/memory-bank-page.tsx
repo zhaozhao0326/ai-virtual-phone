@@ -1066,6 +1066,35 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                             }} />
                         </div>
                     </div>
+                    <div className="menu-item">
+                        <MemorySettingsIcon icon={Users} color={BINDING_ACCENTS.memory} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">关系图谱召回</span>
+                            <span className="menu-desc">长期记忆按人物/地点等关系维度关联召回，对话提到相关实体时一并带出</span>
+                        </div>
+                        <div className="menu-right">
+                            <Toggle checked={config.relationRecallEnabled ?? true} onChange={(v) => {
+                                const next = { ...config, relationRecallEnabled: v };
+                                setConfig(next);
+                                saveMemoryConfig(next);
+                            }} />
+                        </div>
+                    </div>
+                    <MemorySettingsSliderItem
+                        icon={Search}
+                        color={BINDING_ACCENTS.embedding}
+                        label="关系抽取置信度阈值"
+                        desc="低于该置信度的关系（玩笑/比喻/一次性情绪）不入库"
+                        value={config.relationMinConfidence ?? 0.6}
+                        min={0.4}
+                        max={0.9}
+                        step={0.05}
+                        onChange={value => {
+                            const next = { ...config, relationMinConfidence: value };
+                            setConfig(next);
+                            saveMemoryConfig(next);
+                        }}
+                    />
                 </div>
 
                 {/* Token budget sliders */}

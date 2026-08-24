@@ -2,6 +2,22 @@
 
 import type { ContentAppId } from "./settings-types";
 
+/** 关系实体类型：人物 / 地点 / 事物 / 事件 / 概念 */
+export type MemoryRelationEntityType = "person" | "place" | "thing" | "event" | "concept";
+
+/**
+ * 关系事实：一条记忆涉及的「关系维度」。
+ * 用于关系图谱召回——把与同一实体（人物/地点…）相关的记忆关联起来，
+ * 即使语义向量相似度不高，也能在对话提到该实体时被一并召回。
+ * confidence 用于过滤玩笑、比喻、一次性情绪等不可信关系。
+ */
+export type MemoryRelation = {
+    entity: string;                    // 实体名，如 "小明" / "公司楼下咖啡馆"
+    entityType: MemoryRelationEntityType;
+    relation: string;                  // 与角色/上下文的关系，简短，如 "用户弟弟" / "常去地点"
+    confidence: number;                // 0-1，对该关系真实、稳定的置信度
+};
+
 export type MemoryEntry = {
     id: string;
     characterId: string;
@@ -13,6 +29,8 @@ export type MemoryEntry = {
     createdAt: string;
     updatedAt: string;
     sourceMessageIds?: string[];
+    /** 关系图谱维度：该记忆涉及的人物/地点/事物等关系事实（长期记忆抽取，可选） */
+    relations?: MemoryRelation[];
     metadata?: Record<string, unknown>;
 };
 
@@ -20,6 +38,8 @@ export type MemoryConfig = {
     autoSummarizeEnabled: boolean;          // whether auto-summarization runs after N events
     autoBuildCoreEnabled: boolean;          // whether core memories rebuild after long-term summarization
     vectorRecallEnabled: boolean;           // whether vector embedding recall is used for memory retrieval
+    relationRecallEnabled: boolean;         // whether relationship-graph recall is used (boost memories sharing entities with the context)
+    relationMinConfidence: number;          // min confidence threshold (0-1) for extracted relations; filters jokes/metaphors
     maxLongTermEntries: number;
     maxCoreEntries: number;                 // cap on core memories; oldest are merged when exceeded
     summarizationEventInterval: number;     // trigger summarization every N events
@@ -109,6 +129,8 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoSummarizeEnabled: true,
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
+    relationRecallEnabled: true,
+    relationMinConfidence: 0.6,
     maxLongTermEntries: 500,
     maxCoreEntries: 50,
     summarizationEventInterval: 80,
