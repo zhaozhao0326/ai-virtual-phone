@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.18";
+export const APP_VERSION = "1.7.19";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.19",
+    date: "2026-08-24",
+    title: "TikHub 代理支持「抓一批」：搜索/推荐流，为角色主动喂内容打底",
+    highlights: [
+      "扩展 /api/tikhub-proxy：新增 mode=search（按关键词搜索笔记）与 mode=homefeed（小红书首页推荐流），返回笔记列表（标题/作者/正文/封面/标签/数据），不止于解析单条链接",
+      "新增 normalizeList 兼容各列表接口返回结构（data.notes / note_list / items / cards，单条可能包在 note/note_card 里），用候选容器 + 兜底深度收集",
+      "用途：配合角色工具（REST 工具或自定义 App 工具），让 AI 角色在聊天时主动抓一批有意思的小红书内容、按人设挑一条发给你",
+      "TikHub 插件仍为 v3.3.0（封面图走图片代理）；本次仅扩展后端抓取能力",
+    ],
+  },
   {
     version: "1.7.18",
     date: "2026-08-24",

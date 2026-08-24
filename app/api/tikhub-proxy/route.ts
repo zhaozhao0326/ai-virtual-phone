@@ -42,25 +42,48 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    const platform = (req.nextUrl.searchParams.get("platform") || "").toLowerCase();
+    const mode = (req.nextUrl.searchParams.get("mode") || "detail").toLowerCase();
+    const platform = (req.nextUrl.searchParams.get("platform") || "xhs").toLowerCase();
     const rawUrl = req.nextUrl.searchParams.get("url") || "";
+    const keyword = (req.nextUrl.searchParams.get("keyword") || "").trim();
     const noteType = (req.nextUrl.searchParams.get("type") || "auto").toLowerCase();
-
-    if (!rawUrl) {
-        return NextResponse.json({ ok: false, error: "缺少 url 参数" }, { status: 400, headers: corsHeaders() });
-    }
+    const sortType = (req.nextUrl.searchParams.get("sort") || "popularity_descending").toLowerCase();
+    const page = parseInt(req.nextUrl.searchParams.get("page") || "1", 10) || 1;
 
     let tikhubUrl = "";
-    if (platform === "xhs") {
-        const ep = noteType === "video" ? "get_video_note_detail" : "get_image_note_detail";
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}`;
-    } else if (platform === "bili") {
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}`;
+    let isList = false;
+
+    if (mode === "search") {
+        // 抓一批：按关键词搜索笔记（角色可基于人设/兴趣生成关键词）
+        if (!keyword) {
+            return NextResponse.json({ ok: false, error: "search 模式需要 keyword 参数" }, { status: 400, headers: corsHeaders() });
+        }
+        isList = true;
+        if (platform === "bili") {
+            tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/search_video_v2?keyword=${encodeURIComponent(keyword)}&page=${page}`;
+        } else {
+            tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/search_notes?keyword=${encodeURIComponent(keyword)}&page=${page}&sort_type=${sortType}`;
+        }
+    } else if (mode === "homefeed") {
+        // 抓一批：小红书首页推荐信息流（无需关键词，"有意思的"推荐内容）
+        isList = true;
+        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/web_v3/fetch_homefeed?page=${page}`;
     } else {
-        return NextResponse.json(
-            { ok: false, error: "不支持的平台（platform 应为 xhs 或 bili）" },
-            { status: 400, headers: corsHeaders() },
-        );
+        // mode=detail（默认）：解析单条分享链接
+        if (!rawUrl) {
+            return NextResponse.json({ ok: false, error: "缺少 url 参数" }, { status: 400, headers: corsHeaders() });
+        }
+        if (platform === "xhs") {
+            const ep = noteType === "video" ? "get_video_note_detail" : "get_image_note_detail";
+            tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}`;
+        } else if (platform === "bili") {
+            tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}`;
+        } else {
+            return NextResponse.json(
+                { ok: false, error: "不支持的平台（platform 应为 xhs 或 bili）" },
+                { status: 400, headers: corsHeaders() },
+            );
+        }
     }
 
     const controller = new AbortController();
@@ -85,6 +108,21 @@ export async function GET(req: NextRequest) {
         }
 
         const j = await res.json().catch(() => null);
+
+        if (isList) {
+            const items = normalizeList(platform, j);
+            if (!items || items.length === 0) {
+                return NextResponse.json(
+                    { ok: false, error: "未从返回数据中解析出任何笔记（链接可能无效或需登录）。" },
+                    { status: 502, headers: corsHeaders() },
+                );
+            }
+            return NextResponse.json(
+                { ok: true, data: { platform, mode, items, count: items.length } },
+                { status: 200, headers: corsHeaders() },
+            );
+        }
+
         const data = normalize(platform, j, rawUrl);
         if (!data) {
             return NextResponse.json(
@@ -229,4 +267,84 @@ function normalize(platform: string, j: any, rawUrl: string): any {
             .join(" · "),
         noteType: "video",
     };
+}
+
+// ── 列表归一化：把 search / homefeed 返回的笔记列表压成模型/插件直接可用的数组 ──
+// TikHub 列表接口返回结构各异：data.notes / data.note_list / data.items / data.cards，
+// 单个笔记有时包在 note / note_card 里。这里用候选容器 + 兜底深度收集兼容。
+
+function collectNotes(obj: any, depth = 0, out: any[] = []): any[] {
+    if (!obj || typeof obj !== "object" || depth > 6) return out;
+    if (obj.title || obj.note_id || obj.note_id_str || obj.desc || obj.content) out.push(obj);
+    const arr = Array.isArray(obj) ? obj : null;
+    if (arr) {
+        for (const it of arr) collectNotes(it, depth + 1, out);
+        return out;
+    }
+    for (const k of Object.keys(obj)) collectNotes(obj[k], depth + 1, out);
+    return out;
+}
+
+function normalizeList(platform: string, j: any): any[] {
+    if (!j) return [];
+
+    const candidates: any[] = [
+        j?.data?.notes,
+        j?.data?.note_list,
+        j?.data?.items,
+        j?.data?.list,
+        j?.data?.cards,
+        j?.data?.note_cards,
+        Array.isArray(j?.data) ? j.data : null,
+        j?.items,
+        j?.notes,
+    ].filter(Boolean);
+
+    let rawList: any[] = [];
+    for (const c of candidates) {
+        if (Array.isArray(c) && c.length) {
+            rawList = c;
+            break;
+        }
+    }
+    if (!rawList.length) rawList = collectNotes(j);
+
+    return rawList
+        .map((raw) => {
+            const n = raw?.note || raw?.note_card || raw || {};
+            const images = Array.isArray(n.image_list)
+                ? n.image_list
+                : Array.isArray(n.images)
+                  ? n.images
+                  : n.imageList || [];
+            const imageList = images
+                .map((im: any) => (typeof im === "string" ? im : im?.url || im?.src || im?.cover?.url || ""))
+                .filter(Boolean);
+            const cover = n.cover || n.cover_url || n.cover?.url || imageList[0] || "";
+            const interact = n.interact_info || n.interaction_info || n.interactionInfo || {};
+            const descRaw =
+                n.desc || n.content || n.body || n.note_desc || n.caption || n.summary || "";
+            const stats = [
+                stat(n.liked_count ?? interact.liked_count ?? interact.likedCount, "赞"),
+                stat(n.collected_count ?? interact.collected_count ?? interact.collectedCount, "收藏"),
+                stat(n.comment_count ?? interact.comment_count ?? interact.commentCount, "评论"),
+            ]
+                .filter(Boolean)
+                .join(" · ");
+            const noteId = n.note_id || n.note_id_str || "";
+            return {
+                platform,
+                title: n.title || n.caption || "",
+                author: n.user?.nickname || n.user?.name || n.nickname || n.author || "",
+                desc: typeof descRaw === "string" ? descRaw.slice(0, 220) : "",
+                tags: normalizeTags(n.tag_list || n.tags || n.topic_list),
+                cover,
+                images: imageList,
+                stats,
+                url: noteId ? `https://www.xiaohongshu.com/explore/${noteId}` : n.share_url || n.url || "",
+                noteType: n.video || n.type === "video" ? "video" : "image",
+            };
+        })
+        .filter((x) => x.title || x.desc)
+        .slice(0, 12);
 }
