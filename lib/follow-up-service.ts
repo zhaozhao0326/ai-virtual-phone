@@ -37,6 +37,7 @@ import {
     removeTimedWakeSchedule,
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
+import { triggerMemoryCareDM } from "./character-proactive-chat";
 import {
     getMenstrualPeriodCareEvent,
     hasMenstrualPeriodCareTriggered,
@@ -51,6 +52,11 @@ const MAX_FOLLOW_UPS = 10;
 const POLL_INTERVAL_MS = 3000; // check every 3 s
 const PERIOD_CARE_POLL_INTERVAL_MS = 60_000;
 const BACKGROUND_MESSAGE_STAGGER_MS = 800;
+// 记忆唤起主动关心：用户超过 6 小时没回、且该角色有可提起的长期记忆时，角色主动私聊提起共同经历
+const MEMORY_CARE_POLL_INTERVAL_MS = 60_000;
+const MEMORY_CARE_MIN_IDLE_MS = 6 * 60 * 60 * 1000;
+const MEMORY_CARE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 同一角色 24h 内最多主动关心一次
+const MEMORY_CARE_LAST_TS_PREFIX = "ai_phone_mem_care_last_";
 
 function resolveFollowUpSenderName(sessionId: string): string {
     const sess = loadChatSessions().find(s => s.id === sessionId);
@@ -69,7 +75,9 @@ const cancelledWhileFiring = new Set<string>(); // cancelled during in-flight AP
 const timedWakeFiringSet = new Set<string>();
 const periodCareFiringSet = new Set<string>();
 const backgroundReplyFiringSet = new Set<string>();
+const memoryCareFiringSet = new Set<string>();
 let lastPeriodCarePollAt = 0;
+let lastMemoryCarePollAt = 0;
 
 // ── Public API ─────────────────────────────────────────────
 
@@ -208,6 +216,7 @@ function pollSchedules() {
         }
         pollTimedWakeSchedules(now);
         pollMenstrualPeriodCare(now);
+        pollMemoryCare(now);
     } catch (e) {
         console.error("[FollowUp] pollSchedules error:", e);
     }
@@ -357,6 +366,68 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
     } finally {
         firingSet.delete(sched.sessionId);
         cancelledWhileFiring.delete(sched.sessionId);
+    }
+}
+
+function getLastMemoryCareTs(characterId: string): number {
+    try {
+        return Number(localStorage.getItem(MEMORY_CARE_LAST_TS_PREFIX + characterId) || "0");
+    } catch {
+        return 0;
+    }
+}
+
+function setLastMemoryCareTs(characterId: string, ts: number) {
+    try {
+        localStorage.setItem(MEMORY_CARE_LAST_TS_PREFIX + characterId, String(ts));
+    } catch {
+        // ignore storage errors
+    }
+}
+
+/**
+ * 记忆唤起主动关心：用户在某个 1:1 会话里较久没回复（≥6h）、
+ * 该角色 24h 内没主动关心过、且角色有可提起的长期记忆时，
+ * 触发主动私聊——角色"想起"共同经历，自然提起过去、表达关心。
+ * 全程 best-effort：无记忆 / 生成失败都静默跳过，不打扰用户。
+ */
+function pollMemoryCare(now: number) {
+    if (now - lastMemoryCarePollAt < MEMORY_CARE_POLL_INTERVAL_MS) return;
+    lastMemoryCarePollAt = now;
+
+    const sessions = loadChatSessions()
+        .filter(session => !session.isGroup && !!session.contactId)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
+    for (const session of sessions) {
+        const characterId = session.contactId!;
+        if (memoryCareFiringSet.has(characterId)) continue;
+        if (now - getLastMemoryCareTs(characterId) < MEMORY_CARE_COOLDOWN_MS) continue;
+
+        // 找最近一条用户消息的时间；没有用户消息则跳过
+        const messages = loadChatMessages(session.id);
+        const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+        if (!lastUserMsg) continue;
+        const idleMs = now - new Date(lastUserMsg.createdAt).getTime();
+        if (idleMs < MEMORY_CARE_MIN_IDLE_MS) continue;
+
+        console.log(`[MemoryCare] Firing now for character=${characterId}, idle=${Math.round(idleMs / 3600000)}h`);
+        memoryCareFiringSet.add(characterId);
+        fireMemoryCare(characterId); // fire & forget
+    }
+}
+
+async function fireMemoryCare(characterId: string) {
+    try {
+        const sessionId = await triggerMemoryCareDM(characterId, { appId: "chat" });
+        if (sessionId) {
+            setLastMemoryCareTs(characterId, Date.now());
+            console.log(`[MemoryCare] Done for character=${characterId}, session=${sessionId}`);
+        }
+    } catch (error) {
+        console.warn("[MemoryCare] Error:", error);
+    } finally {
+        memoryCareFiringSet.delete(characterId);
     }
 }
 

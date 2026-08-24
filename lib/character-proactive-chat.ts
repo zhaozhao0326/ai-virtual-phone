@@ -15,17 +15,22 @@ import { loadCharacters } from "./character-storage";
 import { generateChatCompletion, flattenCompletionResult } from "./chat-engine";
 import { parseAIResponse } from "./rich-message-parser";
 import { resolveUserIdentity } from "./settings-storage";
+import { loadMemoryConfig } from "./memory-storage";
+import { retrieveMemoriesForPrompt } from "./memory-service";
 import type { ContentAppId } from "./settings-types";
 
 export type ProactiveEventType =
     | "group_dissolved"
     | "friend_deleted"
     | "friend_rejected"
+    | "memory_care"
     | "generic";
 
 export type TriggerProactiveDMOptions = {
     event?: ProactiveEventType;
     context?: string;
+    /** memory_care：检索到的记忆摘要，让角色"想起"过往 */
+    memoryContext?: string;
     appId?: ContentAppId;
 };
 
@@ -38,6 +43,7 @@ function buildProactiveHint(
     charName: string,
     userName: string,
     context?: string,
+    memoryContext?: string,
 ): string {
     const ctx = context ? `（背景：${context}）` : "";
     switch (event) {
@@ -47,6 +53,12 @@ function buildProactiveHint(
             return `【剧情提示·仅你可见】${userName}刚刚把你从好友里删除了。${ctx}现在由你主动重新给${userName}发一条私聊，以${charName}的身份自然地表达你的反应或想说的话。直接输出你要说的话，不要输出协议标签。`;
         case "friend_rejected":
             return `【剧情提示·仅你可见】${userName}刚刚拒绝了你的好友申请。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地回应。直接输出你要说的话，不要输出协议标签。`;
+        case "memory_care": {
+            const memoryPart = memoryContext && memoryContext.trim()
+                ? `\n你想起了一些你们之间的过往：\n${memoryContext.trim()}\n`
+                : "";
+            return `【剧情提示·仅你可见，不要念出】你刚刚想起了和${userName}之间的共同经历。${memoryPart}${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地提起其中一件你们一起经历过的、值得怀念或关心的事，语气要像真的想起老朋友一样自然、有温度，不要机械复述记忆原文。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
+        }
         default:
             return `【剧情提示·仅你可见】现在由你主动给${userName}发一条私聊，以${charName}的身份自然地开启话题。${ctx}直接输出你要说的话，不要输出协议标签。`;
     }
@@ -60,6 +72,8 @@ function fallbackText(event: ProactiveEventType): string {
             return `你把我删了？我还想跟你聊聊呢。`;
         case "friend_rejected":
             return `你没通过我的好友申请呀，不过还是想跟你说点什么。`;
+        case "memory_care":
+            return `突然想起你，最近还好吗？`;
         default:
             return `在吗？想跟你聊两句。`;
     }
@@ -89,7 +103,7 @@ export async function triggerProactiveDM(
         const session = createOrGetSession(characterId);
 
         const messages = loadChatMessages(session.id);
-        const hint = buildProactiveHint(event, char.name, userName, opts.context);
+        const hint = buildProactiveHint(event, char.name, userName, opts.context, opts.memoryContext);
         const augmented = [
             ...messages,
             {
@@ -132,6 +146,48 @@ export async function triggerProactiveDM(
         return session.id;
     } catch (err) {
         console.warn(`[ProactiveChat] 角色 ${characterId} 主动私聊生成失败：`, err);
+        return null;
+    }
+}
+
+/**
+ * 记忆唤起主动关心：检索该角色的长期记忆（共同经历/重要事件/关系），
+ * 若有可提起的过往则触发主动私聊，让角色"想起"这些记忆并自然提起。
+ * 无记忆可提时静默返回 null，不打扰用户。
+ */
+export async function triggerMemoryCareDM(
+    characterId: string,
+    opts: { appId?: ContentAppId } = {},
+): Promise<string | null> {
+    try {
+        if (typeof window === "undefined") return null;
+        const chars = loadCharacters();
+        const char = chars.find(c => c.id === characterId);
+        if (!char) return null;
+
+        // 检索长期记忆（共同经历/重要事件/彼此关系），取最相关的几条
+        const config = loadMemoryConfig();
+        const memories = await retrieveMemoriesForPrompt(
+            characterId,
+            `和${char.name}之间的共同经历、重要事件、彼此的关系与了解`,
+            config,
+        );
+        const memoryLines = memories
+            .slice(0, 3)
+            .map(m => m.content.trim())
+            .filter(Boolean);
+        if (memoryLines.length === 0) {
+            console.log(`[MemoryCare] 角色 ${characterId} 暂无长期记忆，跳过主动关心`);
+            return null;
+        }
+
+        return triggerProactiveDM(characterId, {
+            event: "memory_care",
+            memoryContext: memoryLines.join("\n"),
+            appId: opts.appId ?? "chat",
+        });
+    } catch (err) {
+        console.warn(`[MemoryCare] 角色 ${characterId} 记忆唤起失败：`, err);
         return null;
     }
 }

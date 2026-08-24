@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.21";
+export const APP_VERSION = "1.7.22";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.22",
+    date: "2026-08-24",
+    title: "角色会「想起」你：久未联系时主动提起共同经历",
+    highlights: [
+      "新增「记忆唤起」：长时间没聊的角色，会基于长期记忆主动私聊你，自然提起你们之间的共同经历",
+      "只在你很久没回复（超 6 小时）且有可提起的记忆时触发，同一角色 24 小时内最多主动关心一次，不会刷屏",
+      "无相关记忆时安静跳过，不打扰",
+    ],
+  },
   {
     version: "1.7.21",
     date: "2026-08-24",
