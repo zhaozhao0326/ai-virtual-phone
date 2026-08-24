@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.27";
+export const APP_VERSION = "1.7.28";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.28",
+    date: "2026-08-25",
+    title: "修复群聊管理提示：踢人/禁言/拉回现在显示正确的成员名",
+    highlights: [
+      "修复：群聊里踢人、禁言、拉人回来时，提示显示的是被操作成员的名字，不再显示成群名",
+      "修复：群公告、群待办在部分写法下不生效的问题",
+    ],
+  },
   {
     version: "1.7.27",
     date: "2026-08-25",

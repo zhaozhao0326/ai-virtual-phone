@@ -2419,9 +2419,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         if (!canGroupAdminAct(session, actorKey, action, targetKey)) return null;
         applyGroupAdminAction(session, action, actorKey, targetKey, data.adminMuteMinutes, data.newGroupName, data.newAnnouncement, data.todoText);
         const actorDisplay = getGroupMemberDisplayName(actorKey, userN);
+        // 成员操作（踢/禁言/拉人/管理员/转让）显示被操作成员名；
+        // 内容操作（公告/待办）显示内容文本；改群名显示新群名
         const targetDisplay = action === "rename"
             ? (data.newGroupName || session.groupName || "")
-            : (data.newAnnouncement || data.todoText || session.groupName || "");
+            : (action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo")
+                ? (data.newAnnouncement || data.todoText || session.groupName || "")
+                : getGroupMemberDisplayName(targetKey, userN);
         return {
             content: buildGroupAdminNoticeText(action, actorDisplay, targetDisplay, data.adminMuteMinutes),
             mediaData: {
@@ -2481,9 +2485,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             window.dispatchEvent(new CustomEvent("weixin-messages-updated", { detail: { sessionId: targetGroup.id } }));
         }
         const actorDisplay = getGroupMemberDisplayName(actorKey, userN);
+        // 同 applyAIGroupAdminAction：成员操作显示成员名，内容操作显示内容，改群名显示新名
         const targetDisplay = action === "rename"
             ? (data.newGroupName || targetGroup.groupName || "")
-            : (data.newAnnouncement || data.todoText || targetGroup.groupName || "");
+            : (action === "set_announcement" || action === "add_todo" || action === "complete_todo" || action === "remove_todo")
+                ? (data.newAnnouncement || data.todoText || targetGroup.groupName || "")
+                : getGroupMemberDisplayName(targetKey, userN);
         return {
             content: buildGroupAdminNoticeText(action, actorDisplay, targetDisplay, data.adminMuteMinutes),
             mediaData: {
