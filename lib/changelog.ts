@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.12";
+export const APP_VERSION = "1.7.13";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.13",
+    date: "2026-08-24",
+    title: "TikHub 后端代理（读真实小红书/B站内容）+ 角色「人设深挖档案」",
+    highlights: [
+      "新增 /api/tikhub-proxy 服务端代理：插件请求走自有域名，由服务器拿着服务端环境变量 TIKHUB_API_KEY 调 TikHub，绕开浏览器 CORS——之前直连 api.tikhub.io 被 CORS 拦截导致「Failed to fetch」的链路就此打通",
+      "TikHub 插件升级 v3.0.0：发小红书/B站链接后，消息下方渲染真实内容大卡片（封面/多图角标/标题/可展开正文/标签/点赞收藏/作者/转发自），并把标题正文等真实内容注入角色可见文本，TA 能跟你聊这帖讲了啥",
+      "角色档案新增「人设深挖」：在角色编辑页可一键基于设定深度分析生成结构化人设档案（核心特质/语气/价值观/口头禅/关系网/成长弧光/禁忌/扮演要点），自动注入该角色自己的扮演上下文，作为稳定底盘但保持弹性、不锁死角色（延续「抓人设=活人感」原则）",
+      "TikHub API Key 只存服务端环境变量，不下发前端，避免泄露",
+    ],
+  },
   {
     version: "1.7.12",
     date: "2026-08-23",

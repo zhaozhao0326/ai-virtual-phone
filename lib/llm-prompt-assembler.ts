@@ -14,6 +14,7 @@ import { formatXiaohongshuShareForPrompt } from "./chat-share";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { formatPromptTimestamp, getPromptTimestampOptionsForTimeContext, resolvePromptTimeAware, type PromptTimestampOptions } from "./prompt-time";
 import { formatCharacterRelationsForPrompt } from "./character-world-storage";
+import { formatDeepDiveProfile } from "./brief-persona";
 import { buildCharacterTimeContext, buildGroupTimeContext, type CharacterTimeContext } from "./character-time";
 import { formatShoppingPaymentRequestHistory } from "./shopping-payment-request";
 import { buildGroupAdminBracketText } from "./group-admin";
@@ -409,8 +410,15 @@ function getMarkerContent(
     dwellingContext?: string,
 ): string | null {
     switch (identifier) {
-        case "charDescription":
-            return `You are ${character.name}.\n${character.persona}\n\n[角色演绎锚定] 以上是你扮演「${character.name}」的核心身份与性格底色。请始终以此为基础去"准确演绎"这个角色——保持人设连贯一致；同时像真实的人一样，根据当下对话情境自然、灵活地回应，可以有情绪起伏、会即兴、会随着相处而成长，不要生硬照搬设定或背诵固定台词。`;
+        case "charDescription": {
+            const base = `You are ${character.name}.\n${character.persona}\n\n[角色演绎锚定] 以上是你扮演「${character.name}」的核心身份与性格底色。请始终以此为基础去"准确演绎"这个角色——保持人设连贯一致；同时像真实的人一样，根据当下对话情境自然、灵活地回应，可以有情绪起伏、会即兴、会随着相处而成长，不要生硬照搬设定或背诵固定台词。`;
+            // 人设深挖档案：锚定更细的稳定底盘，但保持弹性（不锁死）——只在有合法档案时注入
+            const profile = character.personaProfile ? formatDeepDiveProfile(character.personaProfile) : null;
+            if (profile) {
+                return `${base}\n\n[人设深挖档案] 以下是你更细的人设档案，是扮演的稳定底盘（锚点），帮助你在保持自然、能即兴、有成长的前提下更准确地演绎自己：\n${profile}`;
+            }
+            return base;
+        }
         case "charPersonality":
             return character.personality?.trim() || null;
         case "personaDescription":

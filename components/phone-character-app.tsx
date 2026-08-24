@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Character } from "@/lib/character-types";
 import {
   createCharacter,
@@ -19,7 +19,7 @@ import {
   CHAR_BLOCKED_FIELDS,
 } from "@/lib/character-storage";
 import { extractTextFromWordFile } from "@/lib/worldbook-doc-import";
-import { generateBriefPersonaText, generateAppearanceText, isBriefPersonaStale } from "@/lib/brief-persona";
+import { generateBriefPersonaText, generateAppearanceText, generateDeepDivePersona, isBriefPersonaStale, type DeepDivePersonaProfile } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
 import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity, createWorldBook, saveWorldBooks, parseWorldBookFromJson, loadWorldBooks, loadBindingConfig, saveBindingConfig, getCharacterBinding, setCharacterBinding } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
@@ -1864,6 +1864,9 @@ function CharArchiveView({
   const [briefPersona, setBriefPersona] = useState(char.briefPersona || "");
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefError, setBriefError] = useState("");
+  const [personaProfile, setPersonaProfile] = useState(char.personaProfile || "");
+  const [deepBusy, setDeepBusy] = useState(false);
+  const [deepError, setDeepError] = useState("");
   const [timeZone, setTimeZone] = useState(char.timeZone || "");
   const [tags, setTags] = useState<string[]>(char.tags || []);
   const [tagInput, setTagInput] = useState("");
@@ -1920,6 +1923,7 @@ function CharArchiveView({
     if (persona !== (char.persona || "")) return true;
     if (personality !== (char.personality || "")) return true;
     if (briefPersona !== (char.briefPersona || "")) return true;
+    if (personaProfile !== (char.personaProfile || "")) return true;
     if (timeZone !== (char.timeZone || "")) return true;
     if (avatar !== (char.avatar || null)) return true;
     const origTags = char.tags || [];
@@ -1942,6 +1946,8 @@ function CharArchiveView({
       setPersonality(char.personality || "");
       setBriefPersona(char.briefPersona || "");
       setBriefError("");
+      setPersonaProfile(char.personaProfile || "");
+      setDeepError("");
       setTimeZone(char.timeZone || "");
       setTimeZoneSearch(char.timeZone || "");
       setShowTimeZonePicker(false);
@@ -1987,6 +1993,7 @@ function CharArchiveView({
         briefPersonaUpdatedAt: trimmedBrief
           ? (trimmedBrief !== (char.briefPersona || "").trim() ? new Date().toISOString() : char.briefPersonaUpdatedAt)
           : undefined,
+        personaProfile: personaProfile.trim() || undefined,
         timeZone: normalizedTimeZone,
         tags,
         birthday: birthday.trim() || undefined,
@@ -2030,6 +2037,57 @@ function CharArchiveView({
       setBriefError(error instanceof Error ? error.message : String(error));
     } finally {
       setBriefBusy(false);
+    }
+  }
+
+  // 主动深挖人设：基于角色设定生成结构化人设档案（JSON），注入 TA 自己的扮演上下文
+  async function handleGenerateDeep() {
+    if (deepBusy) return;
+    setDeepBusy(true);
+    setDeepError("");
+    try {
+      const jsonStr = await generateDeepDivePersona({
+        ...char,
+        name: name.trim() || char.name || "未命名角色",
+        persona,
+        personality: personality.trim() || undefined,
+      });
+      setPersonaProfile(jsonStr);
+    } catch (error) {
+      setDeepError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setDeepBusy(false);
+    }
+  }
+
+  // 把深挖档案（JSON 字符串）渲染成可读的人设档案视图
+  function renderPersonaProfile(raw: string): ReactNode {
+    try {
+      const p = JSON.parse(raw) as DeepDivePersonaProfile;
+      const rows: { label: string; value: string }[] = [
+        { label: "核心特质", value: p.core },
+        { label: "语气风格", value: p.voice },
+        { label: "价值观", value: p.values },
+        { label: "口头禅", value: (p.catchphrases || []).join("、") },
+        { label: "关系网", value: p.relationships },
+        { label: "成长弧光", value: p.growth },
+        { label: "禁忌边界", value: p.taboos },
+        { label: "扮演要点", value: p.acting },
+      ];
+      const filled = rows.filter((r) => r.value && r.value.trim());
+      if (!filled.length) return <p className="char-archive-p">{raw}</p>;
+      return (
+        <div className="char-archive-p flex flex-col gap-1">
+          {filled.map((r) => (
+            <p key={r.label}>
+              <span className="opacity-60">{r.label}：</span>
+              {r.value}
+            </p>
+          ))}
+        </div>
+      );
+    } catch {
+      return <p className="char-archive-p whitespace-pre-wrap break-words">{raw}</p>;
     }
   }
 
@@ -2491,6 +2549,43 @@ function CharArchiveView({
                 />
               ) : (
                 <p className="char-archive-p whitespace-pre-wrap break-words">{briefPersona}</p>
+              )}
+            </div>
+          )}
+
+          {/* 人设深挖档案 — 注入该角色自己的扮演上下文，锚定稳定底盘、保持弹性（不锁死） */}
+          {(isEditing || personaProfile.trim()) && (
+            <div className="char-log-entry mb-4 border-t border-dashed border-[#999] pt-3">
+              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                <span className="char-log-entry-header !mb-0">PERSONA PROFILE / 人设深挖档案</span>
+                {isEditing && (
+                  <button
+                    className="ts-10 px-3 py-1 bg-[#111111] text-white border-none rounded-full cursor-pointer disabled:opacity-50 hover:bg-[#222222] transition-colors"
+                    disabled={deepBusy}
+                    onClick={handleGenerateDeep}
+                  >
+                    {deepBusy ? "深挖中…" : personaProfile.trim() ? "重新深挖" : "🧠 深挖人设"}
+                  </button>
+                )}
+              </div>
+              <p className="ts-10 opacity-60 mt-1">
+                基于角色设定深度分析生成的结构化档案（核心特质/语气/价值观/口头禅/关系网/成长弧光/禁忌/扮演要点），注入 TA 自己的扮演上下文。是弹性锚点，不是死板规则。
+              </p>
+              {deepError && <p className="ts-10 mt-1" style={{ color: "#b4233b" }}>{deepError}</p>}
+              {isEditing ? (
+                <AutoResizingTextarea
+                  value={personaProfile}
+                  onChange={setPersonaProfile}
+                  placeholder="点「🧠 深挖人设」自动分析生成 JSON 档案，或手写…"
+                  minHeight={80}
+                  style={{
+                    width: "100%", background: "color-mix(in srgb, var(--c-input) 50%, transparent)",
+                    border: "1px dashed #666", padding: 8, fontSize: "calc(12px*var(--app-text-scale,1))", lineHeight: 1.5,
+                    fontFamily: "monospace", marginTop: 8
+                  }}
+                />
+              ) : (
+                renderPersonaProfile(personaProfile)
               )}
             </div>
           )}

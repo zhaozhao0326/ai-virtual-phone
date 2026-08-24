@@ -6,6 +6,7 @@ export type Character = {
   appearance?: string;   // 生图形象：用于 AI 生图时描述该角色长什么样（性别/发型/衣着等），让"谁是谁"更可控
   briefPersona?: string; // 简量版人设：注入到同世界有关系角色的「角色关系」marker，供对方了解 TA（防 OOC）
   briefPersonaUpdatedAt?: string; // 简介生成时间；早于 updatedAt 时编辑器提示「设定已更新，建议重新生成」
+  personaProfile?: string; // 主动深挖的结构化人设档案（JSON 字符串，见 brief-persona.ts generateDeepDivePersona）；注入到该角色自己的扮演上下文，锚定底盘但保持弹性
   wechatID?: string;     // 手机号格式的微信号
   birthday?: string;     // 生日 MM-DD（如 "03-15"）；日历在生日当天显示提示
   personality?: string;    // 角色性格
