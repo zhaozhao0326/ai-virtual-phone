@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.14";
+export const APP_VERSION = "1.7.15";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.15",
+    date: "2026-08-24",
+    title: "TikHub 代理支持插件传入 Key（不用配 Vercel 环境变量也能出卡片）",
+    highlights: [
+      "/api/tikhub-proxy 的 Key 双来源：优先服务端环境变量 TIKHUB_API_KEY；未配置时接受插件请求携带的 api_key 参数",
+      "TikHub 插件升级 v3.1.0：恢复「TikHub API Key」设置项（选填），填了就走插件 key，不填则用服务端变量——单用户私有部署不用再碰 Vercel 控制台",
+      "解决了 Vercel 新版 UI 环境变量入口难找的问题：有 key 的用户直接填插件设置即可渲染小红书/B站卡片",
+    ],
+  },
   {
     version: "1.7.14",
     date: "2026-08-24",

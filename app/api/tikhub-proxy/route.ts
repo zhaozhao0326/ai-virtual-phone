@@ -30,9 +30,14 @@ export async function OPTIONS() {
 }
 
 export async function GET(req: NextRequest) {
-    if (!API_KEY) {
+    // key 双来源：优先服务端环境变量（推荐，不下发前端）；未配置时接受插件传来的 api_key（单用户私有部署降级）
+    const envKey = (process.env.TIKHUB_API_KEY || "").trim();
+    const paramKey = (req.nextUrl.searchParams.get("api_key") || "").trim();
+    const apiKey = envKey || paramKey;
+
+    if (!apiKey) {
         return NextResponse.json(
-            { ok: false, error: "服务端未配置 TikHub API Key（请在 Vercel 环境变量中添加 TIKHUB_API_KEY）。" },
+            { ok: false, error: "未配置 TikHub API Key：请在 Vercel 环境变量添加 TIKHUB_API_KEY，或在插件设置里填写 TikHub Key。" },
             { status: 500, headers: corsHeaders() },
         );
     }
@@ -45,12 +50,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ ok: false, error: "缺少 url 参数" }, { status: 400, headers: corsHeaders() });
     }
 
+    const keyParam = encodeURIComponent(apiKey);
     let tikhubUrl = "";
     if (platform === "xhs") {
         const ep = noteType === "video" ? "get_video_note_detail" : "get_image_note_detail";
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}&api_key=${API_KEY}`;
+        tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/${ep}?share_text=${encodeURIComponent(rawUrl)}&api_key=${keyParam}`;
     } else if (platform === "bili") {
-        tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}&api_key=${API_KEY}`;
+        tikhubUrl = `${TIKHUB_BASE}/api/v1/bilibili/web/fetch_one_video_v3?url=${encodeURIComponent(rawUrl)}&api_key=${keyParam}`;
     } else {
         return NextResponse.json(
             { ok: false, error: "不支持的平台（platform 应为 xhs 或 bili）" },
