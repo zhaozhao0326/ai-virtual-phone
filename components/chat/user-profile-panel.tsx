@@ -26,9 +26,11 @@ import type { Character } from "@/lib/character-types";
 import { requestNotificationPermission } from "@/lib/browser-notification";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { formatWalletAmount, getWalletBalance, loadWalletState, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
+import { isMemoryCareEnabled, setMemoryCareEnabled } from "@/lib/follow-up-service";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 import {
     Bell,
+    Brain,
     ChevronRight,
     Clock,
     FileCode2,
@@ -149,6 +151,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [notifChecking, setNotifChecking] = useState(false);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
     const [callVibrationEnabled, setCallVibrationEnabled] = useState(true);
+    const [memoryCareEnabled, setMemoryCareEnabledState] = useState(true);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
     const [walletSummary, setWalletSummary] = useState(() => {
         const wallet = loadWalletState();
@@ -179,6 +182,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
         setNotifEnabled(settings.browserNotificationsEnabled === true && browserGranted);
         setEnterToSendEnabled(settings.enterToSendEnabled === true);
         setCallVibrationEnabled(settings.callVibrationEnabled !== false);
+        setMemoryCareEnabledState(isMemoryCareEnabled());
         if (settings.browserNotificationsEnabled === true && !browserGranted) {
             setNotifHint(readBrowserNotificationPermissionHint());
         }
@@ -249,6 +253,11 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const handleCallVibrationToggle = (enabled: boolean) => {
         setCallVibrationEnabled(enabled);
         saveChatAppSettings({ ...loadChatAppSettings(), callVibrationEnabled: enabled });
+    };
+
+    const handleMemoryCareToggle = (enabled: boolean) => {
+        setMemoryCareEnabledState(enabled);
+        setMemoryCareEnabled(enabled);
     };
 
     if (showFollowUpEditor) {
@@ -409,6 +418,14 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                             </div>
                             <ChevronRight size={16} className="text-[var(--c-icon)] opacity-50" />
                         </button>
+                        <div className="flex items-center gap-3 py-3 w-full border-t border-[color-mix(in_srgb,var(--c-card-border)_20%,transparent)]">
+                            <Brain size={18} className="text-[var(--c-icon)] opacity-70" strokeWidth={1.25}/>
+                            <div className="flex flex-col flex-1 text-left gap-0.5">
+                                <span className="ts-14 font-semibold text-[var(--c-text-title)]">角色主动想起我</span>
+                                <span className="ts-11 text-[var(--c-text)] opacity-70">久未联系时，角色会基于长期记忆想起你、主动私聊提起共同经历（每角色 24h 最多一次）</span>
+                            </div>
+                            <Toggle checked={memoryCareEnabled} onChange={handleMemoryCareToggle} />
+                        </div>
                     </div>
 
                     {/* 输入与提醒 */}

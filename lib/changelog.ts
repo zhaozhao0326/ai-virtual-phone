@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.22";
+export const APP_VERSION = "1.7.23";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.23",
+    date: "2026-08-24",
+    title: "「主动消息」栏新增开关：可关闭角色主动想起你",
+    highlights: [
+      "在人物聊天设置栏的「主动消息」分组里，新增「角色主动想起我」开关（默认开启）",
+      "关掉后角色不会再因为「久未联系」主动私聊你；想再开启随时可恢复",
+    ],
+  },
   {
     version: "1.7.22",
     date: "2026-08-24",

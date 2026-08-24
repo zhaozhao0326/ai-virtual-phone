@@ -57,6 +57,28 @@ const MEMORY_CARE_POLL_INTERVAL_MS = 60_000;
 const MEMORY_CARE_MIN_IDLE_MS = 6 * 60 * 60 * 1000;
 const MEMORY_CARE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 同一角色 24h 内最多主动关心一次
 const MEMORY_CARE_LAST_TS_PREFIX = "ai_phone_mem_care_last_";
+const MEMORY_CARE_ENABLED_KEY = "ai_phone_mem_care_enabled";
+
+/** 用户级硬开关：默认开启，用户在「人物聊天设置栏」可关闭。 */
+export function isMemoryCareEnabled(): boolean {
+    if (typeof window === "undefined") return true;
+    try {
+        const v = localStorage.getItem(MEMORY_CARE_ENABLED_KEY);
+        if (v === null) return true; // 默认开启
+        return v !== "0" && v !== "false";
+    } catch {
+        return true;
+    }
+}
+
+export function setMemoryCareEnabled(enabled: boolean): void {
+    if (typeof window === "undefined") return;
+    try {
+        localStorage.setItem(MEMORY_CARE_ENABLED_KEY, enabled ? "1" : "0");
+    } catch {
+        // ignore
+    }
+}
 
 function resolveFollowUpSenderName(sessionId: string): string {
     const sess = loadChatSessions().find(s => s.id === sessionId);
@@ -394,6 +416,7 @@ function setLastMemoryCareTs(characterId: string, ts: number) {
 function pollMemoryCare(now: number) {
     if (now - lastMemoryCarePollAt < MEMORY_CARE_POLL_INTERVAL_MS) return;
     lastMemoryCarePollAt = now;
+    if (!isMemoryCareEnabled()) return;
 
     const sessions = loadChatSessions()
         .filter(session => !session.isGroup && !!session.contactId)
