@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.17";
+export const APP_VERSION = "1.7.18";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.18",
+    date: "2026-08-24",
+    title: "TikHub 封面图走服务端代理：小红书/B站卡片稳定显示封面大图",
+    highlights: [
+      "新增 /api/tikhub-image 图片代理路由：封面图改由本站服务端代拉再原样返回，前端引用本域名地址，彻底绕开小红书/B站 CDN 的防盗链与跨域拦截（之前直链常加载失败，卡片只剩文字）",
+      "SSRF 防护：图片代理仅放行 xhscdn / xiaohongshu / hdslb / bilibili / bilivideo 域名后缀，禁止任意转发目标",
+      "TikHub 插件升 v3.3.0：封面图改走图片代理；内容注入系统提示词（角色可见、用户气泡不显示大段文字）与图卡渲染并存",
+      "目标：发小红书/B站链接后，用户侧能看到封面大图卡片，角色也能读到真实标题/正文并自然回应——对齐「别人能呈现图片」的体验",
+    ],
+  },
   {
     version: "1.7.17",
     date: "2026-08-24",
