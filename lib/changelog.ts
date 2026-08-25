@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.43";
+export const APP_VERSION = "1.7.44";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.44",
+    date: "2026-08-26",
+    title: "修复信箱返回主页按键，优化后台记录展示",
+    highlights: [
+      "修复信箱返回主页按键失灵的问题",
+      "后台记录「按功能来源」统计常驻展示，旧版日志给出清空提示",
+      "Service Worker 缓存版本升级，减少旧部署残留",
+    ],
+  },
   {
     version: "1.7.43",
     date: "2026-08-26",

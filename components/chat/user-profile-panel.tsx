@@ -741,7 +741,10 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
         const avg = withUsage > 0 ? Math.round(totalSum / withUsage) : 0;
         const byCharSorted = [...byCharacter.entries()].sort((a, b) => b[1].tokens - a[1].tokens).slice(0, 6);
         const byPurposeSorted = [...byPurpose.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
-        return { total, withUsage, promptSum, completionSum, totalSum, maxTotal, avg, noUsageCount: total - withUsage, byCharSorted, byPurposeSorted };
+        // 全部日志都没有 purpose 字段（多为 1.7.42 之前产生的旧日志），会统一归到「其他」，
+        // 容易被误认为「按功能来源没显示」。打这个标记用于给出提示。
+        const byPurposeAllOther = byPurposeSorted.length > 0 && byPurposeSorted.every(([name]) => name === "其他");
+        return { total, withUsage, promptSum, completionSum, totalSum, maxTotal, avg, noUsageCount: total - withUsage, byCharSorted, byPurposeSorted, byPurposeAllOther };
     }, [logs]);
 
     const fmt = (n: number) => (n ? n.toLocaleString("en-US") : "—");
@@ -804,6 +807,9 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                                                 <span className="font-semibold text-[var(--c-text-title)]">{fmt(data.tokens)}</span>
                                             </div>
                                         ))}
+                                        {summary.byPurposeAllOther && (
+                                            <div className="ts-10 opacity-45 leading-relaxed mt-1">以上为旧版日志（无功能标签）。点右上「清空」后重新对话，即可按功能（主聊天 / 梦境 / 记忆等）查看。</div>
+                                        )}
                                     </div>
                                 )}
                                 {summary.byCharSorted.length > 0 && (

@@ -108,7 +108,19 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
         <div className="phone-app-pane flex flex-col h-full bg-[var(--c-page-bg,#faf9f5)]">
             {/* 顶栏 */}
             <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-                <button onClick={() => (openEntry ? setOpenId(null) : onClose())} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
+                <button onClick={() => {
+                    // 当前 tab 下若正展开一条「匹配该 tab 类型」的条目，先收起；否则直接回主页。
+                    // 修复边界：在收件箱打开一封信后切到梦境/日记 tab（openId 已清），
+                    // 但若 openEntry 仍因 entries 中残留该信件而为真，旧逻辑只执行
+                    // setOpenId(null)（无可视效果）而永远调不到 onClose，导致回不了主页。
+                    const showingEntry = openEntry && (
+                        tab === "inbox" ? typeOf(openEntry) === "letter"
+                            : tab === "dream" ? typeOf(openEntry) === "dream"
+                                : typeOf(openEntry) === "diary"
+                    );
+                    if (showingEntry) setOpenId(null);
+                    else onClose();
+                }} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M15 19 8 12l7-7" /></svg>
                 </button>
                 <div className="flex-1 text-center ts-14 font-semibold">信箱</div>
