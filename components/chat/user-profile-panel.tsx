@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, type CSSProperties } from "react";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import {
     loadFollowUpConfig,
@@ -670,6 +670,35 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
         setLogs([]);
     };
 
+    const summary = useMemo(() => {
+        const total = logs.length;
+        let withUsage = 0;
+        let promptSum = 0;
+        let completionSum = 0;
+        let totalSum = 0;
+        let maxTotal = 0;
+        const byCharacter = new Map<string, { calls: number; tokens: number }>();
+        for (const log of logs) {
+            const u = log.usage;
+            const entry = byCharacter.get(log.characterName || "未标注角色") || { calls: 0, tokens: 0 };
+            entry.calls += 1;
+            entry.tokens += u?.total_tokens ?? 0;
+            byCharacter.set(log.characterName || "未标注角色", entry);
+            if (u && (u.total_tokens ?? 0) > 0) {
+                withUsage += 1;
+                promptSum += u.prompt_tokens ?? 0;
+                completionSum += u.completion_tokens ?? 0;
+                totalSum += u.total_tokens ?? 0;
+                maxTotal = Math.max(maxTotal, u.total_tokens ?? 0);
+            }
+        }
+        const avg = withUsage > 0 ? Math.round(totalSum / withUsage) : 0;
+        const byCharSorted = [...byCharacter.entries()].sort((a, b) => b[1].tokens - a[1].tokens).slice(0, 6);
+        return { total, withUsage, promptSum, completionSum, totalSum, maxTotal, avg, noUsageCount: total - withUsage, byCharSorted };
+    }, [logs]);
+
+    const fmt = (n: number) => (n ? n.toLocaleString("en-US") : "—");
+
     const formatTime = (ts: string) => {
         const d = new Date(ts);
         return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
@@ -684,6 +713,54 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                     </div>
                 ) : (
                     <>
+                        {/* ── Token 用量汇总 ── */}
+                        <div className="menu-group mb-1">
+                            <div className="menu-item" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+                                <div className="flex items-center justify-between">
+                                    <span className="ts-13 font-semibold text-[var(--c-text-title)]">Token 用量汇总（仅当前记录）</span>
+                                    <span className="ts-11 text-[var(--c-text)] opacity-60">
+                                        {summary.total} 次调用 · {summary.withUsage} 次有 token 数据
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 ts-12">
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">Prompt 合计</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{fmt(summary.promptSum)}</div>
+                                    </div>
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">回复合计</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{fmt(summary.completionSum)}</div>
+                                    </div>
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">总 token 合计</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{fmt(summary.totalSum)}</div>
+                                    </div>
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">单次平均</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{fmt(summary.avg)}</div>
+                                    </div>
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">单次最大</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{fmt(summary.maxTotal)}</div>
+                                    </div>
+                                    <div className="rounded-[8px] p-2 bg-[var(--c-card)]">
+                                        <div className="text-[var(--c-text)] opacity-60">无 usage 调用</div>
+                                        <div className="font-semibold text-[var(--c-text-title)]">{summary.noUsageCount}</div>
+                                    </div>
+                                </div>
+                                {summary.byCharSorted.length > 0 && (
+                                    <div className="flex flex-col gap-1">
+                                        {summary.byCharSorted.map(([name, data]) => (
+                                            <div key={name} className="flex items-center justify-between ts-12">
+                                                <span className="text-[var(--c-text)]">{name}（{data.calls} 次）</span>
+                                                <span className="font-semibold text-[var(--c-text-title)]">{fmt(data.tokens)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
                         <div className="flex flex-col gap-3">
                             {logs.map(log => {
                                 const isOpen = expandedId === log.id;

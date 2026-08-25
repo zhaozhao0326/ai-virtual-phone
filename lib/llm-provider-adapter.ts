@@ -56,6 +56,12 @@ export type LlmStreamDelta = {
     reasoning: string;
     toolCallDeltas?: LlmToolCallDelta[];
     /**
+     * 流式 chunk 里携带的 token 用量（若有）：OpenAI 兼容流末 usage、Gemini 每块
+     * usageMetadata、Anthropic message_start/message_delta 的 input/output tokens。
+     * 之前流式路径从不采集 usage，导致「底层调用大模型日志」里主聊天全是"无 token 数据"。
+     */
+    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    /**
      * 跨 chunk 传递的 thoughtSignature：当模型把签名放在不带 functionCall 的独立 part 上、
      * 或签名与 functionCall 拆在不同 SSE 事件里时，把"最近一次出现的签名"传给下一个 chunk 使用，
      * 防止后续 functionCall part 上签名缺失而被上游以 "missing thought_signature" 拒绝。
@@ -884,6 +890,7 @@ function parseOpenAICompatibleStreamDelta(data: unknown): LlmStreamDelta {
             };
             text?: string;
         }>;
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
     const delta = d.choices?.[0]?.delta;
     const toolCallDeltas = Array.isArray(delta?.tool_calls)
@@ -897,20 +904,54 @@ function parseOpenAICompatibleStreamDelta(data: unknown): LlmStreamDelta {
             };
         })
         : undefined;
-    return {
+    const result: LlmStreamDelta = {
         content: String(delta?.content ?? d.choices?.[0]?.text ?? ""),
         reasoning: String(delta?.reasoning_content ?? delta?.reasoning ?? delta?.thinking ?? ""),
         toolCallDeltas,
     };
+    // 部分中转/模型会在流末（或流中）下发 usage 块：choices 可能为空数组，不能依赖它取值
+    if (d.usage && (d.usage.prompt_tokens != null || d.usage.total_tokens != null)) {
+        result.usage = {
+            prompt_tokens: d.usage.prompt_tokens,
+            completion_tokens: d.usage.completion_tokens,
+            total_tokens: d.usage.total_tokens,
+        };
+    }
+    return result;
 }
 
 function parseAnthropicStreamDelta(data: unknown): LlmStreamDelta {
     const d = data as {
         type?: string;
         index?: number;
+        message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+        usage?: { input_tokens?: number; output_tokens?: number };
         content_block?: { type?: string; id?: string; name?: string; input?: unknown };
         delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
     };
+    // Anthropic 流式：message_start 带 input_tokens，message_delta 带 output_tokens（累计）
+    if (d.type === "message_start" && d.message?.usage) {
+        const u = d.message.usage;
+        return {
+            content: "",
+            reasoning: "",
+            usage: {
+                prompt_tokens: u.input_tokens,
+                completion_tokens: u.output_tokens,
+                total_tokens: (u.input_tokens ?? 0) + (u.output_tokens ?? 0),
+            },
+        };
+    }
+    if (d.type === "message_delta" && d.usage) {
+        const u = d.usage;
+        return {
+            content: "",
+            reasoning: "",
+            usage: {
+                completion_tokens: u.output_tokens,
+            },
+        };
+    }
     if (d.type === "content_block_start" && d.content_block?.type === "tool_use") {
         return {
             content: "",
@@ -941,9 +982,21 @@ function parseAnthropicStreamDelta(data: unknown): LlmStreamDelta {
 }
 
 function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
-    const d = data as { candidates?: Array<{ content?: { parts?: unknown[] } }> };
+    const d = data as {
+        candidates?: Array<{ content?: { parts?: unknown[] } }>;
+        usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+    };
     const parts = d.candidates?.[0]?.content?.parts;
-    if (!Array.isArray(parts)) return { content: "", reasoning: "" };
+    const result: LlmStreamDelta = { content: "", reasoning: "" };
+    // Gemini 原生流式每个 chunk 都带 usageMetadata，直接采集（之前被丢弃）
+    if (d.usageMetadata && (d.usageMetadata.promptTokenCount != null || d.usageMetadata.totalTokenCount != null)) {
+        result.usage = {
+            prompt_tokens: d.usageMetadata.promptTokenCount,
+            completion_tokens: d.usageMetadata.candidatesTokenCount,
+            total_tokens: d.usageMetadata.totalTokenCount,
+        };
+    }
+    if (!Array.isArray(parts)) return result;
     let content = "";
     let reasoning = "";
     const toolCallDeltas: LlmToolCallDelta[] = [];
@@ -973,7 +1026,8 @@ function parseGeminiStreamDelta(data: unknown): LlmStreamDelta {
         if (item.thought || item.type === "thinking" || item.type === "thought") reasoning += item.text ?? "";
         else content += item.text ?? "";
     }
-    const result: LlmStreamDelta = { content, reasoning };
+    result.content = content;
+    result.reasoning = reasoning;
     if (toolCallDeltas.length > 0) result.toolCallDeltas = toolCallDeltas;
     // 跨 chunk：本 chunk 末尾还残留未消费的签名，交给调用方继续持有
     if (pendingSignature !== undefined) result.pendingThoughtSignature = pendingSignature;

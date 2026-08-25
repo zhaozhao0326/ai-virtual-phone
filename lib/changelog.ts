@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.40";
+export const APP_VERSION = "1.7.41";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.41",
+    date: "2026-08-25",
+    title: "Token 用量可视化：后台记录支持汇总统计与流式用量采集",
+    highlights: [
+      "「底层调用大模型日志」顶部新增 Token 用量汇总：调用次数、Prompt/回复/总 token 合计、单次平均与最大、按角色统计",
+      "主聊天（流式）现在会采集模型/中转返回的 token 用量，之前流式调用在日志里显示不了 token 数据",
+    ],
+  },
   {
     version: "1.7.40",
     date: "2026-08-25",

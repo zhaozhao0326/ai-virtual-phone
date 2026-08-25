@@ -712,13 +712,16 @@ async function readSseStream(
     providerKind: ChatCompletionStreamResult["providerKind"],
     callbacks?: ChatCompletionStreamCallbacks,
     stripTimestamps = true,
-): Promise<{ content: string; rawResponse: string }> {
+): Promise<{ content: string; rawResponse: string; usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }> {
     if (!response.body) throw new ChatEngineError("流式响应没有 body。");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     let content = "";
     let rawResponse = "";
+    // 流式 usage 采集：模型/中转在流里带回 usage 时逐块合并（后到者覆盖同名字段），
+    // 让主聊天（流式）也能在「底层调用大模型日志」里看到 token 数据。
+    let usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
     // 时间戳剥离器会一直扣住流尾巴的 64 个字符等括号闭合，流结束才吐出来。
     // 要求"所见即模型所写"的调用方（独家特调）把它整个关掉：增量来一个字出一个字，
     // 否则模型在末尾写机括标记行（〔记〕这类）时，整行都压在扣留窗里，看起来像卡死。
@@ -730,6 +733,13 @@ async function readSseStream(
     const sseParser = createSseJsonParser();
     const handleParsed = async (parsed: unknown) => {
         const parts = parseProviderStreamDelta(providerKind, parsed);
+        if (parts.usage) {
+            usage = {
+                prompt_tokens: parts.usage.prompt_tokens ?? usage?.prompt_tokens,
+                completion_tokens: parts.usage.completion_tokens ?? usage?.completion_tokens,
+                total_tokens: parts.usage.total_tokens ?? usage?.total_tokens,
+            };
+        }
         if (parts.reasoning) {
             await callbacks?.onReasoningDelta?.(parts.reasoning);
         }
@@ -771,7 +781,7 @@ async function readSseStream(
         content += finalContent;
         await callbacks?.onDelta?.(finalContent);
     }
-    return { content, rawResponse };
+    return { content, rawResponse, usage };
 }
 
 export async function sendLLMStreamRequest(
@@ -821,7 +831,7 @@ export async function sendLLMStreamRequest(
             const errorText = await response.text();
             throw new ChatEngineError(`API Stream Error ${response.status}: ${errorText}`);
         }
-        const { content: streamedContent, rawResponse } = await readSseStream(response, request.providerKind, pluginCallbacks ?? callbacks, !options?.skipTimestampStrip);
+        const { content: streamedContent, rawResponse, usage: streamUsage } = await readSseStream(response, request.providerKind, pluginCallbacks ?? callbacks, !options?.skipTimestampStrip);
         if (!streamedContent.trim()) {
             throw new ChatEngineError("流式响应没有解析到文本增量。");
         }
@@ -841,6 +851,7 @@ export async function sendLLMStreamRequest(
             messages: sanitizedMessages,
             rawResponse: rawOutput,
             timestamp: new Date().toISOString(),
+            usage: streamUsage,
         };
         const logs = _loadLogs();
         logs.push(logEntry);
@@ -1110,6 +1121,8 @@ export async function sendLLMToolStreamRequest(
 let rawResponse = "";
         let content = "";
         let reasoning = "";
+        // 流式 usage 采集（原生工具流同样不丢弃模型/中转返回的 token 用量）
+        let streamUsage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined;
         const contentStripper = createStreamingTimestampStripper();
         const toolDrafts = new Map<number, StreamToolCallDraft>();
         const firedToolCallStarts = new Set<number>();
@@ -1147,6 +1160,13 @@ let rawResponse = "";
                             if (!td.thoughtSignature) td.thoughtSignature = pendingThoughtSignature;
                         }
                         pendingThoughtSignature = undefined;
+                    }
+                    if (delta.usage) {
+                        streamUsage = {
+                            prompt_tokens: delta.usage.prompt_tokens ?? streamUsage?.prompt_tokens,
+                            completion_tokens: delta.usage.completion_tokens ?? streamUsage?.completion_tokens,
+                            total_tokens: delta.usage.total_tokens ?? streamUsage?.total_tokens,
+                        };
                     }
                     if (delta.reasoning) {
                         reasoning += delta.reasoning;
@@ -1224,6 +1244,7 @@ let rawResponse = "";
             messages: sanitizedMessages,
             rawResponse: JSON.stringify({ content, reasoning, toolCalls, raw: rawResponse }),
             timestamp: new Date().toISOString(),
+            usage: streamUsage,
         };
         const logs = _loadLogs();
         logs.push(logEntry);
