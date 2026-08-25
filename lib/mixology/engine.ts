@@ -242,6 +242,9 @@ export function startMixSession(
             id: createMixId("mixturn"),
             role: "assistant",
             text: assembled.opening,
+            // 开局这一刻机括存储是空的，照实拍一份：一路回溯到开局就该退回这个空
+            //（开局钩子随后跑完会覆盖成它的结果，见 runMixSessionStart）
+            mechanismStore: {},
             createdAt: Date.now(),
         });
     }
@@ -264,7 +267,11 @@ export async function runMixSessionStart(sessionId: string): Promise<void> {
     const changed = JSON.stringify(nextState) !== JSON.stringify(latest.state ?? {})
         || JSON.stringify(result.store) !== JSON.stringify(latest.mechanismStore ?? {});
     if (!changed) return;
-    saveMixSession({ ...latest, state: nextState, mechanismStore: result.store });
+    // 开场白那一轮也盖一份快照：一路回溯到开局时，取到的就是开局钩子跑完的样子
+    const turns = latest.turns.map((t, i) => (
+        i === 0 && t.role === "assistant" ? { ...t, mechanismStore: result.store } : t
+    ));
+    saveMixSession({ ...latest, turns, state: nextState, mechanismStore: result.store });
 }
 
 /**
@@ -633,11 +640,13 @@ async function runMixGeneration(
         ticketRaws: keptTickets.length ? keptTickets : undefined,
         encoreRaws: keptEncores.length ? keptEncores : undefined,
         state: nextState,
+        // 这一轮结束时的机括存储：回溯/重说/撤回回到这里，不必让机括自己复位
+        mechanismStore: afterHook.store,
         createdAt: Date.now(),
     };
     const updated: MixSession = {
         ...working,
-        turns: [...working.turns, turn],
+        turns: trimMixStoreSnapshots([...working.turns, turn]),
         state: nextState,
         mechanismStore: afterHook.store,
         // 记账前底稿：编辑这一轮原文后自动回滚重跑的基准
@@ -695,12 +704,54 @@ function sessionEncores(session: MixSession): MixEncoreMaterial[] {
 }
 
 /**
- * 截断历史之后把记住的值退回去：取剩下最后一轮的快照，全删光就退回开局初值。
- * 不做这一步的话，回溯三轮重打，好感度还停在被丢掉的那个未来上。
+ * 机括存储逐轮快照的保留轮数。
+ * 存储桶单件上限 100KB，逐轮全留会把对局存档撑爆；只留最近这么多轮，
+ * 成本与对局长度无关（30 × 实际桶大小，通常几十 KB 封顶）。
+ */
+const MIX_STORE_SNAPSHOT_TURNS = 30;
+
+/** 落库前修剪：只保留最近 N 份机括存储快照，更早的删掉 */
+function trimMixStoreSnapshots(turns: MixTurn[]): MixTurn[] {
+    let kept = 0;
+    let cutAt = -1;
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+        if (!turns[i].mechanismStore) continue;
+        kept += 1;
+        if (kept > MIX_STORE_SNAPSHOT_TURNS) { cutAt = i; break; }
+    }
+    if (cutAt < 0) return turns;
+    return turns.map((t, i) => (i <= cutAt && t.mechanismStore ? { ...t, mechanismStore: undefined } : t));
+}
+
+/**
+ * 取这一串轮次末尾的机括存储快照。
+ * 修剪永远从最旧的删起，所以"有快照的轮次"是连续的一段后缀——往回找不到快照，
+ * 就是真的没留（老对局，或回溯得比保留窗口还早），返回 null 让调用方维持现状。
+ */
+function lastMixStoreSnapshot(turns: MixTurn[]): Record<string, Record<string, string>> | null {
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+        const snapshot = turns[i].mechanismStore;
+        if (snapshot) return { ...snapshot };
+    }
+    return null;
+}
+
+/**
+ * 截断历史之后把记住的值与机括存储一起退回去：各取剩下最后一轮的快照。
+ * 不做这一步的话，回溯三轮重打，好感度还停在被丢掉的那个未来上，
+ * 机括面板里也还留着那三轮记下的东西。
  */
 function withRolledBackState(session: MixSession, turns: MixTurn[]): MixSession {
     const initial = initialMixState(sessionTickets(session));
-    return { ...session, turns, state: rollbackMixState(turns, initial) };
+    // 记住的值全删光退回开局初值；机括存储找不到快照则维持现状——它的私有记忆
+    // 宁可旧，也不能凭空清空（玩家在面板里手写的内容也在里面）。
+    const store = lastMixStoreSnapshot(turns);
+    return {
+        ...session,
+        turns,
+        state: rollbackMixState(turns, initial),
+        mechanismStore: store ?? session.mechanismStore,
+    };
 }
 
 /** 重说：丢弃最后一条 assistant 回复重新生成（开场白除外） */
@@ -841,24 +892,27 @@ export function editMixTurn(sessionId: string, turnId: string, newText: string):
 }
 
 /**
- * 编辑原始输出后的机括补跑：玩家在确认框里选了「替换」或「追加」才走这条。
- * 拿编辑后的这一轮重跑一次出杯后钩子——机括按新正文重新收数（摘标记行、写存储、
- * 补记住的值），钩子入参带 edited: true 供机括知情。
- * - replace：从这一轮记账前的底稿（mechanismStorePrev）起跑，原来那笔账作废，
- *   反复编辑反复同步也只记一笔。底稿必须还属于这一轮，不属于就退 false 让界面收窄选项。
- * - append：从当前存储起跑，原有记录保留、再记一遍。
+ * 编辑原始输出后的机括补跑：拿编辑后的这一轮重跑一次出杯后钩子——机括按新正文
+ * 重新收数（摘标记行、写存储、补记住的值），钩子入参带 edited: true 供机括知情。
+ *
+ * 回滚基准自己找，不用调用方指定：前一轮的快照就是这一轮记账前的存储，
+ * 从它起跑，原来那笔账自然作废，反复编辑同一轮也只记一笔（→ "replaced"）。
+ * 保留窗口外的老轮次没有快照，只能从当前存储起跑、原账保留再记一遍（→ "appended"，
+ * 界面据此提醒会记成两笔）。
  * turnCount 按"这一轮还没落库"的口径给（和真实出杯时一致），机括两次看到的世界相同。
  */
-export async function runMixEditSync(sessionId: string, turnId: string, mode: "replace" | "append"): Promise<boolean> {
+export async function runMixEditSync(sessionId: string, turnId: string): Promise<"replaced" | "appended" | false> {
     const session = getMixSession(sessionId);
     if (!session) return false;
     const idx = session.turns.findIndex((t) => t.id === turnId);
     if (idx < 0 || session.turns[idx].role !== "assistant") return false;
-    let baseStore = session.mechanismStore;
-    if (mode === "replace") {
-        if (session.mechanismStorePrevTurn !== turnId || !session.mechanismStorePrev) return false;
-        baseStore = session.mechanismStorePrev;
-    }
+    // 前一轮的快照 = 这一轮记账前的存储。修剪永远从最旧的删起，所以往回找不到
+    // 快照就是真没留（老对局或窗口外），退回"在当前存储上追加"。
+    // mechanismStorePrev 是快照没落地之前的老办法，只覆盖最后生成的那一轮，留作兜底。
+    const snapshot = lastMixStoreSnapshot(session.turns.slice(0, idx))
+        ?? (session.mechanismStorePrevTurn === turnId ? session.mechanismStorePrev ?? null : null);
+    const mode: "replaced" | "appended" = snapshot ? "replaced" : "appended";
+    const baseStore = snapshot ?? session.mechanismStore;
     const turn = session.turns[idx];
     const ticketRaws = mixTurnTicketBlocks(turn).map((b) => b.raw);
     const encoreRaws = mixTurnEncoreBlocks(turn).map((b) => b.raw);
@@ -886,30 +940,32 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
     if (!latest) return false;
     const at = latest.turns.findIndex((t) => t.id === turnId);
     if (at < 0) return false;
-    const turns = [...latest.turns];
     const nextState = mergeHookState(latest.turns[at].state ?? latest.state ?? {}, result.state);
-    turns[at] = {
-        ...turns[at],
-        text: typeof result.text === "string" ? result.text : turns[at].text,
-        state: nextState,
-    };
-    // 这一趟没重新记账的机括，保留它当前的账，不跟着 replace 的底稿一起回滚——
+    // 这一趟没重新记账的机括，保留它当前的账，不跟着回滚基准一起退回去——
     // 钩子出错、超时、或者自己决定这一轮不记，都不该让面板上已有的内容凭空消失。
-    // 回滚只针对真正重记了的那几件（它们的新账已经盖在底稿上了）。
+    // 回滚只针对真正重记了的那几件（它们的新账已经盖在基准上了）。
     const nextStore = { ...result.store };
-    if (mode === "replace") {
+    if (mode === "replaced") {
         for (const [id, bucket] of Object.entries(latest.mechanismStore ?? {})) {
             if (!result.wrote.includes(id)) nextStore[id] = bucket;
         }
     }
+    const turns = [...latest.turns];
+    turns[at] = {
+        ...turns[at],
+        text: typeof result.text === "string" ? result.text : turns[at].text,
+        state: nextState,
+        // 这一轮的快照按重跑结果刷新，后面再回溯到这里拿到的才是编辑后的账
+        mechanismStore: nextStore,
+    };
     saveMixSession({
         ...latest,
-        turns,
+        turns: trimMixStoreSnapshots(turns),
         // 对局的当前值跟最后一轮的快照走；补跑的不是最后一轮就别动全局
         state: at === turns.length - 1 ? nextState : latest.state,
-        mechanismStore: nextStore,
+        mechanismStore: at === turns.length - 1 ? nextStore : latest.mechanismStore,
     });
-    return true;
+    return mode;
 }
 
 /** 对当前历史直接生成回复（编辑玩家发言后的重新生成） */

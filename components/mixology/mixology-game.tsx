@@ -628,28 +628,23 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
         // 编辑的是角色回复且本局带钩子机括：把新原文交给机括重新收数，不问、不弹窗。
         // 机括的标记行只有它自己的钩子认得，不重跑就会留在正文里裸奔；而"要不要重跑"
         // 从来不是玩家该决定的事——编辑完就该是编辑后的样子。
-        // 能回到这一轮的记账底稿就先回滚再重记（反复编辑同一轮也只记一笔）；
-        // 底稿不属于这一轮（编辑的不是最后生成的那一轮）时退回追加。
+        // 回滚基准由引擎自己找（前一轮的快照），这里不做判断。
         if (target?.role === "assistant") {
             const hasHooked = mixSlotEntries(session.recipe.slots, "mechanism")
                 .some((e) => {
                     const m = getMixMaterial(e.materialId);
                     return m?.kind === "mechanism" && Boolean(m.script?.trim());
                 });
-            if (hasHooked) {
-                const fresh = getMixSession(sessionId) ?? session;
-                const canReplace = fresh.mechanismStorePrevTurn === editing.id && Boolean(fresh.mechanismStorePrev);
-                doEditSync(editing.id, canReplace ? "replace" : "append");
-            }
+            if (hasHooked) doEditSync(editing.id);
         }
     };
 
-    const doEditSync = (turnId: string, mode: "replace" | "append") => {
-        void runMixEditSync(sessionId, turnId, mode).then((ok) => {
+    const doEditSync = (turnId: string) => {
+        void runMixEditSync(sessionId, turnId).then((mode) => {
             setSession(getMixSession(sessionId));
-            // 追加要说一声：底稿不在，这一轮在机括那儿会被记成两笔
-            onToast(ok
-                ? (mode === "replace" ? "机括已按编辑后的原文重跑这一轮。" : "机括已补记这一轮（旧账保留，可能记成两笔）。")
+            // 追加要说一声：这一轮太旧、快照已不在，机括那儿会被记成两笔
+            onToast(mode === "replaced" ? "机括已按编辑后的原文重跑这一轮。"
+                : mode === "appended" ? "机括已补记这一轮（这一轮太旧，旧账保留，可能记成两笔）。"
                 : "机括重跑失败，这一轮没有变化。");
         });
     };

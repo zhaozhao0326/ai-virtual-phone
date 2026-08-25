@@ -625,6 +625,16 @@ export type MixTurn = {
      * 直接取剩下最后一轮的这份快照还原，数字不会停留在被丢掉的未来。
      */
     state?: MixState;
+    /**
+     * 这一轮结束时的机括存储（与 state 同一套语义，只在 assistant 轮上）。
+     * 有它才谈得上"干净回溯"：机括存储是任意可读写的，不像 turns 那样只增不改，
+     * 砍掉几轮推不出过去的样子，只能当时拍照留档。
+     *
+     * 只留最近 MIX_STORE_SNAPSHOT_TURNS 轮（见 engine.ts）——存储桶单件上限 100KB，
+     * 逐轮全留会把对局存档撑爆。窗口外的回溯退回老行为（不动存储，由机括自己
+     * 按 turnCount 复位）；老对局没有这个字段，同样走老行为，绝不清空。
+     */
+    mechanismStore?: Record<string, Record<string, string>>;
     createdAt: number;
 };
 
