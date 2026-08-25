@@ -99,7 +99,7 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
         <div className="phone-app-pane flex flex-col h-full bg-[var(--c-page-bg,#faf9f5)]">
             {/* 顶栏 */}
             <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-                <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
+                <button onClick={() => (openEntry ? setOpenId(null) : onClose())} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M15 19 8 12l7-7" /></svg>
                 </button>
                 <div className="flex-1 text-center ts-14 font-semibold">信箱</div>

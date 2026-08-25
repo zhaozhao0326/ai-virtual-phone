@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.38";
+export const APP_VERSION = "1.7.39";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.39",
+    date: "2026-08-25",
+    title: "修复信箱返回键层级错乱",
+    highlights: [
+      "修复：信箱打开一封信后，点顶部返回键会直接关掉整个信箱，而不是回到信件列表",
+      "返回键改为分层：详情页先收起回列表，列表页才退出信箱",
+    ],
+  },
   {
     version: "1.7.38",
     date: "2026-08-25",
