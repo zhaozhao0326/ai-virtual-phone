@@ -624,11 +624,9 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
         return (
             <>
                 <br />
-                机括的存档只留最近 {MIX_STORE_SNAPSHOT_TURNS} 轮，这一轮已经超出：
                 {kind === "oldest"
-                    ? `机括里的内容只能退到现存最早的那份存档（约 ${MIX_STORE_SNAPSHOT_TURNS} 轮前），不是这一轮当时的样子。`
-                    : "这一轮还没有存档（更新前的旧对局），机括里的内容不会跟着退回。"}
-                需要的话回溯后在机括面板里手动改。
+                    ? `机括存档仅保留最近 ${MIX_STORE_SNAPSHOT_TURNS} 轮，此轮已超出，机括数据将回退至现存最早的存档。`
+                    : "此轮无机括存档，机括数据不会回退。"}
             </>
         );
     };
