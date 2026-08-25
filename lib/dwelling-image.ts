@@ -7,7 +7,7 @@ import { generateImageFromConfiguredApi } from "./image-generation-service";
 // ── Availability ──────────────────────────────
 
 export type DwellingImageAvailability = {
-    /** 全局生图配置齐全且已开启 */
+    /** 生图提供方配置齐全（API Key / Base URL / 模型名齐全） */
     configured: boolean;
     /** 栖所独立生图开关 */
     dwellingEnabled: boolean;
@@ -36,11 +36,10 @@ function isProviderConfigured(s: ImageGenerationSettings): boolean {
 export function getDwellingImageAvailability(): DwellingImageAvailability {
     const s = loadImageGenerationSettings();
     const providerConfigured = isProviderConfigured(s);
-    const configured = Boolean(s.enabled && providerConfigured);
+    const configured = providerConfigured;
     const dwellingEnabled = loadDwellingImageEnabled();
     let reason = "";
-    if (!s.enabled) reason = "全局「启用图像生成」开关未开启（生图设置里打开它）";
-    else if (!providerConfigured) reason = "当前生图提供方配置不完整：需填写 API Key、Base URL、模型名";
+    if (!providerConfigured) reason = "当前生图提供方配置不完整：需填写 API Key、Base URL、模型名";
     else if (!dwellingEnabled) reason = "栖所生图开关未开启";
     return { configured, dwellingEnabled, available: configured && dwellingEnabled, reason };
 }

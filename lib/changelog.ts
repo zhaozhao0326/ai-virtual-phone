@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.34";
+export const APP_VERSION = "1.7.35";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.35",
+    date: "2026-08-25",
+    title: "修复生图被「全局开关」卡死的问题",
+    highlights: [
+      "修复：生图功能依赖一个界面上并不存在的总开关，新装或清缓存后会被默认关闭、导致栖所与角色生图全部无法使用",
+      "现已移除该无对应开关的拦截，生图可用性只看「提供方配置是否齐全」与「栖所生图开关」两项",
+    ],
+  },
   {
     version: "1.7.34",
     date: "2026-08-25",

@@ -634,7 +634,7 @@ export function saveVoiceConfigs(configs: VoiceApiConfig[]): void {
 // --- Image Generation Settings ──────────────────────────────────────────
 
 export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
-    enabled: false,
+    enabled: true,
     requestMode: "server",
     provider: "openai",
     // --- OpenAI 兼容 ---
