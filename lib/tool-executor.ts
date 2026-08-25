@@ -20,6 +20,8 @@ import {
     saveRestToolPackages,
     expandToolNameMacros,
     toolNameMatches,
+    getEnabledTools,
+    type EnabledTool,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
@@ -471,12 +473,56 @@ function buildToolNameMacroContext(context?: ToolExecutionContext) {
     return { characterName, userName };
 }
 
+function stableToolHash(value: string): string {
+    let hash = 0;
+    for (const char of value) {
+        hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+    }
+    return hash.toString(36).slice(0, 6);
+}
+
+function makeNativeToolName(displayName: string): string {
+    const base = displayName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 40);
+    const prefix = base && /^[a-zA-Z_]/.test(base) ? base : "action";
+    return `${prefix}_${stableToolHash(displayName)}`.slice(0, 64);
+}
+
+function resolveNativeActionName(callName: string, appId?: string): string {
+    if (!/^action_[a-z0-9]+(?:_\d+)?$/.test(callName)) return callName;
+    const tools = getEnabledTools(appId);
+    for (const tool of tools) {
+        const isPackage = tool.source.endsWith("_package") || tool.source === "mcp_server";
+        if (isPackage) {
+            const sourceKey = `${tool.source}:${tool.sourceId}`;
+            const loaderName = makeNativeToolName(`load_${sourceKey}_${tool.name}_tools`);
+            if (loaderName === callName) return tool.name;
+            const children = tool.restTools || tool.compositeTools || tool.mcpTools || tool.customAppTools || [];
+            for (const child of children) {
+                const childName = (child as { name: string }).name;
+                if (makeNativeToolName(childName) === callName) return childName;
+            }
+        } else {
+            if (makeNativeToolName(tool.name) === callName) return tool.name;
+        }
+    }
+    return callName;
+}
+
 async function executeSingleToolCall(
     call: ToolCall,
     context: ToolExecutionContext | undefined,
     hint: ToolExecutionHint,
 ): Promise<ToolResult> {
     throwIfAborted(context?.signal);
+    const resolvedName = resolveNativeActionName(call.name, context?.appId);
+    if (resolvedName !== call.name) {
+        call = { ...call, name: resolvedName };
+    }
     const preferredType = hint.toolType && hint.toolType !== "auto" && hint.toolType !== "script" ? hint.toolType : undefined;
     const restTools = loadRestTools();
     const restPackages = loadRestToolPackages();
@@ -553,7 +599,12 @@ async function executeSingleToolCall(
     throwIfAborted(context?.signal);
     if (customAppResult) return customAppResult;
 
-    return { name: call.name, success: false, error: "动作未找到" };
+    return {
+        name: call.name,
+        success: false,
+        error: "动作未找到",
+        userNotice: `✗ ${call.name}：动作未找到。该动作可能来自旧缓存、历史消息，或对应工具已被禁用/删除。若反复出现，请尝试清缓存重开 PWA，并检查「聊天工具箱」里是否启用了相关工具。`,
+    };
 }
 
 type CompositeStepResult = {

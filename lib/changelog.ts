@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.36";
+export const APP_VERSION = "1.7.37";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.37",
+    date: "2026-08-25",
+    title: "修复 native tool 模式下部分动作报「动作未找到」",
+    highlights: [
+      "修复：角色在 native tool 模式下调用动作时，偶现 action_xxx 提示「动作未找到」",
+      "增加反向匹配 fallback：遇到 action_xxx 形式的名字时，自动按当前启用的工具重新解析原始动作名并执行",
+      "错误提示现在会说明「可能来自旧缓存/历史消息，或对应工具已被禁用」",
+    ],
+  },
   {
     version: "1.7.36",
     date: "2026-08-25",
