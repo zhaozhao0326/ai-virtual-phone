@@ -93,6 +93,7 @@ import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
+import { buildEmotionChipText } from "@/lib/character-emotion";
 
 // ── v1.5.11 性别词提取：Character 没有独立 gender 字段，从 persona/briefPersona 里捞"男生/女生/男性/女性"作 anchor 前缀
 function extractGenderHintFromPersona(persona?: string | null, briefPersona?: string | null): string | null {
@@ -1176,6 +1177,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [transientMessages, setTransientMessages] = useState<ChatMessage[]>([]);
+    // 角色此刻的状态（持续情绪+精力），名字下方小标注；60s 刷新（状态随时间衰减漂移）
+    const [emotionChip, setEmotionChip] = useState<string | null>(null);
+    useEffect(() => {
+        const refresh = () => setEmotionChip(session.isGroup ? null : (buildEmotionChipText(session.contactId) ?? null));
+        refresh();
+        const timer = setInterval(refresh, 60000);
+        return () => clearInterval(timer);
+    }, [session.id, session.isGroup, session.contactId]);
     const [stickerReady, setStickerReady] = useState(false);
     const [character, setCharacter] = useState<Character | null>(() => {
         const chars = loadCharacters();
@@ -5701,6 +5710,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         {session.isGroup
                             ? `${session.groupName || "群聊"}(${(session.participantIds?.length || 0) + (session.isSpectator ? 0 : 1)})`
                             : (session.alias || character?.name || `User_${session.contactId.slice(-4)}`)}
+                        {/* 角色此刻的状态（持续情绪+精力）：名字下方的小标注 */}
+                        {!session.isGroup && emotionChip && (
+                            <span className="ml-1.5 align-middle ts-10 opacity-60" title="角色此刻的状态（随时间自然变化）">
+                                {emotionChip}
+                            </span>
+                        )}
                         {lifelikeWaiting && (
                             <span
                                 className="chat-typing-indicator"

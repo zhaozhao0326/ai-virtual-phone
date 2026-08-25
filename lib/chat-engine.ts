@@ -63,6 +63,7 @@ import { findEnabledToolForSchema, getEnabledTools, type EnabledTool } from "./t
 import { computeRelationshipGrowth, relationshipStagePromptLine } from "./relationship-growth";
 import { retrieveAutoMemoryForPrompt } from "./auto-memory-service";
 import { buildListenTogetherPrompt } from "./music-together";
+import { buildEmotionPromptLine, applyChatTurn } from "./character-emotion";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
 import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults } from "./tool-executor";
 import type { ToolCall, ToolResult } from "./tool-executor";
@@ -1894,7 +1895,7 @@ export async function buildChatPromptMessages(
         }
     }
 
-    const [memResults, coreResults, musicLocal, musicCloud, growthResult, autoMemoryPrompt, musicTogetherPrompt] = await Promise.all([
+    const [memResults, coreResults, musicLocal, musicCloud, growthResult, autoMemoryPrompt, musicTogetherPrompt, emotionPrompt] = await Promise.all([
         retrieveMemoriesForPrompt(character.id, wbActivationContext, memConfig).catch(() => null),
         retrieveCoreMemoriesForPrompt(character.id, memConfig).catch(() => null),
         buildMusicLocalMacro(),
@@ -1906,6 +1907,8 @@ export async function buildChatPromptMessages(
             : retrieveAutoMemoryForPrompt(character.id, wbActivationContext).catch(() => null),
         // 音乐一起听：配对角色 + 正在播放 → 注入共享时刻（无配对/未播放返回 null）
         buildListenTogetherPrompt(),
+        // 持续情绪状态：此刻心情/精力（中性时返回 null，不注入）
+        buildEmotionPromptLine(character.id),
     ]);
 
     const longTermMemories = memResults ? formatLongTermMemories(memResults) : "";
@@ -1913,6 +1916,7 @@ export async function buildChatPromptMessages(
     const relationshipGrowthPrompt = growthResult ? relationshipStagePromptLine(growthResult) : "";
     const autoMemoryPromptText = autoMemoryPrompt?.trim() || "";
     const musicTogetherPromptText = musicTogetherPrompt?.trim() || "";
+    const characterEmotionPromptText = emotionPrompt?.trim() || "";
     const scheduleSummary = buildCalendarScheduleMarker("character", character.id, getWeekStartIso(now));
     const currentSchedule = getCurrentCalendarScheduleForPrompt("character", character.id, now);
     const musicOnlineHint = isNeteaseConfigured() ? "- 你可以推荐任何歌曲，系统会在线搜索并播放。不局限于用户本地音乐库。\n" : "\n";
@@ -1983,6 +1987,7 @@ export async function buildChatPromptMessages(
         relationshipGrowth: relationshipGrowthPrompt,
         autoMemory: autoMemoryPromptText,
         musicTogether: musicTogetherPromptText,
+        characterEmotion: characterEmotionPromptText,
     });
 
     // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，
@@ -2441,7 +2446,13 @@ export async function generateChatCompletion(
         shortcutCancelled: false,
     };
     try {
-        return await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
+        const result = await generateChatCompletionCore(session, history, options, callbacks, bailoutRef);
+        // 回复成功 → 扰动角色持续情绪状态（消耗精力 + 收到回应的安心/开心微升）
+        // 仅 1:1 主链路（群聊多角色共享语义复杂，暂不参与）
+        if (!session.isGroup && (options?.appId ?? "chat") === "chat" && result?.parts?.length && result.parts.some(p => p.text?.trim())) {
+            applyChatTurn(session.contactId);
+        }
+        return result;
     } catch (err) {
         if (options?.signal?.aborted) bailoutRef.shortcutCancelled = true;
         throw err;

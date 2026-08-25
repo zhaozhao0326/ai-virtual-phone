@@ -10,6 +10,7 @@ import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
 import { PhoneCharacterApp } from "@/components/phone-character-app";
+import { PhoneLettersApp } from "@/components/phone-letters-app";
 import { PhoneSettingsApp } from "@/components/phone-settings-app";
 import { PhoneChatApp } from "@/components/chat/phone-chat-app";
 import { PhonePlaceholderApp } from "@/components/phone-placeholder-app";
@@ -4033,6 +4034,14 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
         <PhoneCharacterApp
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
+        />
+      );
+    }
+
+    if (activeApp === "letters") {
+      return (
+        <PhoneLettersApp
+          onClose={() => setActiveApp(null)}
         />
       );
     }

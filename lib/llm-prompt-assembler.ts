@@ -86,6 +86,7 @@ export interface AssemblerInput {
     relationshipGrowth?: string;           // 关系成长背景（相识天数/共同经历/关系阶段），注入 {{relationshipGrowth}} 段落
     autoMemory?: string;                   // Auto Memory 认知档案（角色对用户的长期认知），注入 {{autoMemory}} 段落
     musicTogether?: string;                // 音乐一起听（配对角色 + 正在播放），注入 {{musicTogether}} 段落
+    characterEmotion?: string;             // 角色持续情绪状态（此刻心情/精力），注入 {{characterEmotion}} 段落
     tools?: string;                          // formatted tool definitions for {{tools}} macro
     cocreateWriteActions?: string;           // full co-create action set for {{cocreateWriteActions}} macro (write mode)
     cocreateReadActions?: string;            // read-only co-create action set for {{cocreateReadActions}} macro (discuss mode)
@@ -415,6 +416,7 @@ function getMarkerContent(
     relationshipGrowth?: string,
     autoMemory?: string,
     musicTogether?: string,
+    characterEmotion?: string,
 ): string | null {
     switch (identifier) {
         case "charDescription": {
@@ -456,6 +458,8 @@ function getMarkerContent(
             return autoMemory?.trim() || null;
         case "musicTogether":
             return musicTogether?.trim() || null;
+        case "characterEmotion":
+            return characterEmotion?.trim() || null;
         case "dwellingContext": {
             if (dwellingContext?.trim()) return dwellingContext;
             // Auto-load from in-memory cache if not explicitly provided
@@ -791,6 +795,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
                     input.relationshipGrowth,
                     input.autoMemory,
                     input.musicTogether,
+                    input.characterEmotion,
                 );
                 if (markerContent) {
                     // Expand macros in marker content ({{char}}/{{user}} in char descriptions etc.)
@@ -1926,6 +1931,7 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
                     m.longTermMemories,
                     regexes, { macroEngine: engine, activeTags },
                     m.characterRelations,
+                    undefined,
                     undefined,
                     undefined,
                     undefined,

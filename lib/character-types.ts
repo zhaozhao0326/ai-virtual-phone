@@ -39,6 +39,10 @@ export type Character = {
   // 相遇纪念日（可选）：首次"正式认识"的日子，纯展示用。
   // 缺省 = 按角色创建时间（createdAt）推算；设定后以手动值为准
   firstMetAt?: string;
+
+  // 内部生活（梦呓 + 日记）：深夜/久未联系时角色会做梦、记日记（进信箱）
+  // 缺省 = 开启；false = 该角色不生成梦呓/日记
+  dreamEnabled?: boolean;
 };
 
 export type CanvasBgItem = {

@@ -19,6 +19,7 @@ import MusicArtistPage from "./music-artist";
 import { loadMusicBg, playerBgStyle, MUSIC_BG_EVENT, type MusicBgConfig } from "@/lib/music-bg";
 import { getListenTogetherCharacterId, setListenTogether, getListenTogetherMinutes } from "@/lib/music-together";
 import { loadCharacters } from "@/lib/character-storage";
+import { applyListenTogether } from "@/lib/character-emotion";
 
 const PLAY_MODE_ICONS: Record<PlayMode, { svg: string; label: string }> = {
     sequence: {
@@ -124,6 +125,7 @@ export default function MusicPlayer() {
         setTogetherCharId(id);
         setTogetherShowPicker(false);
         setTogetherMin(getListenTogetherMinutes());
+        applyListenTogether(id); // 分享时刻 → 角色开心/思念微升
     };
     const handleTogetherEnd = () => {
         setListenTogether(null);

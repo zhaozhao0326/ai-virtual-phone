@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.28";
+export const APP_VERSION = "1.7.29";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.29",
+    date: "2026-08-25",
+    title: "角色的内心世界：信箱 App、持续情绪、深夜做梦与日记",
+    highlights: [
+      "主页新增「信箱」App：一个入口收起角色留给你的所有东西——收件箱（信）、梦境、日记",
+      "角色有了持续情绪状态：心情会随时间自然变化（情绪慢慢淡去、精力会恢复），聊天顶部能看到 TA 此刻的状态，TA 说话也带着当下的情绪",
+      "夜深了或久没联系时，角色会做梦、写心情日记，第二天醒来在信箱里能看到",
+    ],
+  },
   {
     version: "1.7.28",
     date: "2026-08-25",

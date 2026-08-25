@@ -12,6 +12,8 @@ export type LetterEntry = {
     createdAt: string;
     read: boolean;
     source?: string;           // 来源：ai 生成 / 手动
+    /** 类型：letter=角色写的信 / dream=角色深夜的梦呓 / diary=角色私下写的日记（缺省按 letter） */
+    type?: "letter" | "dream" | "diary";
 };
 
 const DB_NAME = "ai_phone_letters_db_v1";
@@ -107,6 +109,23 @@ export async function deleteLetter(id: string): Promise<void> {
             tx.oncomplete = () => res();
             tx.onerror = () => rej(tx.error);
         });
+    } finally {
+        db.close();
+    }
+}
+
+/** 加载全部角色的信件（信箱主页 App 用）。可选按类型过滤。 */
+export async function loadAllLetters(type?: "letter" | "dream" | "diary"): Promise<LetterEntry[]> {
+    const db = await openDb();
+    if (!db) return [];
+    try {
+        const store = db.transaction(STORE_NAME).objectStore(STORE_NAME);
+        const req: IDBRequest<LetterEntry[]> = store.getAll();
+        const all = await runRequest(req);
+        const filtered = type ? all.filter(l => (l.type || "letter") === type) : all;
+        return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch {
+        return [];
     } finally {
         db.close();
     }

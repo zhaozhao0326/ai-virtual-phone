@@ -44,6 +44,7 @@ export function createBuiltinPreset(): PresetConfig {
             { identifier: "relationshipGrowth", enabled: true },
             { identifier: "autoMemory", enabled: true },
             { identifier: "musicTogether", enabled: true },
+            { identifier: "characterEmotion", enabled: true },
 
             // ── Divider ──
             { identifier: "shortTermMemory", enabled: true },
