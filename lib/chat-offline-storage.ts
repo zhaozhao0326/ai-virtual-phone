@@ -217,7 +217,8 @@ function stripOfflineImageTags(text: string): string {
         .replace(/\[照片[：:]不使用参考图[：:][^\]]+\]/g, "")
         .replace(/\[照片[：:][^\]]+\]/g, "")
         .replace(/\[相册\][\s\S]*?\[\/相册\]/g, "")
-        .replace(/\s{2,}/g, " ")
+        // 只压缩行内连续空格/制表符，保留换行与段落空行，防止线下模式正文融成一团
+        .replace(/[ \t]{2,}/g, " ")
         .trim();
 }
 
