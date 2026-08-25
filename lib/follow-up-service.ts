@@ -48,7 +48,7 @@ import {
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
 import { triggerMemoryCareDM } from "./character-proactive-chat";
-import { maybeRunCharacterInternalLife } from "./dream-service";
+import { maybeRunCharacterInternalLife, isDreamEnabled } from "./dream-service";
 import {
     getMenstrualPeriodCareEvent,
     hasMenstrualPeriodCareTriggered,
@@ -606,9 +606,8 @@ function pollMemoryCare(now: number) {
 
     for (const session of sessions) {
         const characterId = session.contactId!;
-        // 内部生活（独立开关 dreamEnabled，缺省开）：深夜/久未联系时角色做梦、记日记。
-        // 每角色每天一次机会，无 API/失败静默跳过；fire & forget 不阻塞轮询
-        maybeRunCharacterInternalLife(characterId);
+        // 内部生活（梦境/日记）：受全局开关管控（1.7.43 起默认关闭），开启后才逐个角色检查
+        if (isDreamEnabled()) maybeRunCharacterInternalLife(characterId);
         // 每角色独立开关：该角色关闭则跳过（缺省回退全局默认）
         if (!isMemoryCareEnabled(characterId)) continue;
         if (memoryCareFiringSet.has(characterId)) continue;

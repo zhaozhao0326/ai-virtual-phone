@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { loadAllLetters, markLetterRead, deleteLetter, type LetterEntry } from "@/lib/letter-storage";
 import { requestLetter, getLetterCooldownRemaining } from "@/lib/letter-service";
 import { loadCharacters } from "@/lib/character-storage";
+import { isDreamEnabled, setDreamEnabled, getDreamWhitelist, setDreamWhitelist } from "@/lib/dream-service";
 
 type TabId = "inbox" | "dream" | "diary";
 
@@ -28,6 +29,14 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
     const [openId, setOpenId] = useState<string | null>(null);
     const [busyCharId, setBusyCharId] = useState<string | null>(null);
     const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
+    const [dreamOn, setDreamOn] = useState(false);
+    const [dreamList, setDreamList] = useState<string[]>([]);
+    useEffect(() => {
+        if (tab === "dream") {
+            setDreamOn(isDreamEnabled());
+            setDreamList(getDreamWhitelist());
+        }
+    }, [tab]);
 
     const refresh = useCallback(() => {
         loadAllLetters().then(setEntries).catch(() => setEntries([]));
@@ -125,6 +134,48 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
 
             {/* 内容 */}
             <div className="flex-1 overflow-y-auto px-3 pb-4">
+                {tab === "dream" && !openEntry && (
+                    <div className="flex flex-col gap-3 p-3 mb-2 rounded-2xl bg-[var(--c-card,#fff)] border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)]">
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !dreamOn;
+                                    setDreamEnabled(next);
+                                    setDreamOn(next);
+                                }}
+                                className={`relative w-11 h-6 rounded-full transition-colors ${dreamOn ? "bg-[var(--c-accent,var(--c-primary,#4a3f2f))]" : "bg-[color-mix(in_srgb,var(--c-card-border)_70%,transparent)]"}`}
+                                aria-pressed={dreamOn}
+                            >
+                                <span className={`absolute top-0.5 ${dreamOn ? "left-5" : "left-0.5"} w-5 h-5 rounded-full bg-white transition-all`} />
+                            </button>
+                            <span className="ts-13 font-semibold flex-1">开启角色做梦与日记</span>
+                        </div>
+                        <p className="ts-11 opacity-55 leading-relaxed">关闭后，后台不再为任何角色自动生成梦境/日记，可彻底停掉这类调用。开启后，只对下方选中的角色生效。</p>
+                        {dreamOn && (
+                            <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1">
+                                {chars.map(c => {
+                                    const checked = dreamList.includes(c.id);
+                                    return (
+                                        <label key={c.id} className="flex items-center gap-2 ts-12 py-1 px-1 rounded-lg hover:opacity-75 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => {
+                                                    const next = checked ? dreamList.filter(id => id !== c.id) : [...dreamList, c.id];
+                                                    setDreamList(next);
+                                                    setDreamWhitelist(next);
+                                                }}
+                                                className="accent-[var(--c-accent,var(--c-primary,#4a3f2f))]"
+                                            />
+                                            <span>{c.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
                 {openEntry ? (
                     <div className="flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-card,#fff)] border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)]">
                         <div className="flex items-center gap-2">

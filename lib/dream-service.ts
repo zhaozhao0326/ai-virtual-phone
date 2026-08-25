@@ -138,12 +138,58 @@ async function generateDiary(characterId: string, char: Character): Promise<Lett
  * - 深夜（22:00-6:00）或用户离开角色超过 12h 才触发
  * - 触发时按需补生成今日梦呓与今日日记（无 API 或失败静默跳过）
  */
+// ── 全局开关 + 选人白名单（1.7.43） ──
+// 默认关闭：避免后台轮询对全部角色批量生成梦境/日记，造成 token 暴涨。
+const DREAM_GLOBAL_KEY = "ai_phone_dream_global_enabled";
+const DREAM_WHITELIST_KEY = "ai_phone_dream_whitelist";
+
+/** 梦境（含日记）全局开关：默认关闭。 */
+export function isDreamEnabled(): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        return kvGet(DREAM_GLOBAL_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+export function setDreamEnabled(enabled: boolean): void {
+    if (typeof window === "undefined") return;
+    try {
+        kvSet(DREAM_GLOBAL_KEY, enabled ? "1" : "0");
+    } catch { /* ignore */ }
+}
+
+/** 选人白名单：仅这些角色参与梦境；空数组表示不限制（全部角色）。 */
+export function getDreamWhitelist(): string[] {
+    if (typeof window === "undefined") return [];
+    try {
+        const raw = kvGet(DREAM_WHITELIST_KEY);
+        if (!raw) return [];
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) ? arr.filter((x: unknown) => typeof x === "string") : [];
+    } catch {
+        return [];
+    }
+}
+
+export function setDreamWhitelist(ids: string[]): void {
+    if (typeof window === "undefined") return;
+    try {
+        kvSet(DREAM_WHITELIST_KEY, JSON.stringify(ids));
+    } catch { /* ignore */ }
+}
+
 export async function maybeRunCharacterInternalLife(characterId: string): Promise<void> {
     if (typeof window === "undefined") return;
+    // 全局开关（1.7.43 起默认关闭）+ 选人白名单：未开启或不在名单内则跳过
+    if (!isDreamEnabled()) return;
     const chars = loadCharacters();
     const char = chars.find(c => c.id === characterId);
     if (!char) return;
-    // 角色级开关：缺省开启
+    const whitelist = getDreamWhitelist();
+    if (whitelist.length > 0 && !whitelist.includes(characterId)) return;
+    // 角色级开关：缺省开启（保留旧逻辑）
     if (char.dreamEnabled === false) return;
 
     // 每角色每天只检查一次

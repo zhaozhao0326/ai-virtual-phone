@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.42";
+export const APP_VERSION = "1.7.43";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.43",
+    date: "2026-08-26",
+    title: "梦境增设全局开关与选人，默认关闭以控制后台调用量",
+    highlights: [
+      "新增梦境（含日记）全局开关，默认关闭：后台不再对全部角色批量生成梦境/日记，解决单次发消息触发大量调用的问题",
+      "信箱「梦境」页新增开关与角色多选：开启后仅对选中的角色生成，未选中的角色不会做梦",
+      "保留单角色级开关（角色档案内可单独关闭）作为补充控制",
+    ],
+  },
   {
     version: "1.7.42",
     date: "2026-08-25",
