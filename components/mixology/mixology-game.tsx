@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, Copy, History, MoreHorizontal, Pencil, Plus, RotateCcw, Send, Sun, WandSparkles, X } from "lucide-react";
-import { continueMix, editMixTurn, generateMixReply, MIX_REPAIR_EVENT, MIX_STORE_SNAPSHOT_TURNS, mixTurnRawText, refreshMixOpening, regenerateMixTail, rerollMixReply, runMixEditSync, runMixSessionEnd, truncateMixAfterTurn, type MixRepairEventDetail } from "@/lib/mixology/engine";
+import { continueMix, editMixTurn, generateMixReply, canReplayMixFrom, MIX_REPAIR_EVENT, MIX_STORE_SNAPSHOT_TURNS, mixTurnRawText, recordMixPanelStore, refreshMixOpening, regenerateMixTail, rerollMixReply, runMixEditSync, runMixSessionEnd, truncateMixAfterTurn, type MixRepairEventDetail } from "@/lib/mixology/engine";
 import { getMixMaterial, getMixSession, listMixPickables, MIX_CABINET_UPDATED_EVENT, resolveMixRecipeMaterials, saveMixSession } from "@/lib/mixology/storage";
 import { applyMixMacros, MIX_DEFAULT_USER_NAME } from "@/lib/mixology/assembler";
 import { buildMixConditionContext, pickActiveMixMaterials } from "@/lib/mixology/state";
@@ -360,7 +360,8 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
     const handlePanelStore = useCallback((materialId: string, store: Record<string, string>) => {
         const current = getMixSession(sessionId);
         if (!current) return;
-        saveMixSession({ ...current, mechanismStore: { ...(current.mechanismStore ?? {}), [materialId]: store } });
+        // 手改记在当前这一轮上：日后编辑早先某轮重画时，走到这里会再盖一次
+        saveMixSession(recordMixPanelStore(current, materialId, store));
         setSession(getMixSession(sessionId));
     }, [sessionId]);
 
@@ -631,6 +632,19 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
         );
     };
 
+    /**
+     * 保存这一条编辑会不会连带删掉后文。
+     * 玩家发言：后面的回复是冲着旧发言写的，要删掉重新生成。
+     * 角色回复：后面每一轮都能按原文重画时一条不删；重画不了才截断
+     *（它们的记住的值与机括存储都是从这一轮累积算出来的，重算不了就只能作废）。
+     */
+    const editWillTruncate = (turnId: string) => {
+        const idx = session.turns.findIndex((t) => t.id === turnId);
+        if (idx < 0 || idx === session.turns.length - 1) return false;
+        if (session.turns[idx].role === "user") return true;
+        return !canReplayMixFrom(session, idx);
+    };
+
     const doRewind = (turnId: string) => {
         try {
             truncateMixAfterTurn(sessionId, turnId);
@@ -660,23 +674,16 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
         // 机括的标记行只有它自己的钩子认得，不重跑就会留在正文里裸奔；而"要不要重跑"
         // 从来不是玩家该决定的事——编辑完就该是编辑后的样子。
         // 回滚基准由引擎自己找（前一轮的快照），这里不做判断。
-        if (target?.role === "assistant") {
-            const hasHooked = mixSlotEntries(session.recipe.slots, "mechanism")
-                .some((e) => {
-                    const m = getMixMaterial(e.materialId);
-                    return m?.kind === "mechanism" && Boolean(m.script?.trim());
-                });
-            if (hasHooked) doEditSync(editing.id);
-        }
+        if (target?.role === "assistant") doEditSync(editing.id);
     };
 
     const doEditSync = (turnId: string) => {
         void runMixEditSync(sessionId, turnId).then((mode) => {
             setSession(getMixSession(sessionId));
             // 追加要说一声：这一轮太旧、快照已不在，机括那儿会被记成两笔
-            onToast(mode === "replaced" ? "机括已按编辑后的原文重跑这一轮。"
-                : mode === "appended" ? "机括已补记这一轮（这一轮太旧，旧账保留，可能记成两笔）。"
-                : "机括重跑失败，这一轮没有变化。");
+            onToast(mode === "replayed" ? "已按编辑后的内容重跑这一轮及之后各轮。"
+                : mode === "appended" ? "已重跑这一轮（这一轮太旧，重画不了后文，已截断）。"
+                : "重跑失败，这一轮没有变化。");
         });
     };
 
@@ -1296,7 +1303,7 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
                                         type="button"
                                         className="mix-pill-btn"
                                         onClick={() => {
-                                            if (laterCount(editing.id) > 0) setConfirm({ type: "edit", turnId: editing.id });
+                                            if (editWillTruncate(editing.id)) setConfirm({ type: "edit", turnId: editing.id });
                                             else saveEdit();
                                         }}
                                     >
