@@ -3674,17 +3674,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const chars = loadCharacters();
         const charRefs = loadImageGenerationSettings().characterReferences ?? {};
 
-        const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null }[] = [];
+        const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null; hasReference?: boolean }[] = [];
         for (const id of selectedIds) {
             if (id === "user") {
                 const bits: string[] = [];
                 if (u?.gender && u.gender !== "保密") bits.push(u.gender === "女" ? "女生" : u.gender === "男" ? "男生" : u.gender);
                 if (u?.appearance?.trim()) bits.push(u.appearance.trim());
+                const faceLock = u?.faceLockUrl?.trim() || null;
                 specList.push({
                     id,
                     name: u?.name?.trim() || "你",
                     anchor: bits.length ? bits.join("，") : undefined,
-                    faceLockSource: u?.faceLockUrl?.trim() || null,
+                    faceLockSource: faceLock,
+                    // v1.7.31：明确标注「谁有参考图」，服务端按此序列紧凑分配 {charN} 锚点，
+                    // 避免中间缺图的人挤占索引导致后面的脸全部错位（参考图张冠李戴）
+                    hasReference: Boolean(faceLock),
                 });
             } else {
                 const c = chars.find((x) => x.id === id);
@@ -3700,6 +3704,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     name: c.name,
                     anchor: roleBits.length ? roleBits.join("，") : undefined,
                     faceLockSource: ref?.assetId || null,
+                    hasReference: Boolean(ref?.assetId),
                 });
             }
         }
@@ -3735,7 +3740,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const requestBody = {
             description: prompt,
             participantAppearance: appearancePrompt || undefined,
-            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor })),
+            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor, hasReference: s.hasReference })),
             referenceImages: refImages.length ? refImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
             sceneLighting: settings.sceneLighting?.trim() || undefined,

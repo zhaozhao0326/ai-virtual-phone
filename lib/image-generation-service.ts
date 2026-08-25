@@ -950,7 +950,7 @@ export async function generateImageFromConfiguredApi(params: {
   /** 参与合影的角色/用户外观描述（中文），注入 prompt 让 NAI 区分「谁是谁」 */
   participantAppearance?: string;
   /** 结构化参与者（人物名+锚点+动作），用于「人物名(锚点) 动作」格式 */
-  participants?: Array<{ name: string; anchor?: string; action?: string }>;
+  participants?: Array<{ name: string; anchor?: string; action?: string; hasReference?: boolean }>;
   /** 参与者头像 data URL，用于 NAI character_reference 锁脸 */
   referenceImages?: string[];
   /** 背景描述（中文） */

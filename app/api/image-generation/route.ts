@@ -40,7 +40,7 @@ export type ImageGenerationRequest = {
   /** 参与者外观描述（中文），翻译后拼入 prompt，让 NAI 区分「谁是谁」 */
   participantAppearance?: string;
   /** 结构化参与者（中文）：人物名 + 锚点形容 + 动作，用于拼装「人物名(锚点) 动作」格式 */
-  participants?: Array<{ name: string; anchor?: string; action?: string }>;
+  participants?: Array<{ name: string; anchor?: string; action?: string; hasReference?: boolean }>;
   /** 背景描述（中文），如「樱花公园」 */
   sceneBackground?: string;
   /** 光源描述（中文），如「逆光、暖色夕阳」 */
@@ -195,14 +195,20 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
         const refList = (input.referenceImages || [])
             .filter((d) => typeof d === "string" && d.startsWith("data:"))
             .slice(0, 4);
+        // v1.7.31 锁脸错位修复：participants 带有 hasReference 标记时，
+        // {charN} 只分配给「有参考图的人」（按出现顺序紧凑编号 char1..charK），
+        // 无参考图的人不占用锚点序号——避免中间缺图的人挤占索引、把后面的脸全部绑错。
+        // 旧调用方（未带 hasReference，如自定义 App 直接传参）退回按索引对齐的旧行为。
+        const knownRefs = input.participants.some((p) => p.hasReference !== undefined);
+        let charCounter = 0;
         input.participants.forEach((p, idx) => {
             const name = (p.name || "").trim();
             const anchor = (p.anchor || "").trim();
             const action = (p.action || "").trim();
             if (!name && !anchor && !action) return;
-            const hasRef = Boolean(refList[idx]);
-            // 仅 NAI 用 {charN} 锚点绑定"哪张脸=哪个人"；OAI/Google 直接写人物名（脸靠参考图锁）。
-            let clause = (hasRef && isNai) ? `{char${idx + 1}} ${name || "某人"}` : (name || "某人");
+            const hasRef = knownRefs ? p.hasReference === true : Boolean(refList[idx]);
+            // 有图标记但图已用尽（数据不一致）时退化为只写名字，锚点绝不超界
+            let clause = (hasRef && isNai && charCounter < refList.length) ? `{char${++charCounter}} ${name || "某人"}` : (name || "某人");
             if (anchor) clause += `（${anchor}）`;
             if (action) clause += ` ${action}`;
             parts.push(clause);
@@ -319,8 +325,14 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
             const charKeys = dataUrls.map((_, i) => `char${i + 1}`);
             const charCaption: Record<string, string> = {};
             // v1.5.12：每张参考图的 caption 写对应人物名+锚点，帮 NAI 精确理解"charN=谁"
+            // v1.7.31 锁脸错位修复：caption 按「有参考图的参与者序列」对齐 dataUrls 顺序，
+            // 而非按 participants 原始索引——缺图者不再挤占，char1 一定对应第一张参考图的主人。
+            const knownRefs = (input.participants || []).some((p) => p.hasReference !== undefined);
+            const refParticipants = knownRefs
+                ? (input.participants || []).filter((p) => p.hasReference === true)
+                : (input.participants || []).slice(0, dataUrls.length);
             charKeys.forEach((k, i) => {
-                const p = input.participants?.[i];
+                const p = refParticipants[i];
                 charCaption[k] = p ? `${p.name}${p.anchor ? "（" + p.anchor + "）" : ""}` : "";
             });
             naiCharRef = {
@@ -692,7 +704,13 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     // v1.5.13：多参考图时显式映射"第几张参考图 = 哪个人"，降低 OAI 张冠李戴概率。
     // （gpt-image 系 edits 接口无法给 image[] 单独打标，只能靠上传顺序约定 + 提示词显式映射）
     const orderHint = (() => {
-      const list = (input.participants || []).slice(0, refCount);
+      // v1.7.31 锁脸错位修复：顺序提示只映射「有参考图的参与者」→ 参考图上传顺序，
+      // 避免中间缺图者挤占索引、把参考图对应的脸标错人（"reference image 1 = 你" 实为角色图）。
+      const knownRefs = (input.participants || []).some((p) => p.hasReference !== undefined);
+      const refParticipants = knownRefs
+        ? (input.participants || []).filter((p) => p.hasReference === true)
+        : (input.participants || []);
+      const list = refParticipants.slice(0, refCount);
       if (list.length < 1) return "";
       const orderParts = list.map((p, i) =>
         `reference image ${i + 1} = ${p.name || "person " + (i + 1)}${p.anchor ? " (" + p.anchor + ")" : ""}`
