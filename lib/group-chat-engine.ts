@@ -589,6 +589,7 @@ async function runNativeGroupToolLoop(params: {
                 appTags,
                 debugSessionId: session.id,
                 signal,
+                purpose: "group-chat",
             });
         } catch (err) {
             if (finalRawOutput) {
@@ -814,6 +815,7 @@ export async function generateGroupChatCompletion(
                 debugSessionId: session.id,
                 signal: options?.signal,
                 onReasoning: callbacks?.onReasoning,
+                purpose: "group-chat",
             });
         } catch (err) {
             if (finalRawOutput) {
@@ -963,6 +965,7 @@ export async function generateGroupChatCompletion(
                         debugSessionId: session.id,
                         signal: options?.signal,
                         onReasoning: callbacks?.onReasoning,
+                        purpose: "group-chat",
                     });
                     throwIfAborted(options?.signal);
                 } catch {
@@ -1031,6 +1034,7 @@ export async function generateGroupRawCompletion(
         appTags: options?.appTags ?? [],
         debugSessionId: session.id,
         signal: options?.signal,
+        purpose: "group-chat",
     });
     return {
         text: rawOutput,
@@ -1070,6 +1074,7 @@ export async function generateGroupOfflineChatCompletion(
         debugSessionId: session.id,
         signal: options?.signal,
         onReasoning: (t) => { reasoning = t; },
+        purpose: "group-chat-offline",
     });
     return {
         ...parseOfflineResponse(rawOutput, summaryTag),

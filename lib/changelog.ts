@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.41";
+export const APP_VERSION = "1.7.42";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.42",
+    date: "2026-08-25",
+    title: "后台记录支持按功能来源统计 token",
+    highlights: [
+      "统一底层调用日志存储：chat-engine 与 simpleLLMCall 现在写入同一处日志，避免互相覆盖",
+      "每次 LLM 调用新增功能标签（purpose）：主聊天、追问、群聊、记忆总结、关系抽取、梦境、信件、朋友圈、栖所、查手机、小红书等",
+      "「底层调用大模型日志」新增「按功能来源」统计，可看到每个功能具体消耗多少 token",
+      "日志列表项新增功能来源标签，一眼识别这条调用来自哪个功能",
+    ],
+  },
   {
     version: "1.7.41",
     date: "2026-08-25",

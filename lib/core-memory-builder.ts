@@ -86,7 +86,7 @@ export async function runCoreMemoryPipeline(
     const result = await simpleLLMCall(
         apiConfig,
         [{ role: "user", content: prompt }],
-        { temperature: 0.3 },
+        { temperature: 0.3, purpose: "core-memory", characterName },
     );
 
     if (!result.content) {
@@ -166,7 +166,7 @@ async function enforceCoreMemoryCap(characterId: string, characterName: string):
     const mergedText = oldest.map(e => `- ${e.content}`).join("\n");
     const prompt = `你是一个核心记忆整理助手。以下是对${characterName}较早时期的多条核心记忆，请将它们压缩合并为一条更精炼的核心记忆，保留仍然成立的关键事实与关系状态，去掉已被后续记忆覆盖或重复的细节。\n\n${mergedText}\n\n合并后的核心记忆：`;
 
-    const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.3 });
+    const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.3, purpose: "core-memory", characterName });
     if (!result.content || result.wasTruncated) {
         // 合并失败则保守丢弃最旧条目，不阻塞主流程。
         await deleteMemoryEntries(oldest.map(e => e.id));

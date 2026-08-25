@@ -457,7 +457,7 @@ export async function callLLM(
                 messages,
                 regexes ?? [],
                 { characterName, userName },
-                { appId: "moments", appTags },
+                { appId: "moments", appTags, purpose: "moments" },
             );
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

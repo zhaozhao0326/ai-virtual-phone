@@ -79,7 +79,7 @@ async function generateDream(characterId: string, char: Character): Promise<Lett
     const result = await simpleLLMCall(apiConfig, [
         { role: "system", content: system },
         { role: "user", content: user },
-    ], { temperature: 1.0 });
+    ], { temperature: 1.0, purpose: "dream", characterName: char.name || characterId });
     const text = (result.content || "").trim();
     if (!text) return null;
     return {
@@ -118,7 +118,7 @@ async function generateDiary(characterId: string, char: Character): Promise<Lett
     const result = await simpleLLMCall(apiConfig, [
         { role: "system", content: system },
         { role: "user", content: user },
-    ], { temperature: 0.9 });
+    ], { temperature: 0.9, purpose: "diary", characterName: char.name || characterId });
     const text = (result.content || "").trim();
     if (!text) return null;
     return {

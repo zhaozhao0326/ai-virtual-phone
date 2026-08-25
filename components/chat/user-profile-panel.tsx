@@ -10,8 +10,48 @@ import {
 } from "@/lib/settings-storage";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { getApiLogs, clearApiLogs, type DebugInfo } from "@/lib/chat-engine";
+import { getApiLogs, clearApiLogs, type DebugInfo } from "@/lib/api-log-store";
 import type { FollowUpConfig } from "@/lib/settings-storage";
+
+const PURPOSE_LABELS: Record<string, string> = {
+    "chat-main": "主聊天回复",
+    "chat-followup": "追问/主动消息",
+    "chat-offline": "线下模式",
+    "native-tools": "原生动作流",
+    "group-chat": "群聊",
+    "group-chat-offline": "群聊线下",
+    "memory-summary": "记忆总结",
+    "memory-relations": "关系抽取",
+    "memory-emotion": "情绪标注",
+    "core-memory": "核心记忆",
+    "memory-embedding": "记忆向量",
+    "dream": "梦境",
+    "diary": "日记",
+    "letter": "信件",
+    "moments": "朋友圈",
+    "checkphone": "查手机",
+    "checkphone_manifest": "查手机-总览",
+    "checkphone_douyin": "查手机-抖音",
+    "checkphone_instagram": "查手机-Ins",
+    "checkphone_notes": "查手机-备忘录",
+    "checkphone_email": "查手机-邮件",
+    "checkphone_takeout": "查手机-外卖",
+    "checkphone_telegram": "查手机-Telegram",
+    "checkphone_steam": "查手机-Steam",
+    "dwelling-items": "栖所-刷新物品",
+    "dwelling-full": "栖所-完全重建",
+    "dwelling-explore": "栖所-探索",
+    "xiaohongshu-activity": "小红书-角色互动",
+    "xiaohongshu-npc-feed": "小红书-NPC内容流",
+    "xiaohongshu-npc-dm": "小红书-NPC私信",
+    "story": "剧情",
+    "game": "游戏",
+    "calendar": "日历",
+    "black-market": "黑市",
+    "map-rpg": "地图RPG",
+    "reality-bridge": "现实桥",
+    "background": "后台功能",
+};
 import { PageShell } from "@/components/ui/page-shell";
 import { CHAT_APP_CSS_EXAMPLE } from "@/lib/css-examples";
 import { Toggle } from "@/components/ui/form";
@@ -678,12 +718,18 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
         let totalSum = 0;
         let maxTotal = 0;
         const byCharacter = new Map<string, { calls: number; tokens: number }>();
+        const byPurpose = new Map<string, { calls: number; tokens: number }>();
         for (const log of logs) {
             const u = log.usage;
-            const entry = byCharacter.get(log.characterName || "未标注角色") || { calls: 0, tokens: 0 };
-            entry.calls += 1;
-            entry.tokens += u?.total_tokens ?? 0;
-            byCharacter.set(log.characterName || "未标注角色", entry);
+            const charEntry = byCharacter.get(log.characterName || "未标注角色") || { calls: 0, tokens: 0 };
+            charEntry.calls += 1;
+            charEntry.tokens += u?.total_tokens ?? 0;
+            byCharacter.set(log.characterName || "未标注角色", charEntry);
+            const purposeLabel = log.purpose ? PURPOSE_LABELS[log.purpose] || log.purpose : "其他";
+            const purposeEntry = byPurpose.get(purposeLabel) || { calls: 0, tokens: 0 };
+            purposeEntry.calls += 1;
+            purposeEntry.tokens += u?.total_tokens ?? 0;
+            byPurpose.set(purposeLabel, purposeEntry);
             if (u && (u.total_tokens ?? 0) > 0) {
                 withUsage += 1;
                 promptSum += u.prompt_tokens ?? 0;
@@ -694,7 +740,8 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
         }
         const avg = withUsage > 0 ? Math.round(totalSum / withUsage) : 0;
         const byCharSorted = [...byCharacter.entries()].sort((a, b) => b[1].tokens - a[1].tokens).slice(0, 6);
-        return { total, withUsage, promptSum, completionSum, totalSum, maxTotal, avg, noUsageCount: total - withUsage, byCharSorted };
+        const byPurposeSorted = [...byPurpose.entries()].sort((a, b) => b[1].tokens - a[1].tokens);
+        return { total, withUsage, promptSum, completionSum, totalSum, maxTotal, avg, noUsageCount: total - withUsage, byCharSorted, byPurposeSorted };
     }, [logs]);
 
     const fmt = (n: number) => (n ? n.toLocaleString("en-US") : "—");
@@ -748,8 +795,20 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                                         <div className="font-semibold text-[var(--c-text-title)]">{summary.noUsageCount}</div>
                                     </div>
                                 </div>
+                                {summary.byPurposeSorted.length > 0 && (
+                                    <div className="flex flex-col gap-1 mt-1">
+                                        <div className="ts-11 text-[var(--c-text)] opacity-60">按功能来源</div>
+                                        {summary.byPurposeSorted.map(([name, data]) => (
+                                            <div key={name} className="flex items-center justify-between ts-12">
+                                                <span className="text-[var(--c-text)]">{name}（{data.calls} 次）</span>
+                                                <span className="font-semibold text-[var(--c-text-title)]">{fmt(data.tokens)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 {summary.byCharSorted.length > 0 && (
-                                    <div className="flex flex-col gap-1">
+                                    <div className="flex flex-col gap-1 mt-1">
+                                        <div className="ts-11 text-[var(--c-text)] opacity-60">按角色/群聊</div>
                                         {summary.byCharSorted.map(([name, data]) => (
                                             <div key={name} className="flex items-center justify-between ts-12">
                                                 <span className="text-[var(--c-text)]">{name}（{data.calls} 次）</span>
@@ -772,6 +831,11 @@ function ApiLogViewer({ onBack }: { onBack: () => void }) {
                                         >
                                             <div className="menu-label-group">
                                                 <div className="flex items-center gap-2 flex-wrap">
+                                                    {log.purpose && (
+                                                        <span className="ts-11 font-semibold text-white bg-[var(--c-success)] rounded-[4px] px-[6px] py-[1px] shrink-0">
+                                                            {PURPOSE_LABELS[log.purpose] || log.purpose}
+                                                        </span>
+                                                    )}
                                                     {log.characterName && (
                                                         <span className="ts-11 font-semibold text-white bg-[var(--c-icon-active)] rounded-[4px] px-[6px] py-[1px] shrink-0">
                                                             {log.characterName}

@@ -881,7 +881,7 @@ async function sendWithOptionalVisionFallback(
   messages: LLMMessage[],
   regexes: RegexConfig[],
   meta: { characterName?: string; userName?: string },
-  options: { appId: string; appTags?: string[]; skipOutputRegex?: boolean },
+  options: { appId: string; appTags?: string[]; skipOutputRegex?: boolean; purpose?: string },
 ): Promise<string> {
   const attemptedVision = hasVisionParts(messages);
   try {
@@ -1131,7 +1131,7 @@ export async function generateXiaohongshuNpcFeed(
     [{ role: "user", content: prompt, _debugMeta: { marker: "xiaohongshu_npc_feed" } }],
     [],
     { characterName: "小红书NPC内容流" },
-    { appId: "xiaohongshu", appTags: ["xiaohongshu", "npc_feed"], skipOutputRegex: true },
+    { appId: "xiaohongshu", appTags: ["xiaohongshu", "npc_feed"], skipOutputRegex: true, purpose: "xiaohongshu-npc-feed" },
   );
   const parsed = parseWithDebug(raw, parseXiaohongshuNpcFeed, "无法解析小红书内容");
   const notes = [...parsed.homeNotes, ...parsed.videoNotes, ...parsed.nearbyNotes];
@@ -1193,7 +1193,7 @@ export async function generateXiaohongshuCharacterActivity(
     messages,
     resolved.regexes,
     { characterName: `小红书:${resolved.character.name}`, userName: resolved.input.userIdentity?.name },
-    { appId: "xiaohongshu", appTags: ["xiaohongshu", "activity"] },
+    { appId: "xiaohongshu", appTags: ["xiaohongshu", "activity"], purpose: "xiaohongshu-activity" },
   );
   return parseWithDebug(raw, output => parseXiaohongshuCharacterActivity(output, notes.map(note => note.id)), "无法解析小红书角色互动内容");
 }
@@ -1323,7 +1323,7 @@ export async function generateXiaohongshuNpcDmReply(input: {
     [{ role: "user", content: prompt, _debugMeta: { marker: "xiaohongshu_npc_dm_reply" } }],
     [],
     { characterName: "小红书NPC私信回复", userName: input.userName },
-    { appId: "xiaohongshu", appTags: ["xiaohongshu", "npc_dm_reply"], skipOutputRegex: true },
+    { appId: "xiaohongshu", appTags: ["xiaohongshu", "npc_dm_reply"], skipOutputRegex: true, purpose: "xiaohongshu-npc-dm" },
   );
   return parseWithDebug(raw, parseXiaohongshuNpcDmReply, "无法解析小红书私信回复");
 }

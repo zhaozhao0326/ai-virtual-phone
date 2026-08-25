@@ -111,7 +111,7 @@ export async function requestLetter(characterId: string): Promise<LetterEntry | 
         const result = await simpleLLMCall(apiConfig, [
             { role: "system", content: system },
             { role: "user", content: user },
-        ], { temperature: 0.9 });
+        ], { temperature: 0.9, purpose: "letter", characterName: char.name || characterId });
 
         const text = (result.content || "").trim();
         if (!text) return null;

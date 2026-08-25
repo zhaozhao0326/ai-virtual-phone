@@ -253,6 +253,7 @@ export async function generateDwellingLayout(
             appId: "dwelling",
             appTags,
             useRelay: true,
+            purpose: appTags.includes("explore") ? "dwelling-explore" : appTags.includes("items") ? "dwelling-items" : "dwelling-full",
         });
 
         if (!rawOutput) return { layout: null, error: "LLM 返回为空" };
@@ -330,6 +331,7 @@ export async function generateItemHtml(
             appId: "dwelling",
             appTags,
             useRelay: true,
+            purpose: appTags.includes("explore") ? "dwelling-explore" : appTags.includes("items") ? "dwelling-items" : "dwelling-full",
         });
 
         return { html: rawOutput || null };

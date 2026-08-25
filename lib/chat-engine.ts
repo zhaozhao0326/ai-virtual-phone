@@ -77,6 +77,7 @@ import { getWeekStartIso } from "./calendar-utils";
 import { buildCharacterTimeContext } from "./character-time";
 import { getPromptTimestampOptionsForTimeContext } from "./prompt-time";
 import { kvGet, kvSet, kvRemove, registerKvMigration } from "./kv-db";
+import { pushApiLog, getApiLogs, clearApiLogs, type DebugInfo } from "./api-log-store";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { getInternalCapability, getInternalCapabilitySubToolDefinitions } from "./internal-capability-storage";
 import { isMediaStoreRef, loadMediaBlob } from "./media-cache-storage";
@@ -340,32 +341,8 @@ export function applyVisionImagePromptLimit(history: ChatMessage[], limitValue: 
     return history;
 }
 
-// API Log store — captures recent request/response history for inspection
-export type DebugInfo = {
-    id: string;
-    characterName?: string;
-    model?: string;
-    messages: { role: string; content: string; marker?: string }[];
-    rawResponse: string;
-    timestamp: string;
-    usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-};
-const MAX_API_LOGS = 50;
-const API_LOGS_KEY = "ai_phone_api_logs_v1";
-registerKvMigration(API_LOGS_KEY);
-
-function _loadLogs(): DebugInfo[] {
-    try {
-        const raw = typeof window !== "undefined" ? kvGet(API_LOGS_KEY) : null;
-        return raw ? JSON.parse(raw) as DebugInfo[] : [];
-    } catch { return []; }
-}
-function _saveLogs(logs: DebugInfo[]): void {
-    try { kvSet(API_LOGS_KEY, JSON.stringify(logs)); } catch { /* quota exceeded — ignore */ }
-}
-
-export function getApiLogs(): DebugInfo[] { return _loadLogs(); }
-export function clearApiLogs(): void { try { kvRemove(API_LOGS_KEY); } catch { } }
+// API Log store — 统一在 api-log-store.ts 中管理，chat-engine 只负责写入并暴露兼容的读取入口。
+export { getApiLogs, clearApiLogs } from "./api-log-store";
 
 export type DebugPromptRequestOptions = {
     appId?: string;
@@ -799,6 +776,7 @@ export async function sendLLMStreamRequest(
         appTags?: string[];
         followUpCount?: number;
         signal?: AbortSignal;
+        purpose?: string;
     },
     callbacks?: ChatCompletionStreamCallbacks,
 ): Promise<ChatCompletionStreamResult> {
@@ -844,19 +822,15 @@ export async function sendLLMStreamRequest(
             ...m,
             content: typeof m.content === "string" ? m.content : "[vision: 含图片的多模态消息]",
         }));
-        const logEntry: DebugInfo = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        pushApiLog({
             characterName: meta?.characterName,
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: rawOutput,
-            timestamp: new Date().toISOString(),
             usage: streamUsage,
-        };
-        const logs = _loadLogs();
-        logs.push(logEntry);
-        while (logs.length > MAX_API_LOGS) logs.shift();
-        _saveLogs(logs);
+            source: "chat",
+            purpose: options?.purpose ?? (options?.appId && options.appId !== "chat" ? options.appId : "chat-main"),
+        });
 
         if (!options?.skipOutputRegex) {
             const macroEngine = new MacroEngine(meta?.characterName ?? "", meta?.userName ?? "用户");
@@ -903,6 +877,8 @@ export async function sendLLMRequest(
         followUpCount?: number;
         debugSessionId?: string;
         signal?: AbortSignal;
+        /** 功能标签，用于后台记录面板按功能维度统计 token */
+        purpose?: string;
     },
 ): Promise<string> {
     const pluginPurpose = options?.appId ?? "chat";
@@ -989,19 +965,15 @@ export async function sendLLMRequest(
             ...m,
             content: typeof m.content === "string" ? m.content : "[vision: 含图片的多模态消息]",
         }));
-        const logEntry: DebugInfo = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        pushApiLog({
             characterName: meta?.characterName,
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse: rawOutput,
-            timestamp: new Date().toISOString(),
             usage: parsed.usage,
-        };
-        const logs = _loadLogs();
-        logs.push(logEntry);
-        while (logs.length > MAX_API_LOGS) logs.shift();
-        _saveLogs(logs);
+            source: "chat",
+            purpose: options?.purpose ?? (options?.appId && options.appId !== "chat" ? options.appId : "chat-main"),
+        });
 
         if (options?.skipOutputRegex) {
             return rawOutput;
@@ -1105,6 +1077,7 @@ export async function sendLLMToolStreamRequest(
         signal?: AbortSignal;
         /** 单次最大输出 token：按调用覆盖预设值（工坊输出护栏用） */
         maxTokens?: number;
+        purpose?: string;
     },
     callbacks?: ChatCompletionStreamCallbacks,
 ): Promise<LLMToolRequestResult> {
@@ -1237,19 +1210,16 @@ let rawResponse = "";
             content: typeof m.content === "string" ? m.content : "[vision: 含图片的多模态消息]",
         }));
         const { calls: toolCalls, truncatedNames } = finalizeStreamToolCalls(toolDrafts);
-        const logEntry: DebugInfo = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        const rawResponseForReturn = JSON.stringify({ content, reasoning, toolCalls, raw: rawResponse });
+        pushApiLog({
             characterName: meta?.characterName,
             model: config.defaultModel,
             messages: sanitizedMessages,
-            rawResponse: JSON.stringify({ content, reasoning, toolCalls, raw: rawResponse }),
-            timestamp: new Date().toISOString(),
+            rawResponse: rawResponseForReturn,
             usage: streamUsage,
-        };
-        const logs = _loadLogs();
-        logs.push(logEntry);
-        while (logs.length > MAX_API_LOGS) logs.shift();
-        _saveLogs(logs);
+            source: "chat",
+            purpose: options?.purpose ?? (options?.appId && options.appId !== "chat" ? options.appId : "native-tools"),
+        });
 
         if (!content && toolCalls.length === 0 && truncatedNames.length === 0) {
             throw new ChatEngineError("原生动作流式响应没有解析到文本或动作。");
@@ -1261,7 +1231,7 @@ let rawResponse = "";
             openRouterReasoningDetails: undefined,
             toolCalls,
             truncatedToolCalls: truncatedNames.length ? truncatedNames : undefined,
-            rawResponse: logEntry.rawResponse,
+            rawResponse: rawResponseForReturn,
             providerKind: request.providerKind,
         };
     } catch (error: unknown) {
@@ -1293,6 +1263,7 @@ export async function sendLLMToolRequest(
         followUpCount?: number;
         debugSessionId?: string;
         signal?: AbortSignal;
+        purpose?: string;
     },
 ): Promise<LLMToolRequestResult> {
     const pluginPurpose = options?.appId ?? "chat";
@@ -1352,19 +1323,15 @@ export async function sendLLMToolRequest(
             toolCalls: parsed.toolCalls,
             raw: parsed.raw,
         });
-        const logEntry: DebugInfo = {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        pushApiLog({
             characterName: meta?.characterName,
             model: config.defaultModel,
             messages: sanitizedMessages,
             rawResponse,
-            timestamp: new Date().toISOString(),
             usage: parsed.usage,
-        };
-        const logs = _loadLogs();
-        logs.push(logEntry);
-        while (logs.length > MAX_API_LOGS) logs.shift();
-        _saveLogs(logs);
+            source: "chat",
+            purpose: options?.purpose ?? (options?.appId && options.appId !== "chat" ? options.appId : "native-tools"),
+        });
 
         if (!options?.skipOutputRegex && rawOutput) {
             const macroEngine = new MacroEngine(meta?.characterName ?? "", meta?.userName ?? "用户");
@@ -2103,6 +2070,7 @@ export async function generateOfflineChatCompletion(
         debugSessionId: session.id,
         signal: options?.signal,
         onReasoning: (t) => { reasoning = t; },
+        purpose: "chat-offline",
     });
     return {
         ...parseOfflineResponse(rawOutput, summaryTag),
@@ -2162,6 +2130,7 @@ async function generateNativeChatCompletion(
                     followUpCount: options?.followUpCount,
                     debugSessionId: session.id,
                     signal: options?.signal,
+                    purpose: options?.appId && options.appId !== "chat" ? options.appId : "native-tools",
                 },
             );
         } catch (err) {
@@ -2551,14 +2520,17 @@ async function generateChatCompletionCore(
     for (let round = 0; round < maxToolRounds; round++) {
         let filteredOutput: string;
         try {
-            filteredOutput = await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
-                appId: options?.appId ?? "chat",
-                appTags: requestAppTags,
-                followUpCount: options?.followUpCount,
-                debugSessionId: session.id,
-                signal: options?.signal,
-                onReasoning: callbacks?.onReasoning,
-            });
+                const isFollowup = (requestAppTags ?? []).includes("followup");
+                const mainPurpose = options?.appId && options.appId !== "chat" ? options.appId : "chat-main";
+                filteredOutput = await sendLLMRequest(config, preset, llmMessages, regexes, meta, {
+                    appId: options?.appId ?? "chat",
+                    appTags: requestAppTags,
+                    followUpCount: options?.followUpCount,
+                    debugSessionId: session.id,
+                    signal: options?.signal,
+                    onReasoning: callbacks?.onReasoning,
+                    purpose: isFollowup ? "chat-followup" : mainPurpose,
+                });
         } catch (err) {
             const errMsg = `⚠️ 回复生成失败: ${err instanceof Error ? err.message : String(err)}`;
             if (parts.length > 0) {

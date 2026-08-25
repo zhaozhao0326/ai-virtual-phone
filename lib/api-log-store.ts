@@ -15,10 +15,19 @@ export type DebugInfo = {
     usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     /** 模型思维链（reasoning/CoT）原文，独立于回复内容存储，避免被清洗吞掉 */
     reasoning?: string;
-    /** 调用来源：chat=聊天引擎、background=simpleLLMCall 后台功能（具体功能名看 characterName 标签）、qa=工坊答疑引擎 */
+    /** 调用来源：chat=聊天引擎、background=simpleLLMCall 后台功能、qa=工坊答疑引擎 */
     source?: "chat" | "background" | "qa";
     /** 归属通道：qa 进工坊专用环，其余进底层调用日志环。分流只认这个显式字段，不看角色名 */
     channel?: "chat" | "qa";
+    /**
+     * 功能标签（purpose）：比 source 更细，用于「后台记录」面板按功能维度统计 token。
+     * 例如 chat-main（1:1/群聊主回复）、chat-followup（追问/主动消息）、native-tools（原生动作流）、
+     * memory-summary（记忆总结）、memory-relations（关系抽取）、core-memory（核心记忆更新）、
+     * memory-embedding（记忆向量 embedding）、dream（梦境/梦呓）、letter（信件）、
+     * checkphone（查手机）、moments（朋友圈）、homefeed（小红书推荐）、dwelling（栖所生图/刷新）、
+     * story（剧情）、game（游戏）、calendar（日历）等。
+     */
+    purpose?: string;
 };
 
 // 底层调用日志环容量。原为 50：聊天请求与 18 处 simpleLLMCall 后台调用（记忆总结、

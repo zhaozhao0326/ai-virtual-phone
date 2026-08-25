@@ -106,7 +106,7 @@ export async function runSummarizationPipeline(
     const result = await simpleLLMCall(
         apiConfig,
         [{ role: "user", content: summaryPrompt }],
-        { temperature: 0.3 },
+        { temperature: 0.3, purpose: "memory-summary", characterName },
     );
 
     if (!result.content) {
@@ -239,7 +239,7 @@ ${summary}
 格式示例：[{"entity":"小明","entityType":"person","relation":"用户弟弟","confidence":0.9}]`;
 
     try {
-        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2 });
+        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2, purpose: "memory-relations", characterName });
         if (!result.content) return [];
         const parsed = parseRelationJsonArray(result.content);
         if (!parsed) return [];
@@ -290,7 +290,7 @@ ${summary}
 示例：{"valence":0.8,"arousal":0.6,"resolved":true}`;
 
     try {
-        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2 });
+        const result = await simpleLLMCall(apiConfig, [{ role: "user", content: prompt }], { temperature: 0.2, purpose: "memory-emotion" });
         if (!result.content) return null;
         const match = result.content.match(/\{[\s\S]*\}/);
         const json = match ? match[0] : result.content.trim();

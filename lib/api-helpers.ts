@@ -3,6 +3,7 @@
 // request headers, and response parsing. All LLM-calling modules should use these.
 
 import type { ApiConfig } from "./settings-types";
+import { pushApiLog } from "./api-log-store";
 
 const SIMPLE_ANTHROPIC_AUTO_MAX_TOKENS = 8192;
 
@@ -97,7 +98,7 @@ export function isNativeGoogleApi(config: ApiConfig): boolean {
 export async function simpleLLMCall(
     config: ApiConfig,
     messages: { role: string; content: string }[],
-    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal },
+    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal; purpose?: string; characterName?: string },
 ): Promise<{ content: string | null; error?: string; finishReason?: string; wasTruncated?: boolean }> {
     const baseUrl = determineBaseUrl(config);
     if (!baseUrl || !config.apiKey) {
@@ -173,6 +174,26 @@ export async function simpleLLMCall(
         const content = extractLLMContent(data, config.provider);
         const finishReason = extractFinishReason(data);
         const wasTruncated = isTruncationFinishReason(finishReason);
+
+        // 记录后台调用日志，让「底层调用大模型日志」能看到记忆总结、朋友圈等功能的真实 token 消耗。
+        const usage = (data as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage
+            || (data as { usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }).usageMetadata
+                ? {
+                    prompt_tokens: (data as { usageMetadata?: { promptTokenCount?: number } }).usageMetadata?.promptTokenCount,
+                    completion_tokens: (data as { usageMetadata?: { candidatesTokenCount?: number } }).usageMetadata?.candidatesTokenCount,
+                    total_tokens: (data as { usageMetadata?: { totalTokenCount?: number } }).usageMetadata?.totalTokenCount,
+                }
+            : undefined;
+        pushApiLog({
+            characterName: options?.characterName,
+            model: config.defaultModel,
+            messages: messages.map(m => ({ ...m, content: m.content.slice(0, 4000) })),
+            rawResponse: typeof content === "string" ? content.slice(0, 8000) : JSON.stringify(content).slice(0, 8000),
+            usage,
+            source: "background",
+            purpose: options?.purpose ?? "background",
+        });
+
         if (!content) {
             console.warn("[simpleLLMCall] Empty response. Keys:", JSON.stringify(Object.keys(data || {})),
                 "Full:", JSON.stringify(data).slice(0, 500));
