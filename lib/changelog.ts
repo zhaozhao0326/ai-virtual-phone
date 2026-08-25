@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.32";
+export const APP_VERSION = "1.7.33";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.33",
+    date: "2026-08-25",
+    title: "文字生图与角色发图对齐：全量锁脸 + 生图描述词兜底",
+    highlights: [
+      "文字生图（含群聊多人同框）现在按角色发图同款逻辑全量锁脸，不限制参考图数量",
+      "gpt-image-2 生图不再误传 input_fidelity 参数，避免报错",
+      "角色资料里的生图描述词始终作为外貌锚点兜底，没参考图也能贴近角色设定",
+    ],
+  },
   {
     version: "1.7.32",
     date: "2026-08-25",

@@ -754,11 +754,13 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       form.set("prompt", finalPrompt);
       if (input.size && input.size !== "auto") form.set("size", input.size);
       if (input.quality && input.quality !== "auto") form.set("quality", input.quality);
-      // v1.5.14 关键修复：gpt-image-2 / gpt-image-1.5+ 支持 input_fidelity 参数。
+      // v1.5.14 关键修复：gpt-image-1 / gpt-image-1.5 支持 input_fidelity 参数。
       // high = 尽力保留输入图的人脸/主体特征（官方文档：适合"换背景/微调衣着"场景），
       // 正好对应"你+C 在新场景但锁脸"的需求。不设则默认 low → 模型把参考图当风格参考、
       // 不锁脸，生成两个陌生人。gpt-image-1-mini / dall-e 不支持该参数，必须跳过避免报错。
-      if (/^gpt-image-(?!mini)/i.test(model || "")) {
+      // v1.7.33：gpt-image-2 的 input_fidelity 已 disabled（默认即高保真），传入会报错，
+      // 故仅对 1/1.5 系传参（兼容带前缀的中转模型名，只看结尾）。
+      if (/gpt-image-1(?:\.5)?$/i.test((model || "").trim())) {
         form.set("input_fidelity", "high");
       }
       for (const ref of refImages) {

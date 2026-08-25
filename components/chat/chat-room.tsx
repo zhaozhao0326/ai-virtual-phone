@@ -3715,6 +3715,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
         if (specList.length === 0) return null;
 
+        // v1.7.33：参考图锁脸不再限流——gpt-image-2 对多参考图支持良好（用户实测），
+        // 与「角色发图」链路一致：勾选的人有参考图就全量锁脸；无图者不传图，
+        // 但 participants 仍保留其 anchor（来自角色 appearance 生图描述词），靠文字描述兜底。
         const refImages: string[] = [];
         for (const s of specList) {
             if (!s.faceLockSource) continue;
