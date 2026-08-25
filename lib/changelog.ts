@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.44";
+export const APP_VERSION = "1.7.45";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.45",
+    date: "2026-08-26",
+    title: "停用梦境与日记，信箱回归收件箱",
+    highlights: [
+      "停用梦境/日记自动生成：后台不再自动生成，不消耗模型调用",
+      "信箱精简为纯收件箱，仅保留角色来信",
+    ],
+  },
   {
     version: "1.7.44",
     date: "2026-08-26",

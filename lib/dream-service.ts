@@ -138,8 +138,12 @@ async function generateDiary(characterId: string, char: Character): Promise<Lett
  * - 深夜（22:00-6:00）或用户离开角色超过 12h 才触发
  * - 触发时按需补生成今日梦呓与今日日记（无 API 或失败静默跳过）
  */
-// ── 全局开关 + 选人白名单（1.7.43） ──
-// 默认关闭：避免后台轮询对全部角色批量生成梦境/日记，造成 token 暴涨。
+// ── 功能硬闸门（1.7.45） ──
+// 梦境/日记功能已彻底停用：无论全局开关、白名单、角色级开关如何设置，
+// 都不会再生成任何梦境/日记，也不会产生对应 LLM 调用。如需恢复改为 true。
+const DREAM_FEATURE_ENABLED = false;
+
+// ── 全局开关 + 选人白名单（1.7.43，已随硬闸门停用） ──
 const DREAM_GLOBAL_KEY = "ai_phone_dream_global_enabled";
 const DREAM_WHITELIST_KEY = "ai_phone_dream_whitelist";
 
@@ -182,6 +186,8 @@ export function setDreamWhitelist(ids: string[]): void {
 
 export async function maybeRunCharacterInternalLife(characterId: string): Promise<void> {
     if (typeof window === "undefined") return;
+    // 代码级硬闸门（1.7.45）：功能已停用，直接 no-op，不产生任何 LLM 调用
+    if (!DREAM_FEATURE_ENABLED) return;
     // 全局开关（1.7.43 起默认关闭）+ 选人白名单：未开启或不在名单内则跳过
     if (!isDreamEnabled()) return;
     const chars = loadCharacters();
