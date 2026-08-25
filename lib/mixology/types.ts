@@ -658,12 +658,6 @@ export type MixSession = {
     mechanismStorePrev?: Record<string, Record<string, string>>;
     mechanismStorePrevTurn?: string;
     /**
-     * 同一轮出杯后钩子跑完的存储快照：和当前存储一对比就知道出杯之后
-     * 玩家有没有在面板里手改过数据。没改过 → 编辑原文后静默替换重跑；
-     * 改过 → 弹窗问（替换会把手改的一起滚掉）。
-     */
-    mechanismStorePost?: Record<string, Record<string, string>>;
-    /**
      * 玩家自己拖动/缩放过的面板位置（materialId → 摆放），只在这一局有效。
      * 不写回材料：材料是作者的作品，玩家挪一下自己的屏幕不该改到别人的作品。
      */

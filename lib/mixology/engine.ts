@@ -640,11 +640,9 @@ async function runMixGeneration(
         turns: [...working.turns, turn],
         state: nextState,
         mechanismStore: afterHook.store,
-        // 记账前底稿：编辑这一轮原文后「替换重跑」的回滚基准；
-        // 记账后快照：对比出"出杯之后面板里有没有手改过"，没改过就能静默替换
+        // 记账前底稿：编辑这一轮原文后自动回滚重跑的基准
         mechanismStorePrev: working.mechanismStore ?? {},
         mechanismStorePrevTurn: turn.id,
-        mechanismStorePost: afterHook.store,
     };
     saveMixSession(updated);
     return { session: updated, turn };
@@ -849,12 +847,9 @@ export function editMixTurn(sessionId: string, turnId: string, newText: string):
  * - replace：从这一轮记账前的底稿（mechanismStorePrev）起跑，原来那笔账作废，
  *   反复编辑反复同步也只记一笔。底稿必须还属于这一轮，不属于就退 false 让界面收窄选项。
  * - append：从当前存储起跑，原有记录保留、再记一遍。
- * - textOnly：玩家选了「不记账」（或直接关掉弹窗）。钩子照样跑——真原文编辑后
- *   正文里的标记行必须有人摘走，否则原样漏进正文与发给模型的历史——
- *   但只取文本结果落库，存储与记住的值一概不动，等于这一轮没记账。
  * turnCount 按"这一轮还没落库"的口径给（和真实出杯时一致），机括两次看到的世界相同。
  */
-export async function runMixEditSync(sessionId: string, turnId: string, mode: "replace" | "append" | "textOnly"): Promise<boolean> {
+export async function runMixEditSync(sessionId: string, turnId: string, mode: "replace" | "append"): Promise<boolean> {
     const session = getMixSession(sessionId);
     if (!session) return false;
     const idx = session.turns.findIndex((t) => t.id === turnId);
@@ -892,15 +887,6 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
     const at = latest.turns.findIndex((t) => t.id === turnId);
     if (at < 0) return false;
     const turns = [...latest.turns];
-    if (mode === "textOnly") {
-        // 只洗正文：标记行被机括摘走，账本（存储/记住的值）一个字不动
-        turns[at] = {
-            ...turns[at],
-            text: typeof result.text === "string" ? result.text : turns[at].text,
-        };
-        saveMixSession({ ...latest, turns });
-        return true;
-    }
     const nextState = mergeHookState(latest.turns[at].state ?? latest.state ?? {}, result.state);
     turns[at] = {
         ...turns[at],
@@ -922,8 +908,6 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
         // 对局的当前值跟最后一轮的快照走；补跑的不是最后一轮就别动全局
         state: at === turns.length - 1 ? nextState : latest.state,
         mechanismStore: nextStore,
-        // 记账后快照同步刷新：再次编辑同一轮时"没手改过"的判断继续成立
-        mechanismStorePost: nextStore,
     });
     return true;
 }
