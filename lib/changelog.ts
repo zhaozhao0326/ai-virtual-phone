@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.29";
+export const APP_VERSION = "1.7.30";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.30",
+    date: "2026-08-25",
+    title: "角色可以查看你的关系网了",
+    highlights: [
+      "新增「查看用户关系网」能力：角色可以查看你手机里的关系网——你给每个角色的备注、TA 和你的最近对话，以及你和其他角色的往来",
+      "角色想确认自己在你心里的位置、你怎么称呼 TA 时，会主动查一下",
+    ],
+  },
   {
     version: "1.7.29",
     date: "2026-08-25",

@@ -25,6 +25,7 @@ import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
 import { characterWorkspace, agentComputerRequest, isAgentComputerConfigured } from "./agent-computer";
 import { AGENT_COMPUTER_CAPABILITY_ID, CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, REALITY_BRIDGE_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
 import { applyAIProactiveGroupCreate } from "./group-admin";
+import { buildUserRelationshipView } from "./user-phone-service";
 import { bridgeConnection, loadBridgeDataItems, loadBridgeShortcutActions, readAllBridgeStateSnapshots, readBridgeStateSnapshot } from "./reality-bridge/storage";
 import { createShortcutCommand, deliverShortcutCommand, waitForShortcutCommand } from "./shortcut-command-client";
 import { loadMemoryEntriesByType, saveMemoryEntry, saveAutoMemoryEntry } from "./memory-storage";
@@ -800,6 +801,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isRealityBridgeToolName(call.name)) return executeRealityBridgeTool(call, context);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
     if (call.name === "创建群聊") return executeCreateGroupTool(call, context);
+    if (call.name === "查看用户关系网") return executeUserRelationshipTool(call, context);
 
     if (call.name !== "写入记忆") return null;
 
@@ -3178,6 +3180,43 @@ async function persistMemoryWriteRequest(
 
 export async function approveMemoryWriteRequest(request: MemoryWriteRequest): Promise<ToolResult> {
     return persistMemoryWriteRequest(request, { approvedByUser: true });
+}
+
+// ── 查看用户关系网：角色查用户面具手机的关系网（通讯录备注/对话往来） ──
+
+async function executeUserRelationshipTool(call: ToolCall, context?: ToolExecutionContext): Promise<ToolResult> {
+    const actorCharacterId = context?.characterId;
+    if (!actorCharacterId) {
+        return {
+            name: "查看用户关系网",
+            success: false,
+            error: "缺少发起角色",
+            continueConversation: false,
+            persistToHistory: false,
+        };
+    }
+    try {
+        const char = loadCharacters().find(c => c.id === actorCharacterId);
+        const charName = char?.name || actorCharacterId.slice(0, 8);
+        const view = buildUserRelationshipView(actorCharacterId, charName, context?.appId);
+        return {
+            name: "查看用户关系网",
+            success: true,
+            data: view,
+            continueConversation: true,
+            persistToHistory: true,
+            userNotice: "已查看用户的关系网",
+        };
+    } catch (err) {
+        return {
+            name: "查看用户关系网",
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+            continueConversation: false,
+            persistToHistory: false,
+            userNotice: "查看用户关系网失败",
+        };
+    }
 }
 
 // ── ZIP media extraction ─────────────────────

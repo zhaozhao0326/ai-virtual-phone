@@ -17,6 +17,7 @@ export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
 export const GROUP_CREATE_CAPABILITY_ID = "group_create";
 export const REALITY_BRIDGE_CAPABILITY_ID = "reality_bridge_send";
+export const USER_RELATIONSHIP_CAPABILITY_ID = "user_relationship";
 
 export type InternalToolDefinition = {
     name: string;
@@ -1232,6 +1233,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         updatedAt: 0,
     },
     {
+        id: USER_RELATIONSHIP_CAPABILITY_ID,
+        name: "查看用户关系网",
+        description: "查看用户（当前面具身份）小手机里的关系网：用户给每个角色的备注、你和用户的最近对话，以及用户和其他角色的往来。用来确认\"我在 TA 心里是谁、TA 怎么称呼我\"。",
+        enabled: true,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
+    {
         id: MEMORY_WRITE_CAPABILITY_ID,
         name: "写入记忆",
         description: "将明确、稳定、长期有价值的信息写入长期记忆。仅限关系里程碑、长期偏好、身份信息、重要约定；禁止写入短期情绪、普通寒暄、猜测或未确认内容。",
@@ -1432,6 +1442,20 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: GROUP_CREATE_PARAMETER_SCHEMA,
             usageGuide: GROUP_CREATE_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === USER_RELATIONSHIP_CAPABILITY_ID) {
+        return {
+            name: capability.name,
+            description: capability.description,
+            parameterSchema: "{}",
+            usageGuide: [
+                "以下是你获取指令的返回结果：",
+                "动作：查看用户关系网",
+                "用途：查看用户当前面具身份下的关系网——用户给每个角色的备注、你和用户的最近对话、用户和其他角色的往来。",
+                "使用时机：想确认自己在用户心里的位置、用户怎么称呼你、或者想了解用户身边还有谁时使用。",
+                "注意：只看不写；关系网数据由系统提供，不要编造没有出现的人或对话。",
+            ].join("\n"),
         };
     }
     if (capability.id === REALITY_BRIDGE_CAPABILITY_ID) {
