@@ -359,7 +359,7 @@ async function runMechanismHooks(
     hook: MixHook,
     input: { text?: string; ticketRaws?: string[]; encoreRaws?: string[]; edited?: boolean },
     roster?: MixMechanismMaterial[],
-): Promise<{ text?: string; notes: string[]; state: MixState; store: Record<string, Record<string, string>>; roster: MixMechanismMaterial[] }> {
+): Promise<{ text?: string; notes: string[]; state: MixState; store: Record<string, Record<string, string>>; roster: MixMechanismMaterial[]; wrote: string[] }> {
     // roster：这一轮的机括名单。生效条件一轮只判一次（落杯前那次），之后
     // 由调用方原封传回来——否则小票一更新记住的值，条件在同一轮里翻脸，
     // 落杯前注入的标记行就没人回收，原样漏进正文。
@@ -370,7 +370,8 @@ async function runMechanismHooks(
         mechanisms = (active.mechanism ?? []).filter((m): m is MixMechanismMaterial => m.kind === "mechanism");
     }
     const store = { ...(session.mechanismStore ?? {}) };
-    const out = { text: input.text, notes: [] as string[], state: {} as MixState, store, roster: mechanisms };
+    // wrote：这一趟真正重新记了账的机括。调用方据此判断"谁没记"，别让它原来的账被连累
+    const out = { text: input.text, notes: [] as string[], state: {} as MixState, store, roster: mechanisms, wrote: [] as string[] };
     if (!mechanisms.length) return out;
     for (const material of mechanisms) {
         const script = material.script?.trim();
@@ -395,7 +396,7 @@ async function runMechanismHooks(
         if (typeof result.text === "string") out.text = result.text;
         if (result.note) out.notes.push(result.note);
         if (result.state) out.state = mergeHookState(out.state, result.state);
-        if (result.store) store[material.id] = result.store;
+        if (result.store) { store[material.id] = result.store; out.wrote.push(material.id); }
     }
     return out;
 }
@@ -866,6 +867,14 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
     const turn = session.turns[idx];
     const ticketRaws = mixTurnTicketBlocks(turn).map((b) => b.raw);
     const encoreRaws = mixTurnEncoreBlocks(turn).map((b) => b.raw);
+    // 补跑名单：本局全部带脚本的机括，不判生效条件。
+    // 生成时名单是落杯前判一次、出杯后照单回收；补跑发生在事后，那份名单没留下，
+    // 现场也早变了（关键词看的是不同的最近几轮，「随机 N%」重判必然翻脸），
+    // 重判等于换一份名单——漏掉的那件，它当初注入的标记行就再也没人回收，
+    // 原样留在正文里。标记行只有写它的机括认得，所以宁可全员过一遍。
+    const roster = mixSlotEntries(session.recipe.slots, "mechanism")
+        .map((entry) => getMixMaterial(entry.materialId))
+        .filter((m): m is MixMechanismMaterial => m?.kind === "mechanism" && Boolean(m.script?.trim()));
     const result = await runMechanismHooks(
         { ...session, turns: session.turns.slice(0, idx), mechanismStore: baseStore },
         "afterReply",
@@ -875,6 +884,7 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
             encoreRaws: encoreRaws.length ? encoreRaws : undefined,
             edited: true,
         },
+        roster,
     );
     // 钩子是异步的，落库前重读一遍，别把补跑期间发生的改动盖掉
     const latest = getMixSession(sessionId);
@@ -897,14 +907,23 @@ export async function runMixEditSync(sessionId: string, turnId: string, mode: "r
         text: typeof result.text === "string" ? result.text : turns[at].text,
         state: nextState,
     };
+    // 这一趟没重新记账的机括，保留它当前的账，不跟着 replace 的底稿一起回滚——
+    // 钩子出错、超时、或者自己决定这一轮不记，都不该让面板上已有的内容凭空消失。
+    // 回滚只针对真正重记了的那几件（它们的新账已经盖在底稿上了）。
+    const nextStore = { ...result.store };
+    if (mode === "replace") {
+        for (const [id, bucket] of Object.entries(latest.mechanismStore ?? {})) {
+            if (!result.wrote.includes(id)) nextStore[id] = bucket;
+        }
+    }
     saveMixSession({
         ...latest,
         turns,
         // 对局的当前值跟最后一轮的快照走；补跑的不是最后一轮就别动全局
         state: at === turns.length - 1 ? nextState : latest.state,
-        mechanismStore: result.store,
+        mechanismStore: nextStore,
         // 记账后快照同步刷新：再次编辑同一轮时"没手改过"的判断继续成立
-        mechanismStorePost: result.store,
+        mechanismStorePost: nextStore,
     });
     return true;
 }
