@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.39";
+export const APP_VERSION = "1.7.40";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.40",
+    date: "2026-08-25",
+    title: "修复 TikHub 搜索提示 API Key 无效",
+    highlights: [
+      "修复：角色使用小红书/B站搜索时出现 HTTP 401「Unauthorized: missing or invalid API key」",
+      "TikHub 代理现在会优先使用服务端环境变量 key，若 401 则自动 fallback 到插件传入的 key",
+      "401 错误提示现在明确说明「TikHub API Key 无效或已过期」，并指引检查 Vercel 环境变量或插件设置",
+    ],
+  },
   {
     version: "1.7.39",
     date: "2026-08-25",

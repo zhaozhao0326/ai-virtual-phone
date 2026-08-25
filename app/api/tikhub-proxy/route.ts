@@ -14,7 +14,6 @@ export const runtime = "nodejs";
 export const maxDuration = 20;
 
 const TIKHUB_BASE = "https://api.tikhub.io";
-const API_KEY = process.env.TIKHUB_API_KEY;
 
 function corsHeaders(): Record<string, string> {
     return {
@@ -29,19 +28,29 @@ export async function OPTIONS() {
     return new NextResponse(null, { status: 204, headers: corsHeaders() });
 }
 
-export async function GET(req: NextRequest) {
-    // key 双来源：优先服务端环境变量（推荐，不下发前端）；未配置时接受插件传来的 api_key（单用户私有部署降级）
-    const envKey = (process.env.TIKHUB_API_KEY || "").trim();
-    const paramKey = (req.nextUrl.searchParams.get("api_key") || "").trim();
-    const apiKey = envKey || paramKey;
+type FetchResult =
+    | { ok: true; data: any; platform: string; mode: string; isList: boolean }
+    | { ok: false; status: number; body: string };
 
-    if (!apiKey) {
-        return NextResponse.json(
-            { ok: false, error: "未配置 TikHub API Key：请在 Vercel 环境变量添加 TIKHUB_API_KEY，或在插件设置里填写 TikHub Key。" },
-            { status: 500, headers: corsHeaders() },
-        );
+async function tryFetchTikHub(tikhubUrl: string, apiKey: string, platform: string, mode: string, isList: boolean, signal: AbortSignal): Promise<FetchResult> {
+    const res = await fetch(tikhubUrl, {
+        signal,
+        headers: {
+            "User-Agent": "ai-virtual-phone-tikhub-proxy",
+            "Authorization": `Bearer ${apiKey}`,
+        },
+    });
+
+    if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        return { ok: false, status: res.status, body: txt.slice(0, 400) };
     }
 
+    const j = await res.json().catch(() => null);
+    return { ok: true, data: j, platform, mode, isList };
+}
+
+function makeTikHubUrl(req: NextRequest): { tikhubUrl: string; isList: boolean; mode: string; platform: string } | NextResponse {
     const mode = (req.nextUrl.searchParams.get("mode") || "detail").toLowerCase();
     const platform = (req.nextUrl.searchParams.get("platform") || "xhs").toLowerCase();
     const rawUrl = req.nextUrl.searchParams.get("url") || "";
@@ -54,7 +63,6 @@ export async function GET(req: NextRequest) {
     let isList = false;
 
     if (mode === "search") {
-        // 抓一批：按关键词搜索笔记（角色可基于人设/兴趣生成关键词）
         if (!keyword) {
             return NextResponse.json({ ok: false, error: "search 模式需要 keyword 参数" }, { status: 400, headers: corsHeaders() });
         }
@@ -65,11 +73,9 @@ export async function GET(req: NextRequest) {
             tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/app_v2/search_notes?keyword=${encodeURIComponent(keyword)}&page=${page}&sort_type=${sortType}`;
         }
     } else if (mode === "homefeed") {
-        // 抓一批：小红书首页推荐信息流（无需关键词，"有意思的"推荐内容）
         isList = true;
         tikhubUrl = `${TIKHUB_BASE}/api/v1/xiaohongshu/web_v3/fetch_homefeed?page=${page}`;
     } else {
-        // mode=detail（默认）：解析单条分享链接
         if (!rawUrl) {
             return NextResponse.json({ ok: false, error: "缺少 url 参数" }, { status: 400, headers: corsHeaders() });
         }
@@ -86,51 +92,84 @@ export async function GET(req: NextRequest) {
         }
     }
 
+    return { tikhubUrl, isList, mode, platform };
+}
+
+function finalizeResponse(j: any, platform: string, mode: string, isList: boolean, rawUrl: string): NextResponse {
+    if (isList) {
+        const items = normalizeList(platform, j);
+        if (!items || items.length === 0) {
+            return NextResponse.json(
+                { ok: false, error: "未从返回数据中解析出任何笔记（链接可能无效或需登录）。" },
+                { status: 502, headers: corsHeaders() },
+            );
+        }
+        return NextResponse.json(
+            { ok: true, data: { platform, mode, items, count: items.length } },
+            { status: 200, headers: corsHeaders() },
+        );
+    }
+
+    const data = normalize(platform, j, rawUrl);
+    if (!data) {
+        return NextResponse.json(
+            { ok: false, error: "TikHub 返回数据无法解析（链接可能无效、已删除或需登录）。" },
+            { status: 502, headers: corsHeaders() },
+        );
+    }
+    return NextResponse.json({ ok: true, data }, { status: 200, headers: corsHeaders() });
+}
+
+export async function GET(req: NextRequest) {
+    // key 双来源：优先服务端环境变量（推荐，不下发前端）；插件/参数 key 作为备用
+    const envKey = (process.env.TIKHUB_API_KEY || "").trim();
+    const paramKey = (req.nextUrl.searchParams.get("api_key") || "").trim();
+
+    if (!envKey && !paramKey) {
+        return NextResponse.json(
+            { ok: false, error: "未配置 TikHub API Key：请在 Vercel 环境变量添加 TIKHUB_API_KEY，或在插件设置里填写 TikHub Key。" },
+            { status: 500, headers: corsHeaders() },
+        );
+    }
+
+    const rawUrl = req.nextUrl.searchParams.get("url") || "";
+    const urlResult = makeTikHubUrl(req);
+    if (urlResult instanceof NextResponse) return urlResult;
+    const { tikhubUrl, isList, mode, platform } = urlResult;
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 18_000);
+
     try {
-        // TikHub 新版要求 api_key 走 Authorization Bearer header（query string 已被拒绝，返回 401）
-        const res = await fetch(tikhubUrl, {
-            signal: controller.signal,
-            headers: {
-                "User-Agent": "ai-virtual-phone-tikhub-proxy",
-                "Authorization": `Bearer ${apiKey}`,
-            },
-        });
+        const keysToTry = envKey
+            ? envKey !== paramKey && paramKey
+                ? [envKey, paramKey]
+                : [envKey]
+            : [paramKey];
+
+        let lastError: { status: number; body: string } | null = null;
+
+        for (const apiKey of keysToTry) {
+            const result = await tryFetchTikHub(tikhubUrl, apiKey, platform, mode, isList, controller.signal);
+            if (result.ok) {
+                clearTimeout(timeout);
+                return finalizeResponse(result.data, result.platform, result.mode, result.isList, rawUrl);
+            }
+            lastError = { status: result.status, body: result.body };
+            // 401 才继续尝试下一个 key；其他错误直接返回
+            if (result.status !== 401) break;
+        }
+
         clearTimeout(timeout);
 
-        if (!res.ok) {
-            const txt = await res.text().catch(() => "");
-            return NextResponse.json(
-                { ok: false, error: `TikHub 返回 ${res.status}：${txt.slice(0, 200)}` },
-                { status: 502, headers: corsHeaders() },
-            );
-        }
+        const status = lastError?.status ?? 502;
+        const body = lastError?.body ?? "";
+        const is401 = status === 401;
+        const error = is401
+            ? `TikHub API Key 无效或已过期：${body.slice(0, 120)}。请检查 Vercel 环境变量 TIKHUB_API_KEY 或插件设置里的 TikHub Key。`
+            : `TikHub 返回 ${status}：${body.slice(0, 200)}`;
 
-        const j = await res.json().catch(() => null);
-
-        if (isList) {
-            const items = normalizeList(platform, j);
-            if (!items || items.length === 0) {
-                return NextResponse.json(
-                    { ok: false, error: "未从返回数据中解析出任何笔记（链接可能无效或需登录）。" },
-                    { status: 502, headers: corsHeaders() },
-                );
-            }
-            return NextResponse.json(
-                { ok: true, data: { platform, mode, items, count: items.length } },
-                { status: 200, headers: corsHeaders() },
-            );
-        }
-
-        const data = normalize(platform, j, rawUrl);
-        if (!data) {
-            return NextResponse.json(
-                { ok: false, error: "TikHub 返回数据无法解析（链接可能无效、已删除或需登录）。" },
-                { status: 502, headers: corsHeaders() },
-            );
-        }
-        return NextResponse.json({ ok: true, data }, { status: 200, headers: corsHeaders() });
+        return NextResponse.json({ ok: false, error }, { status: is401 ? 401 : 502, headers: corsHeaders() });
     } catch (e) {
         clearTimeout(timeout);
         const msg = e instanceof Error ? e.message : String(e);
