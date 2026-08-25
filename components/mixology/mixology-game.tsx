@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, Copy, History, MoreHorizontal, Pencil, Plus, RotateCcw, Send, Sun, WandSparkles, X } from "lucide-react";
-import { continueMix, editMixTurn, generateMixReply, MIX_REPAIR_EVENT, mixTurnRawText, refreshMixOpening, regenerateMixTail, rerollMixReply, runMixEditSync, runMixSessionEnd, truncateMixAfterTurn, type MixRepairEventDetail } from "@/lib/mixology/engine";
+import { continueMix, editMixTurn, generateMixReply, MIX_REPAIR_EVENT, MIX_STORE_SNAPSHOT_TURNS, mixTurnRawText, refreshMixOpening, regenerateMixTail, rerollMixReply, runMixEditSync, runMixSessionEnd, truncateMixAfterTurn, type MixRepairEventDetail } from "@/lib/mixology/engine";
 import { getMixMaterial, getMixSession, listMixPickables, MIX_CABINET_UPDATED_EVENT, resolveMixRecipeMaterials, saveMixSession } from "@/lib/mixology/storage";
 import { applyMixMacros, MIX_DEFAULT_USER_NAME } from "@/lib/mixology/assembler";
 import { buildMixConditionContext, pickActiveMixMaterials } from "@/lib/mixology/state";
@@ -598,6 +598,39 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
     const laterCount = (turnId: string) => {
         const idx = session.turns.findIndex((t) => t.id === turnId);
         return idx < 0 ? 0 : session.turns.length - idx - 1;
+    };
+
+    /**
+     * 回溯到某一轮时机括能退到什么程度：
+     * exact = 那一轮留着快照，精确退回；oldest = 比保留窗口还早，只能退到现存最早的那份；
+     * none = 一份快照都没有（更新前的老对局），机括不动。
+     * 后两种要在弹窗里说明白，别让玩家以为机括也跟着回到了当时。
+     */
+    const mechanismRewindKind = (turnId: string): "exact" | "oldest" | "none" => {
+        const idx = session.turns.findIndex((t) => t.id === turnId);
+        if (idx < 0) return "exact";
+        if (session.turns.slice(0, idx + 1).some((t) => t.mechanismStore)) return "exact";
+        return session.turns.some((t) => t.mechanismStore) ? "oldest" : "none";
+    };
+
+    /** 本局有没有机括：没有就别拿这段说明打扰玩家 */
+    const hasMechanism = () => mixSlotEntries(session.recipe.slots, "mechanism")
+        .some((e) => getMixMaterial(e.materialId)?.kind === "mechanism");
+
+    const mechanismRewindHint = (turnId: string) => {
+        if (!hasMechanism()) return null;
+        const kind = mechanismRewindKind(turnId);
+        if (kind === "exact") return null;
+        return (
+            <>
+                <br />
+                机括的存档只留最近 {MIX_STORE_SNAPSHOT_TURNS} 轮，这一轮已经超出：
+                {kind === "oldest"
+                    ? `机括里的内容只能退到现存最早的那份存档（约 ${MIX_STORE_SNAPSHOT_TURNS} 轮前），不是这一轮当时的样子。`
+                    : "这一轮还没有存档（更新前的旧对局），机括里的内容不会跟着退回。"}
+                需要的话回溯后在机括面板里手动改。
+            </>
+        );
     };
 
     const doRewind = (turnId: string) => {
@@ -1282,7 +1315,7 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
                 <MixConfirm
                     title={confirm.type === "rewind" ? "回溯到这条消息？" : "保存修改？"}
                     body={confirm.type === "rewind"
-                        ? `这条消息之后的 ${laterCount(confirm.turnId)} 条内容将被删除。`
+                        ? <>这条消息之后的 {laterCount(confirm.turnId)} 条内容将被删除。{mechanismRewindHint(confirm.turnId)}</>
                         : `保存后，这条消息之后的 ${laterCount(confirm.turnId)} 条内容将被删除${session.turns.find((t) => t.id === confirm.turnId)?.role === "user" ? "，并重新生成回复" : ""}。`}
                     confirmText={confirm.type === "rewind" ? "回溯" : "保存"}
                     tone="danger"

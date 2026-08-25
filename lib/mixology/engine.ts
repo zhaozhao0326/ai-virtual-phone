@@ -708,7 +708,7 @@ function sessionEncores(session: MixSession): MixEncoreMaterial[] {
  * 存储桶单件上限 100KB，逐轮全留会把对局存档撑爆；只留最近这么多轮，
  * 成本与对局长度无关（30 × 实际桶大小，通常几十 KB 封顶）。
  */
-const MIX_STORE_SNAPSHOT_TURNS = 30;
+export const MIX_STORE_SNAPSHOT_TURNS = 30;
 
 /** 落库前修剪：只保留最近 N 份机括存储快照，更早的删掉 */
 function trimMixStoreSnapshots(turns: MixTurn[]): MixTurn[] {
@@ -737,15 +737,30 @@ function lastMixStoreSnapshot(turns: MixTurn[]): Record<string, Record<string, s
 }
 
 /**
+ * 现存最早的一份机括存储快照。
+ * 回溯到保留窗口之外时用它——那一轮当时的样子已经没了，但退到现存最早的那份
+ * （约 MIX_STORE_SNAPSHOT_TURNS 轮前）总好过让机括停在被丢掉的未来上。
+ */
+function firstMixStoreSnapshot(turns: MixTurn[]): Record<string, Record<string, string>> | null {
+    for (let i = 0; i < turns.length; i += 1) {
+        const snapshot = turns[i].mechanismStore;
+        if (snapshot) return { ...snapshot };
+    }
+    return null;
+}
+
+/**
  * 截断历史之后把记住的值与机括存储一起退回去：各取剩下最后一轮的快照。
  * 不做这一步的话，回溯三轮重打，好感度还停在被丢掉的那个未来上，
  * 机括面板里也还留着那三轮记下的东西。
  */
 function withRolledBackState(session: MixSession, turns: MixTurn[]): MixSession {
     const initial = initialMixState(sessionTickets(session));
-    // 记住的值全删光退回开局初值；机括存储找不到快照则维持现状——它的私有记忆
-    // 宁可旧，也不能凭空清空（玩家在面板里手写的内容也在里面）。
-    const store = lastMixStoreSnapshot(turns);
+    // 记住的值全删光退回开局初值。机括存储：目标轮次之内有快照就精确退回；
+    // 目标比保留窗口还早，就退到现存最早的那份（能退多远退多远）。
+    // 一份快照都没有（更新前的老对局）才维持现状——没记过的东西造不出来，
+    // 而清空会把玩家在面板里手写的内容一起抹掉。
+    const store = lastMixStoreSnapshot(turns) ?? firstMixStoreSnapshot(session.turns);
     return {
         ...session,
         turns,
