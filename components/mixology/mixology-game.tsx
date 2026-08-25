@@ -648,12 +648,14 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
         }
     };
 
-    const doEditSync = (turnId: string, mode: "replace" | "append") => {
+    const doEditSync = (turnId: string, mode: "replace" | "append" | "textOnly") => {
         setEditSyncId(null);
         void runMixEditSync(sessionId, turnId, mode).then((ok) => {
             setSession(getMixSession(sessionId));
             onToast(ok
-                ? (mode === "replace" ? "已替换：机括按编辑后的原文重新记了这一轮。" : "已追加：机括按编辑后的原文补记了一轮。")
+                ? (mode === "replace" ? "已替换：机括按编辑后的原文重新记了这一轮。"
+                    : mode === "append" ? "已追加：机括按编辑后的原文补记了一轮。"
+                    : "已整理：标记行已摘走，机括未记账。")
                 : "同步失败，这一轮没有变化。");
         });
     };
@@ -1309,17 +1311,19 @@ export function MixologyGame({ sessionId, onBack, onToast }: GameProps) {
                 // 替换要有这一轮记账前的底稿才做得到；底稿只属于最后生成的那一轮
                 const canReplace = session.mechanismStorePrevTurn === editSyncId && Boolean(session.mechanismStorePrev);
                 return (
-                    <div className="mix-confirm-mask" onClick={() => setEditSyncId(null)}>
+                    // 关掉弹窗也要走「不记账」：真原文编辑后正文里可能带着机括标记行，
+                    // 必须让机括把行摘走，否则原样漏进正文与发给模型的历史
+                    <div className="mix-confirm-mask" onClick={() => doEditSync(editSyncId, "textOnly")}>
                         <div className="mix-confirm" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="同步给机括">
                             <div className="mix-confirm-title">同步给机括？</div>
                             <div className="mix-confirm-body">
-                                把编辑后的这一轮重新交给机括收数：标记行会被摘走，面板数据照新原文更新。
+                                标记行都会被摘走；这里选的是机括要不要照编辑后的原文重新记账（面板数据更新）。
                                 {canReplace
-                                    ? <><br />「替换」先撤销这一轮机括原来记的账再重跑，一般选它；「追加」保留原账再记一遍。替换会连带丢掉这一轮之后你在机括面板里手改的内容。</>
-                                    : <><br />这一轮的记账底稿已不在（不是最后生成的那一轮），只能在现有数据上追加。</>}
+                                    ? <><br />「替换」先撤销这一轮机括原来记的账再重跑，一般选它；「追加」保留原账再记一遍；「不记账」只整理正文。替换会连带丢掉这一轮之后你在机括面板里手改的内容。</>
+                                    : <><br />这一轮的记账底稿已不在（不是最后生成的那一轮），只能在现有数据上追加，或者只整理正文不记账。</>}
                             </div>
                             <div className="mix-confirm-actions">
-                                <button type="button" className="mix-confirm-btn" onClick={() => setEditSyncId(null)}>不同步</button>
+                                <button type="button" className="mix-confirm-btn" onClick={() => doEditSync(editSyncId, "textOnly")}>不记账</button>
                                 <button type="button" className="mix-confirm-btn" onClick={() => doEditSync(editSyncId, "append")}>追加</button>
                                 {canReplace ? (
                                     <button type="button" className="mix-confirm-btn" data-tone="primary" onClick={() => doEditSync(editSyncId, "replace")}>替换</button>
