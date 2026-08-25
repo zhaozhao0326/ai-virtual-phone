@@ -3680,7 +3680,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const bits: string[] = [];
                 if (u?.gender && u.gender !== "保密") bits.push(u.gender === "女" ? "女生" : u.gender === "男" ? "男生" : u.gender);
                 if (u?.appearance?.trim()) bits.push(u.appearance.trim());
-                const faceLock = u?.faceLockUrl?.trim() || null;
+                // v1.7.32：参考图来源对齐「角色发图」链路——优先面具锁脸图，没有就用面具头像兜底，
+                // 避免「没设锁脸图 → 这个人整条脸锁不上」的巨大落差（角色发图一直用头像兜底，所以效果好）
+                const faceLock = u?.faceLockUrl?.trim() || u?.avatarUrl?.trim() || null;
                 specList.push({
                     id,
                     name: u?.name?.trim() || "你",
@@ -3699,12 +3701,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const roleGender = extractGenderHintFromPersona(c.persona, c.briefPersona);
                 if (roleGender) roleBits.push(roleGender);
                 if (c.appearance?.trim()) roleBits.push(c.appearance.trim());
+                // v1.7.32：优先用角色参考图（生图设置里上传的），没有就用角色头像兜底——
+                // 与角色发图链路一致，保证「没配参考图的角色」在文字图片里也能锁上脸
+                const faceSource = ref?.assetId || c.avatar?.trim() || null;
                 specList.push({
                     id,
                     name: c.name,
                     anchor: roleBits.length ? roleBits.join("，") : undefined,
-                    faceLockSource: ref?.assetId || null,
-                    hasReference: Boolean(ref?.assetId),
+                    faceLockSource: faceSource,
+                    hasReference: Boolean(faceSource),
                 });
             }
         }
@@ -3714,7 +3719,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         for (const s of specList) {
             if (!s.faceLockSource) continue;
             let raw: string | null = null;
-            if (s.id === "user") {
+            if (s.id === "user" || s.faceLockSource.startsWith("data:")) {
+                // 面具锁脸图/头像兜底是 data URL，直接用；参考图 assetId 才走 IndexedDB
                 raw = s.faceLockSource;
             } else {
                 try {

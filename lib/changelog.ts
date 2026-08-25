@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.31";
+export const APP_VERSION = "1.7.32";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.32",
+    date: "2026-08-25",
+    title: "文字生图也能锁脸了：没配参考图时自动用角色头像",
+    highlights: [
+      "修复：文字生图时角色没配参考图、自己没设锁脸图，生成的脸完全不像",
+      "现在没配参考图会直接用角色头像/你的面具头像来锁脸，和角色发图的效果对齐",
+    ],
+  },
   {
     version: "1.7.31",
     date: "2026-08-25",
