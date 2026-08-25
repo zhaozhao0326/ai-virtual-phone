@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.33";
+export const APP_VERSION = "1.7.34";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.34",
+    date: "2026-08-25",
+    title: "栖所生图「未配置」提示说真话",
+    highlights: [
+      "修复：栖所生图提示「未配置/未开启」时不再笼统，会具体说明是哪个开关没开或哪个字段空了",
+      "生图配置检测改为空安全，存储里缺字段时不再误报、也不会抛异常",
+    ],
+  },
   {
     version: "1.7.33",
     date: "2026-08-25",

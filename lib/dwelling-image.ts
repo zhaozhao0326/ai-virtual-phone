@@ -13,6 +13,8 @@ export type DwellingImageAvailability = {
     dwellingEnabled: boolean;
     /** 二者同时满足才真正生图 */
     available: boolean;
+    /** 未可用时的具体原因（人类可读），避免笼统报「没配置」让人误以为配置丢失 */
+    reason: string;
 };
 
 /**
@@ -21,19 +23,26 @@ export type DwellingImageAvailability = {
  * - novelai：只需 novelai.apiKey（url 留空走内置官方地址）
  * - pollinations：免费免 Key，只要总开关开启即可
  * - google-imagen：需 googleImagen.apiKey
+ * v1.7.34：字段全部空安全——存储里缺 apiKey/baseUrl/model 时不再因 .trim() 抛异常，
+ * 而是当作「未配置」返回 false，避免异常上抛导致 UI 误报「没有生图配置」。
  */
 function isProviderConfigured(s: ImageGenerationSettings): boolean {
     if (s.provider === "novelai") return Boolean(s.novelai?.apiKey?.trim());
     if (s.provider === "pollinations") return true;
     if (s.provider === "google-imagen") return Boolean(s.googleImagen?.apiKey?.trim());
-    return Boolean(s.apiKey.trim() && s.baseUrl.trim() && s.model.trim());
+    return Boolean((s.apiKey || "").trim() && (s.baseUrl || "").trim() && (s.model || "").trim());
 }
 
 export function getDwellingImageAvailability(): DwellingImageAvailability {
     const s = loadImageGenerationSettings();
-    const configured = Boolean(s.enabled && isProviderConfigured(s));
+    const providerConfigured = isProviderConfigured(s);
+    const configured = Boolean(s.enabled && providerConfigured);
     const dwellingEnabled = loadDwellingImageEnabled();
-    return { configured, dwellingEnabled, available: configured && dwellingEnabled };
+    let reason = "";
+    if (!s.enabled) reason = "全局「启用图像生成」开关未开启（生图设置里打开它）";
+    else if (!providerConfigured) reason = "当前生图提供方配置不完整：需填写 API Key、Base URL、模型名";
+    else if (!dwellingEnabled) reason = "栖所生图开关未开启";
+    return { configured, dwellingEnabled, available: configured && dwellingEnabled, reason };
 }
 
 // ── Room image generation ─────────────────────
@@ -109,7 +118,7 @@ export async function generateDwellingRoomImage(
         const timer = setTimeout(() => controller.abort(), ROOM_IMAGE_TIMEOUT_MS);
         try {
             const availability = getDwellingImageAvailability();
-            if (!availability.available) return { assetId: null, error: "生图未开启" };
+            if (!availability.available) return { assetId: null, error: availability.reason || "生图未开启" };
             const result = await generateImageFromConfiguredApi({
                 description: buildRoomImagePrompt(room),
                 signal: controller.signal,

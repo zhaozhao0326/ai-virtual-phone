@@ -21,6 +21,7 @@ type RoomViewProps = {
     imageError: string | null;
     imageEnabled: boolean;
     imageConfigured: boolean;
+    imageConfigReason?: string;
     onToggleImage: () => void;
     onRetryImage: () => void;
     onCancelImage: () => void;
@@ -45,7 +46,7 @@ function formatStageTime(): string {
 export function RoomView({
     room, itemHtmlCache, loadingItemKeys, lastItemError,
     onExploreItem, onOpenItem, onMoveMarker,
-    imageUrl, imageStatus, imageError, imageEnabled, imageConfigured,
+    imageUrl, imageStatus, imageError, imageEnabled, imageConfigured, imageConfigReason,
     onToggleImage, onRetryImage, onCancelImage,
 }: RoomViewProps) {
     const [viewMode, setViewMode] = useState<"stage" | "list">("stage");
@@ -219,7 +220,7 @@ export function RoomView({
 
     function handleToggleImage() {
         if (!imageConfigured) {
-            setTip("请先在设置中配置并开启图像生成");
+            setTip(imageConfigReason || "请先在设置中配置并开启图像生成");
             return;
         }
         setConfirmAction("toggle");

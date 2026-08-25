@@ -89,17 +89,24 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
     const [itemDetail, setItemDetail] = useState<ItemDetail | null>(null);
     const [imageEnabled, setImageEnabled] = useState(true);
     const [imageConfigured, setImageConfigured] = useState(false);
+    const [imageConfigReason, setImageConfigReason] = useState("");
     const activeCharIdRef = useRef<string | null>(null);
     const activeRoomIdxRef = useRef(0);
 
     useEffect(() => {
         setImageEnabled(loadDwellingImageEnabled());
-        setImageConfigured(getDwellingImageAvailability().configured);
+        const av = getDwellingImageAvailability();
+        setImageConfigured(av.configured);
+        setImageConfigReason(av.reason);
     }, []);
 
     useEffect(() => {
         // 用户可能中途去设置里配置了生图，回到栖所时重新判定
-        if (visible) setImageConfigured(getDwellingImageAvailability().configured);
+        if (visible) {
+            const av = getDwellingImageAvailability();
+            setImageConfigured(av.configured);
+            setImageConfigReason(av.reason);
+        }
     }, [visible]);
 
     useEffect(() => {
@@ -445,6 +452,7 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
                         imageError={cs.imageErrors[activeRoom.id] ?? null}
                         imageEnabled={imageEnabled}
                         imageConfigured={imageConfigured}
+                        imageConfigReason={imageConfigReason}
                         onToggleImage={() => {
                             const next = !imageEnabled;
                             setImageEnabled(next);
