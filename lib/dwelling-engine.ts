@@ -229,7 +229,15 @@ export async function generateDwellingLayout(
 
     // Load existing layout for context injection
     const oldCached = await loadDwellingLayout(characterId);
-    const dwellingContext = oldCached ? formatDwellingContext(oldCached.layout, oldCached.updatedAt) : undefined;
+    let dwellingContext: string | undefined;
+    if (mode === "items" && oldCached) {
+        // items 模式：保留房间/家具结构，仅参考旧布局来更新物品
+        dwellingContext = formatDwellingContext(oldCached.layout, oldCached.updatedAt);
+    } else {
+        // full 模式：不参考旧布局，强制全新创意；注入随机种子打破模型对固定角色的雷同输出
+        const seed = Math.floor(Math.random() * 1_000_000);
+        dwellingContext = `【本次为全新生成（种子 ${seed}），请创造与任何既往或模板化栖所都明显不同的房间与家具组合，体现角色独特个性，不要重复千篇一律的布局】`;
+    }
 
     // items mode requires existing layout
     if (mode === "items" && !oldCached) mode = "full";

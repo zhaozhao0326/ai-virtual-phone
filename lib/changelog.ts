@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.35";
+export const APP_VERSION = "1.7.36";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.36",
+    date: "2026-08-25",
+    title: "栖所重新生成不再雷同",
+    highlights: [
+      "修复：栖所「重新生成所有房间、家具和物品」后，房间与家具常和上次几乎一样，像没更新",
+      "完整重生成现在每次都会创作不同的房间与家具组合，并注入随机种子避免重复模板化布局",
+    ],
+  },
   {
     version: "1.7.35",
     date: "2026-08-25",
