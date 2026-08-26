@@ -216,11 +216,13 @@ const EVENT_COUNTER_PREFIX = "ai_phone_mem_evt_count_";
 const LAST_SUMMARY_TS_PREFIX = "ai_phone_mem_last_sum_";
 const CORE_COUNTER_PREFIX = "ai_phone_mem_core_count_";
 const LAST_CORE_SUMMARY_TS_PREFIX = "ai_phone_mem_last_core_sum_";
+const GROUP_RELATION_TS_PREFIX = "ai_phone_mem_grp_rel_";
 registerKvMigration(CONFIG_KEY);
 registerDynamicPrefix(EVENT_COUNTER_PREFIX);
 registerDynamicPrefix(LAST_SUMMARY_TS_PREFIX);
 registerDynamicPrefix(CORE_COUNTER_PREFIX);
 registerDynamicPrefix(LAST_CORE_SUMMARY_TS_PREFIX);
+registerDynamicPrefix(GROUP_RELATION_TS_PREFIX);
 
 export function getEventCounter(characterId: string): number {
     if (typeof window === "undefined") return 0;
@@ -249,6 +251,20 @@ export function getLastSummarizedTimestamp(characterId: string): string | null {
 export function setLastSummarizedTimestamp(characterId: string, ts: string): void {
     if (typeof window === "undefined") return;
     kvSet(LAST_SUMMARY_TS_PREFIX + characterId, ts);
+}
+
+// ── 群关系抽取水位线（localStorage）──
+// 每个群会话一条：记录上次群关系抽取处理到的最新消息时间戳，
+// 用于「群1次」去重——避免群内 N 个成员各自重复抽取同一段群聊。
+
+export function getGroupRelationCursor(groupSessionId: string): string | null {
+    if (typeof window === "undefined") return null;
+    return kvGet(GROUP_RELATION_TS_PREFIX + groupSessionId) || null;
+}
+
+export function setGroupRelationCursor(groupSessionId: string, ts: string): void {
+    if (typeof window === "undefined") return;
+    kvSet(GROUP_RELATION_TS_PREFIX + groupSessionId, ts);
 }
 
 export function getCoreMemoryCounter(characterId: string): number {

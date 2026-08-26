@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.50";
+export const APP_VERSION = "1.7.51";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.51",
+    date: "2026-08-26",
+    title: "关系图谱召回群聊改为整群只抽取一次",
+    highlights: [
+      "关系图谱召回在群聊中改为「整群只抽取一次」，结果自动分发到群内各角色记忆，避免群内每个角色重复抽取",
+      "单聊仍按角色独立抽取（本就一次），基础长期记忆（记忆总结、核心记忆、向量召回）不受影响",
+      "该能力默认关闭，需手动开启；开启后群聊抽取成本从「群成员数倍」降为「整群一次」",
+    ],
+  },
   {
     version: "1.7.50",
     date: "2026-08-26",
