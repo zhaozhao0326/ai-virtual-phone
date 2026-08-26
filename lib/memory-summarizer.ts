@@ -342,10 +342,13 @@ async function runGroupRelationExtraction(
                 apiConfig,
                 config.relationMinConfidence,
             );
-            if (!result || (result.subjects.length === 0 && result.interRelations.length === 0)) continue;
             const latestTs = newEntries[newEntries.length - 1].timestamp;
-            await distributeGroupRelations(result, chars, groupId, info.name, config);
+            // 无论是否抽到关系，只要 LLM 已成功处理过这段群消息就推进水位线，
+            // 避免下次触发对同一段群消息重复抽取、重复计费（实打实的 token 浪费）。
             setGroupRelationCursor(groupId, latestTs);
+            if (result && (result.subjects.length > 0 || result.interRelations.length > 0)) {
+                await distributeGroupRelations(result, chars, groupId, info.name, config);
+            }
         } catch {
             /* best-effort */
         } finally {
