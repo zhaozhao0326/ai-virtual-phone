@@ -2,17 +2,20 @@
 // components/phone-letters-app.tsx
 // 信箱 App（主页入口）：聚合所有角色留给你的东西——
 //   📬 收件箱：角色写的信（可请 TA 写信）
-// （梦境/日记生成功能已于 1.7.45 停用，信箱仅保留收件箱）
+//   🌙 梦境：角色深夜/离线时的梦呓（可开关，默认关）
+// （日记生成已停用：原版已有日记功能，此处不再自动生成）
 
 import { useCallback, useEffect, useState } from "react";
 import { loadAllLetters, markLetterRead, deleteLetter, type LetterEntry } from "@/lib/letter-storage";
 import { requestLetter, getLetterCooldownRemaining } from "@/lib/letter-service";
 import { loadCharacters } from "@/lib/character-storage";
+import { isDreamEnabled, setDreamEnabled, getDreamWhitelist, setDreamWhitelist } from "@/lib/dream-service";
 
 type TabId = "inbox" | "dream" | "diary";
 
 const TABS: { id: TabId; label: string }[] = [
     { id: "inbox", label: "收件箱" },
+    { id: "dream", label: "梦境" },
 ];
 
 function typeOf(l: LetterEntry): NonNullable<LetterEntry["type"]> {
@@ -25,6 +28,15 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
     const [openId, setOpenId] = useState<string | null>(null);
     const [busyCharId, setBusyCharId] = useState<string | null>(null);
     const [cooldowns, setCooldowns] = useState<Record<string, number>>({});
+    const [dreamOn, setDreamOn] = useState(false);
+    const [dreamList, setDreamList] = useState<string[]>([]);
+    useEffect(() => {
+        if (tab === "dream") {
+            setDreamOn(isDreamEnabled());
+            setDreamList(getDreamWhitelist());
+        }
+    }, [tab]);
+
     const refresh = useCallback(() => {
         loadAllLetters().then(setEntries).catch(() => setEntries([]));
     }, []);
@@ -133,6 +145,48 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
 
             {/* 内容 */}
             <div className="flex-1 overflow-y-auto px-3 pb-4">
+                {tab === "dream" && !openEntry && (
+                    <div className="flex flex-col gap-3 p-3 mb-2 rounded-2xl bg-[var(--c-card,#fff)] border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)]">
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const next = !dreamOn;
+                                    setDreamEnabled(next);
+                                    setDreamOn(next);
+                                }}
+                                className={`relative w-11 h-6 rounded-full transition-colors ${dreamOn ? "bg-[var(--c-accent,var(--c-primary,#4a3f2f))]" : "bg-[color-mix(in_srgb,var(--c-card-border)_70%,transparent)]"}`}
+                                aria-pressed={dreamOn}
+                            >
+                                <span className={`absolute top-0.5 ${dreamOn ? "left-5" : "left-0.5"} w-5 h-5 rounded-full bg-white transition-all`} />
+                            </button>
+                            <span className="ts-13 font-semibold flex-1">开启角色做梦</span>
+                        </div>
+                        <p className="ts-11 opacity-55 leading-relaxed">关闭后，后台不再自动生成梦境。开启后，只对下方选中的角色生效。</p>
+                        {dreamOn && (
+                            <div className="flex flex-col gap-1 max-h-52 overflow-y-auto pr-1">
+                                {chars.map(c => {
+                                    const checked = dreamList.includes(c.id);
+                                    return (
+                                        <label key={c.id} className="flex items-center gap-2 ts-12 py-1 px-1 rounded-lg hover:opacity-75 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => {
+                                                    const next = checked ? dreamList.filter(id => id !== c.id) : [...dreamList, c.id];
+                                                    setDreamList(next);
+                                                    setDreamWhitelist(next);
+                                                }}
+                                                className="accent-[var(--c-accent,var(--c-primary,#4a3f2f))]"
+                                            />
+                                            <span>{c.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
                 {openEntry ? (
                     <div className="flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-card,#fff)] border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)]">
                         <div className="flex items-center gap-2">
@@ -154,8 +208,14 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
                     </div>
                 ) : grouped.length === 0 ? (
                     <div className="mt-10 flex flex-col items-center gap-2 ts-12 opacity-50">
-                        <span>信箱还空着</span>
-                        <span className="ts-11">回到聊天，点角色档案里的「请 TA 写封信」，TA 会基于对你的了解写信投递</span>
+                        {tab === "inbox" ? (
+                            <>
+                                <span>信箱还空着</span>
+                                <span className="ts-11">回到聊天，点角色档案里的「请 TA 写封信」，TA 会基于对你的了解写信投递</span>
+                            </>
+                        ) : (
+                            <span>还没有梦境。开启上方开关并选中角色后，夜深时 TA 会做梦。</span>
+                        )}
                     </div>
                 ) : (
                     <div className="flex flex-col gap-3">

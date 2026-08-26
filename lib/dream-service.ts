@@ -138,10 +138,11 @@ async function generateDiary(characterId: string, char: Character): Promise<Lett
  * - 深夜（22:00-6:00）或用户离开角色超过 12h 才触发
  * - 触发时按需补生成今日梦呓与今日日记（无 API 或失败静默跳过）
  */
-// ── 功能硬闸门（1.7.45） ──
-// 梦境/日记功能已彻底停用：无论全局开关、白名单、角色级开关如何设置，
-// 都不会再生成任何梦境/日记，也不会产生对应 LLM 调用。如需恢复改为 true。
-const DREAM_FEATURE_ENABLED = false;
+// ── 功能开关（1.7.46） ──
+// 梦境：已恢复，仍由全局开关（默认关）+ 选人白名单控制，避免后台批量调用。
+// 日记：继续停用（原版已有日记功能，此处不再自动生成）。
+const DREAM_FEATURE_ENABLED = true;
+const DIARY_FEATURE_ENABLED = false;
 
 // ── 全局开关 + 选人白名单（1.7.43，已随硬闸门停用） ──
 const DREAM_GLOBAL_KEY = "ai_phone_dream_global_enabled";
@@ -225,7 +226,7 @@ export async function maybeRunCharacterInternalLife(characterId: string): Promis
         const dream = await generateDream(characterId, char);
         if (dream) await saveLetter(dream);
     }
-    if (needDiary) {
+    if (DIARY_FEATURE_ENABLED && needDiary) {
         const diary = await generateDiary(characterId, char);
         if (diary) await saveLetter(diary);
     }
