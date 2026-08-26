@@ -199,7 +199,28 @@ export function loadMemoryConfig(): MemoryConfig {
     try {
         const raw = kvGet(CONFIG_KEY);
         if (!raw) return { ...DEFAULT_MEMORY_CONFIG };
-        return { ...DEFAULT_MEMORY_CONFIG, ...JSON.parse(raw) };
+        const parsed = JSON.parse(raw) as Partial<MemoryConfig>;
+        // 一次性迁移（1.7.52）：1.7.50/1.7.51 将两个增量辅助（关系图谱召回、记忆唤起主动关心）
+        // 改为默认关闭，但老用户已存的配置会覆盖默认值，导致仍被静默开启、持续扣费。
+        // 对已开启的用户强制翻为关闭，仅执行一次，恢复"需主动开启"的语义；用户可随时手动重新打开。
+        const MIG_FLAG = "ai_phone_mem_cfg_v175_migrated";
+        if (typeof localStorage !== "undefined" && !localStorage.getItem(MIG_FLAG)) {
+            let changed = false;
+            if (parsed.relationRecallEnabled === true) {
+                parsed.relationRecallEnabled = false;
+                changed = true;
+            }
+            const careRaw = localStorage.getItem("ai_phone_mem_care_enabled");
+            if (careRaw !== null && careRaw !== "0" && careRaw !== "false") {
+                localStorage.setItem("ai_phone_mem_care_enabled", "0");
+                changed = true;
+            }
+            if (changed) {
+                kvSet(CONFIG_KEY, JSON.stringify({ ...DEFAULT_MEMORY_CONFIG, ...parsed }));
+            }
+            localStorage.setItem(MIG_FLAG, "1");
+        }
+        return { ...DEFAULT_MEMORY_CONFIG, ...parsed };
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };
     }

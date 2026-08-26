@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.51";
+export const APP_VERSION = "1.7.52";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.52",
+    date: "2026-08-26",
+    title: "为老用户强制关闭后台自动扣费的增量辅助",
+    highlights: [
+      "新增一次性迁移：老用户若此前已开启「关系图谱召回」或「记忆唤起主动关心」，更新后自动翻为关闭",
+      "修复旧版默认开启导致部分用户被静默持续扣费的问题，恢复「需主动开启」的语义",
+      "已手动关闭的用户不受影响；基础长期记忆（记忆总结、核心记忆、向量召回）不受影响",
+    ],
+  },
   {
     version: "1.7.51",
     date: "2026-08-26",
