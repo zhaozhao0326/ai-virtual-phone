@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.48";
+export const APP_VERSION = "1.7.49";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.49",
+    date: "2026-08-26",
+    title: "长期记忆情绪标注改为默认关闭，新增独立开关",
+    highlights: [
+      "长期记忆情绪标注新增独立开关，默认关闭",
+      "关闭后记忆总结不再额外调用情绪标注模型，仍可正常保存长期记忆",
+    ],
+  },
   {
     version: "1.7.48",
     date: "2026-08-26",

@@ -48,6 +48,7 @@ export type MemoryConfig = {
     autoBuildCoreEnabled: boolean;          // whether core memories rebuild after long-term summarization
     vectorRecallEnabled: boolean;           // whether vector embedding recall is used for memory retrieval
     relationRecallEnabled: boolean;         // whether relationship-graph recall is used (boost memories sharing entities with the context)
+    emotionEnabled: boolean;                // whether emotion (valence/arousal/resolved) is extracted for each long-term memory
     relationMinConfidence: number;          // min confidence threshold (0-1) for extracted relations; filters jokes/metaphors
     maxLongTermEntries: number;
     maxCoreEntries: number;                 // cap on core memories; oldest are merged when exceeded
@@ -139,6 +140,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
     relationRecallEnabled: true,
+    emotionEnabled: false,
     relationMinConfidence: 0.6,
     maxLongTermEntries: 500,
     maxCoreEntries: 50,

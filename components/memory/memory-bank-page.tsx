@@ -1,7 +1,7 @@
 "use client";
 
 import { Component, useState, useEffect, useCallback, type CSSProperties, type ReactNode } from "react";
-import { Trash2, Zap, Clock, Users, Archive, AlertCircle, Search, Brain, FileText, MoreHorizontal, Plus, Edit3, X, Check, ChevronRight, Filter, type LucideIcon } from "lucide-react";
+import { Trash2, Zap, Clock, Users, Archive, AlertCircle, Search, Brain, FileText, MoreHorizontal, Plus, Edit3, X, Check, ChevronRight, Filter, Heart, type LucideIcon } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { MemoryTimeline } from "./memory-timeline";
 import { Toggle } from "@/components/ui/form";
@@ -1075,6 +1075,20 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                         <div className="menu-right">
                             <Toggle checked={config.relationRecallEnabled ?? true} onChange={(v) => {
                                 const next = { ...config, relationRecallEnabled: v };
+                                setConfig(next);
+                                saveMemoryConfig(next);
+                            }} />
+                        </div>
+                    </div>
+                    <div className="menu-item">
+                        <MemorySettingsIcon icon={Heart} color={BINDING_ACCENTS.memory} />
+                        <div className="menu-label-group">
+                            <span className="menu-label">情绪标注</span>
+                            <span className="menu-desc">总结长期记忆时额外调用一次模型，提取情绪效价/唤醒度/是否已解决，用于高唤醒记忆的召回排序</span>
+                        </div>
+                        <div className="menu-right">
+                            <Toggle checked={config.emotionEnabled ?? false} onChange={(v) => {
+                                const next = { ...config, emotionEnabled: v };
                                 setConfig(next);
                                 saveMemoryConfig(next);
                             }} />

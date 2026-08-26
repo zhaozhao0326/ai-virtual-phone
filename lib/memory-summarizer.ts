@@ -139,11 +139,13 @@ export async function runSummarizationPipeline(
     // 情感坐标抽取（best-effort，不阻断主流程）：长期记忆落地 valence/arousal
     // 高唤醒/未解决的记忆在召回时权重更高（见 memory-service computeEmotionalScore）
     let emotionCoords: { valence: number; arousal: number; resolved: boolean } | undefined;
-    try {
-        const emo = await extractEmotionFromSummary(summary, apiConfig);
-        if (emo) emotionCoords = emo;
-    } catch {
-        /* 情感抽取失败不影响主流程 */
+    if (config.emotionEnabled) {
+        try {
+            const emo = await extractEmotionFromSummary(summary, apiConfig);
+            if (emo) emotionCoords = emo;
+        } catch {
+            /* 情感抽取失败不影响主流程 */
+        }
     }
 
     // Generate embedding for the summary (only if vector recall is enabled)
