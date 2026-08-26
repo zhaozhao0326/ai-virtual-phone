@@ -352,8 +352,10 @@ export type MomentsInteractionConfig = {
     bilingualTranslationEnabled: boolean;   // 朋友圈外语正文自动附简中译文
     collapseBilingualTranslation: boolean;  // 默认折叠中文译文
     bilingualTranslationPrompt: string;
-    // 禁止自动发帖的角色（只关调度发帖；评论/点赞/手动立即发帖不受影响）
+    // 禁止自动发帖的角色（只关调度发帖；评论/点赞/手动立即发帖不受影响）——1.7.47 起弃用，保留兼容旧数据
     autoPostDisabledCharacterIds: string[];
+    // 允许自动发帖的角色白名单（默认空 = 全员不自动发帖，勾选才发）。1.7.47 起生效
+    autoPostEnabledCharacterIds: string[];
     // 只发文字朋友圈：关闭 AI 自动配图与图片生成，模型不应输出 [照片:...] 标签
     textOnlyMoments: boolean;
 };
@@ -371,6 +373,7 @@ export const DEFAULT_MOMENTS_CONFIG: MomentsInteractionConfig = {
     collapseBilingualTranslation: true,
     bilingualTranslationPrompt: DEFAULT_MOMENTS_BILINGUAL_PROMPT,
     autoPostDisabledCharacterIds: [],
+    autoPostEnabledCharacterIds: [],
     textOnlyMoments: false,
 };
 
@@ -381,6 +384,7 @@ export function loadMomentsConfig(): MomentsInteractionConfig {
         if (!raw) return DEFAULT_MOMENTS_CONFIG;
         const merged = { ...DEFAULT_MOMENTS_CONFIG, ...JSON.parse(raw) };
         if (!Array.isArray(merged.autoPostDisabledCharacterIds)) merged.autoPostDisabledCharacterIds = [];
+        if (!Array.isArray(merged.autoPostEnabledCharacterIds)) merged.autoPostEnabledCharacterIds = [];
         return merged;
     } catch { return DEFAULT_MOMENTS_CONFIG; }
 }

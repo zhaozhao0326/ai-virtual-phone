@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.46";
+export const APP_VERSION = "1.7.47";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.47",
+    date: "2026-08-26",
+    title: "朋友圈自动发帖改为默认关闭，勾选角色后才生效",
+    highlights: [
+      "朋友圈自动发帖改为默认关闭，不再全员自动发帖",
+      "自动发帖支持按角色勾选，仅选中的角色会按间隔发帖",
+    ],
+  },
   {
     version: "1.7.46",
     date: "2026-08-26",

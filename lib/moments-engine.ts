@@ -115,9 +115,9 @@ function pollScheduledPosts() {
     const now = Date.now();
     const contacts = loadChatContacts();
     // 用户关掉自动发帖的角色：跳过调度（评论/点赞/手动立即发帖不受此开关影响）
-    const disabledIds = new Set(loadMomentsConfig().autoPostDisabledCharacterIds);
+    const enabledIds = new Set(loadMomentsConfig().autoPostEnabledCharacterIds);
     for (const contact of contacts) {
-        if (disabledIds.has(contact.characterId)) continue;
+        if (!enabledIds.has(contact.characterId)) continue;
         const schedule = getOrCreateSchedule(contact.characterId);
         if (schedule.nextPostAfter <= now) {
             isGenerating = true;

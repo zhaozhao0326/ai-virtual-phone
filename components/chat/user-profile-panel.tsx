@@ -940,14 +940,13 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
         saveMomentsConfig(next);
     };
 
-    // 自动发帖角色开关：只拦调度发帖；评论/点赞/手动立即发帖不受影响
-    const disabledAutoPostIds = new Set(config.autoPostDisabledCharacterIds);
-    // 徽标只统计好友范围内被关闭的——生成配角会被预置进禁用名单但未必是好友
-    const disabledContactCount = enriched.filter(c => disabledAutoPostIds.has(c.characterId)).length;
+    // 自动发帖角色：白名单（默认空 = 全员不自动发帖，勾选才发）
+    const enabledAutoPostIds = new Set(config.autoPostEnabledCharacterIds ?? []);
+    const enabledAutoPostCount = enriched.filter(c => enabledAutoPostIds.has(c.characterId)).length;
     const toggleAutoPost = (characterId: string, enabled: boolean) => {
-        const next = new Set(config.autoPostDisabledCharacterIds);
-        if (enabled) next.delete(characterId); else next.add(characterId);
-        update({ autoPostDisabledCharacterIds: [...next] });
+        const next = new Set(config.autoPostEnabledCharacterIds ?? []);
+        if (enabled) next.add(characterId); else next.delete(characterId);
+        update({ autoPostEnabledCharacterIds: [...next] });
     };
 
     const openBilingualPromptEditor = () => {
@@ -1160,9 +1159,9 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
                         <div className="menu-label-group">
                             <span className="menu-label">自动发帖角色</span>
                             <span className="menu-desc">
-                                {disabledContactCount > 0
-                                    ? `已关闭 ${disabledContactCount} 个角色的自动发帖`
-                                    : "所有好友角色都会按间隔自动发帖"}
+                                {enabledAutoPostCount > 0
+                                    ? `已开启 ${enabledAutoPostCount} 个角色的自动发帖`
+                                    : "未开启自动发帖（勾选角色后才会自动发帖）"}
                             </span>
                         </div>
                         <div className="menu-right">
@@ -1179,7 +1178,7 @@ function InlineMomentsSettings({ onBack }: { onBack: () => void }) {
                             </div>
                             <div className="menu-right">
                                 <Toggle
-                                    checked={!disabledAutoPostIds.has(c.characterId)}
+                                    checked={enabledAutoPostIds.has(c.characterId)}
                                     onChange={checked => toggleAutoPost(c.characterId, checked)}
                                 />
                             </div>
