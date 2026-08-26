@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.49";
+export const APP_VERSION = "1.7.50";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.50",
+    date: "2026-08-26",
+    title: "关系图谱召回与记忆唤起主动关心改为默认关闭",
+    highlights: [
+      "关系图谱召回改为默认关闭，减少后台自动调用，需手动开启才生效",
+      "记忆唤起主动关心（角色主动想起我）改为默认关闭，减少后台自动发消息",
+      "基础长期记忆（记忆总结、核心记忆、向量召回）保持不变，始终开启",
+    ],
+  },
   {
     version: "1.7.49",
     date: "2026-08-26",

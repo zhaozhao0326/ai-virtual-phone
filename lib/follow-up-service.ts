@@ -83,7 +83,7 @@ export function isMemoryCareEnabled(characterId?: string): boolean {
             ? localStorage.getItem(MEMORY_CARE_ENABLED_PER_CHAR_PREFIX + characterId)
             : null;
         const v = raw ?? localStorage.getItem(MEMORY_CARE_ENABLED_KEY);
-        if (v === null) return true; // 默认开启
+        if (v === null) return false; // 默认关闭：记忆唤起主动关心为增量辅助功能，默认不主动打扰用户
         return v !== "0" && v !== "false";
     } catch {
         return true;

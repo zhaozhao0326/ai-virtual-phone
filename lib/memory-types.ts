@@ -47,7 +47,7 @@ export type MemoryConfig = {
     autoSummarizeEnabled: boolean;          // whether auto-summarization runs after N events
     autoBuildCoreEnabled: boolean;          // whether core memories rebuild after long-term summarization
     vectorRecallEnabled: boolean;           // whether vector embedding recall is used for memory retrieval
-    relationRecallEnabled: boolean;         // whether relationship-graph recall is used (boost memories sharing entities with the context)
+    relationRecallEnabled: boolean;         // whether relationship-graph recall is used (boost memories sharing entities with the context). INCREMENTAL enhancement — defaults OFF
     emotionEnabled: boolean;                // whether emotion (valence/arousal/resolved) is extracted for each long-term memory
     relationMinConfidence: number;          // min confidence threshold (0-1) for extracted relations; filters jokes/metaphors
     maxLongTermEntries: number;
@@ -139,7 +139,7 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     autoSummarizeEnabled: true,
     autoBuildCoreEnabled: true,
     vectorRecallEnabled: true,
-    relationRecallEnabled: true,
+    relationRecallEnabled: false,   // 增量辅助（关系图谱召回）：默认关闭，需用户主动开启
     emotionEnabled: false,
     relationMinConfidence: 0.6,
     maxLongTermEntries: 500,

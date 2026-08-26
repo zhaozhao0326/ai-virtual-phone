@@ -206,7 +206,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [showPushSettings, setShowPushSettings] = useState(false);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
     const [callVibrationEnabled, setCallVibrationEnabled] = useState(true);
-    const [memoryCareEnabled, setMemoryCareEnabledState] = useState(true);
+    const [memoryCareEnabled, setMemoryCareEnabledState] = useState(false);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
     const [walletSummary, setWalletSummary] = useState(() => {
         const wallet = loadWalletState();
