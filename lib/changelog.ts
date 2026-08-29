@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.53";
+export const APP_VERSION = "1.7.54";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.54",
+    date: "2026-08-29",
+    title: "独家特调：封面缩略图与展示优化",
+    highlights: [
+      "独家特调新增上架封面 WebP 缩略图，大厅列表展示更直观",
+      "新增存量封面批量补拍脚本，已发布内容可补生成封面",
+      "优化卡面展示：静态封面高度随图走、文案不再压图、卡面统一收起",
+    ],
+  },
   {
     version: "1.7.53",
     date: "2026-08-29",
