@@ -35,9 +35,16 @@ const NAI_SIZE_OPTIONS = [
     { value: "1472x1472", label: "1472×1472（高清正方）💰消耗点数" },
 ];
 
-/** NAI 模型预设（均为 NAI 官方真实模型，与 Miya 小手机一致） */
+/** NAI 模型预设（均为 NAI 官方真实模型，与 Miya 小手机一致）
+ * 2026-08-21 NAI 发布 V5（Curated / Full）；V4.5 为上一世代旗舰。
+ * 真实 API 标识符已交叉核对（NovelAI 官方文档 / novelai-sdk / ComfyUI_NAIDGenerator）。
+ * 注意：V5 Curated 的 inpaint 目前官方临时复用 nai-diffusion-4-5-curated-inpainting，
+ * 待本 App 接入局部重绘（infill）时再单独处理该回退。
+ */
 const NAI_MODEL_OPTIONS = [
-    { value: "nai-diffusion-4-5-full", label: "nai-diffusion-4-5-full（最新·推荐）" },
+    { value: "nai-diffusion-5-curated", label: "nai-diffusion-5-curated（最新旗舰·推荐）" },
+    { value: "nai-diffusion-5-full", label: "nai-diffusion-5-full（最新·训练集更全）" },
+    { value: "nai-diffusion-4-5-full", label: "nai-diffusion-4-5-full（稳定·高质量）" },
     { value: "nai-diffusion-4-5-curated", label: "nai-diffusion-4-5-curated" },
     { value: "nai-diffusion-4-full", label: "nai-diffusion-4-full" },
     { value: "nai-diffusion-4-curated-preview", label: "nai-diffusion-4-curated-preview" },

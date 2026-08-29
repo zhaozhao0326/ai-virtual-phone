@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.52";
+export const APP_VERSION = "1.7.53";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.53",
+    date: "2026-08-29",
+    title: "NAI 生图模型新增 V5 选项",
+    highlights: [
+      "图像生成设置新增 NovelAI Diffusion V5（Curated / Full）两个可选模型",
+      "模型下拉更新至官方最新矩阵（V5 / V4.5 / V4 / V3），标识与官方 API 一致",
+      "默认模型保持不变，用户可在设置中手动切换至 V5；V5 算力消耗更高，按需选用",
+    ],
+  },
   {
     version: "1.7.52",
     date: "2026-08-26",
