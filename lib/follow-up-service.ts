@@ -29,6 +29,15 @@ import {
     suppressIdleReconnectUntil,
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
+import {
+    GROUP_WARMUP_MAX_CONSECUTIVE,
+    loadGroupWarmupEnabled,
+    loadGroupWarmupWhitelist,
+    loadGroupWarmupRules,
+    markGroupWarmupFired,
+    suppressGroupWarmupUntil,
+    resetGroupWarmupForSession,
+} from "./group-warmup-storage";
 import { loadFollowUpConfig } from "./settings-storage";
 import { parseAIResponse } from "./rich-message-parser";
 import type { ParsedMessagePart } from "./rich-message-parser";
@@ -294,6 +303,8 @@ export function cancelFollowUp(sessionId: string) {
     // 用户发了消息：冷场重连计数清零，按新周期重挂服务端预约
     const idleRule = resetIdleReconnectForSession(sessionId);
     if (idleRule) void armIdleReconnectBailout({ ...idleRule, consecutiveCount: 0 });
+    // 用户在群里发了消息：该群冷场计数清零（有互动就不强制触发）
+    resetGroupWarmupForSession(sessionId);
     // If an API call is already in-flight, mark it for cancellation
     if (firingSet.has(sessionId)) {
         cancelledWhileFiring.add(sessionId);
@@ -409,6 +420,7 @@ function pollSchedules() {
         pollMenstrualPeriodCare(now);
         pollMemoryCare(now);
         pollIdleReconnect(now);
+        pollGroupWarmup(now);
     } catch (e) {
         console.error("[FollowUp] pollSchedules error:", e);
     }
@@ -732,6 +744,156 @@ async function fireIdleReconnect(rule: IdleReconnectRule, lastUserAt: number) {
         backgroundGeneratingSessions.delete(rule.sessionId);
         cancelledBackgroundSessions.delete(rule.sessionId);
         idleReconnectFiringSet.delete(rule.id);
+    }
+}
+
+// ── 群冷场自动暖场：群太久没消息 → 允许暖场的角色主动接话（频率只管基线兜底） ──
+
+const groupWarmupFiringSet = new Set<string>();
+let lastGroupWarmupPollAt = 0;
+const GROUP_WARMUP_POLL_INTERVAL_MS = 60_000;
+
+function pollGroupWarmup(now: number) {
+    if (now - lastGroupWarmupPollAt < GROUP_WARMUP_POLL_INTERVAL_MS) return;
+    lastGroupWarmupPollAt = now;
+
+    // 边界约束：暖场只写「真实群消息流」，绝不触碰「群聊线下模式」的离线轮次
+    // （ai_phone_chat_offline_turns）。离线模式原有的自主推进剧情能力必须始终独立保留，
+    // 暖场只是真实群的一个叠加层，二者互不替代、互不抑制。
+    // 铁律：总开关关、或无白名单，一律不动作
+    if (!loadGroupWarmupEnabled()) return;
+    const whitelist = new Set(loadGroupWarmupWhitelist());
+    if (whitelist.size === 0) return;
+
+    for (const rule of loadGroupWarmupRules()) {
+        if (!rule.enabled) continue;
+        if (groupWarmupFiringSet.has(rule.groupSessionId)) continue;
+        if (firingSet.has(rule.groupSessionId)) continue;
+
+        const session = loadChatSessions().find((s) => s.id === rule.groupSessionId);
+        if (!session || !session.isGroup) continue;
+
+        const messages = loadChatMessages(session.id);
+        const lastMsg = [...messages].reverse()[0];
+        if (!lastMsg) continue;
+        const lastMsgAt = new Date(lastMsg.createdAt).getTime();
+
+        // 群里有新互动（任意角色）就重置连发计数：有互动不强制触发
+        const effectiveConsecutive = rule.lastFiredAt && rule.lastFiredAt > lastMsgAt ? rule.consecutiveCount : 0;
+        if (effectiveConsecutive >= GROUP_WARMUP_MAX_CONSECUTIVE) continue;
+
+        const intervalMs = Math.max(1, rule.intervalMinutes) * 60_000;
+        const nextDueAt = Math.max(
+            lastMsgAt + intervalMs,
+            rule.lastFiredAt ? rule.lastFiredAt + intervalMs : 0,
+            rule.suppressedUntil ?? 0,
+        );
+        if (now < nextDueAt) continue;
+        if (now < scheduledOutboxGraceUntil) continue;
+        if (isWithinPushQuietHours(now)) continue; // 安静时段本地也不打扰，出时段后自然触发
+
+        console.log(`[GroupWarmup] Firing for group=${session.id}, idle=${Math.round((now - lastMsgAt) / 60000)}min`);
+        void fireGroupWarmup(rule, session, whitelist, lastMsg);
+    }
+}
+
+async function fireGroupWarmup(
+    rule: import("./group-warmup-storage").GroupWarmupRule,
+    session: import("./chat-storage").ChatSession,
+    whitelist: Set<string>,
+    lastMsg: import("./chat-storage").ChatMessage,
+) {
+    groupWarmupFiringSet.add(session.id);
+    try {
+        const chars = loadCharacters();
+        const participants = (session.participantIds || [])
+            .map((id) => chars.find((c) => c.id === id))
+            .filter((c): c is NonNullable<typeof c> => Boolean(c));
+        const lastSpeakerId = lastMsg.role === "assistant" ? (lastMsg.senderCharacterId ?? null) : null;
+
+        // 候选发言者：群成员 ∩ 白名单；auto 模式排除刚发言者，指定模式锁定该角色
+        let candidates = participants.filter((c) => whitelist.has(c.id));
+        if (rule.speakerMode !== "auto") {
+            const fixed = participants.find((c) => c.id === rule.speakerMode);
+            candidates = fixed && whitelist.has(fixed.id) ? [fixed] : candidates;
+        } else {
+            const nonLast = candidates.filter((c) => c.id !== lastSpeakerId);
+            if (nonLast.length > 0) candidates = nonLast;
+        }
+        if (candidates.length === 0) return;
+
+        const latestMessages = loadChatMessages(session.id);
+
+        backgroundGeneratingSessions.add(session.id);
+        window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
+
+        // 不塞独立的 system 提示：与已验证的 idle-reconnect 范式一致，暖场引导交由
+        // 群历史 + chat_group_warmup 预设（命中因 appTags 含 "warmup"）+ timedWakeElapsedMinutes 通道承担。
+        // 真实时间差：让模型感知"群已冷场多久"，避免跨天暖场时接着上次的旧话题说（跳戏）。
+        const lastMsgAt = new Date(lastMsg.createdAt).getTime();
+        const elapsedMinutes = Math.max(1, Math.round((Date.now() - lastMsgAt) / 60000));
+        const rounds = await generateBackgroundCompletionRounds(session, latestMessages, {
+            appTags: ["group_chat", "warmup", "text"],
+            timedWakeElapsedMinutes: elapsedMinutes,
+            timedWakeIntent: "群冷场暖场",
+        });
+
+        if (isBackgroundGenerationCancelled(session.id)) {
+            const intervalMs = Math.max(1, rule.intervalMinutes) * 60_000;
+            suppressGroupWarmupUntil(session.id, Date.now() + intervalMs);
+            window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
+            return;
+        }
+
+        // 逐段解析「角色名：内容」，只落成白名单内且是候选的角色
+        const texts = rounds.map((r) => r.text).join("\n");
+        const lines = texts.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        let pushed = 0;
+        for (const line of lines) {
+            const m = line.match(/^([^：:]+)[：:]\s*([\s\S]*)$/);
+            if (!m) continue;
+            const name = m[1].trim();
+            const content = m[2].trim();
+            if (!content) continue;
+            const char = candidates.find(
+                (c) => c.name === name || name.includes(c.name) || c.name.includes(name),
+            );
+            if (!char) continue; // 非白名单/非候选角色，跳过
+            pushChatMessage({
+                sessionId: session.id,
+                role: "assistant",
+                content,
+                senderCharacterId: char.id,
+                senderName: char.name,
+            });
+            pushed += 1;
+        }
+        // 兜底：模型没按「角色名：内容」输出（整段就是一句话）→ 用候选首位落成
+        if (pushed === 0 && texts.trim()) {
+            const char = candidates[0];
+            pushChatMessage({
+                sessionId: session.id,
+                role: "assistant",
+                content: texts.trim(),
+                senderCharacterId: char.id,
+                senderName: char.name,
+            });
+            pushed += 1;
+        }
+
+        if (pushed > 0) {
+            markGroupWarmupFired(session.id, Date.now());
+            window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: session.id } }));
+            window.dispatchEvent(new CustomEvent("weixin-messages-updated", { detail: { sessionId: session.id } }));
+        }
+        window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
+    } catch (error: unknown) {
+        console.error("[GroupWarmup] Error:", error);
+        window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
+    } finally {
+        backgroundGeneratingSessions.delete(session.id);
+        cancelledBackgroundSessions.delete(session.id);
+        groupWarmupFiringSet.delete(session.id);
     }
 }
 

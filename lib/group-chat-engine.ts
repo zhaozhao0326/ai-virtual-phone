@@ -284,7 +284,7 @@ export type GroupChatPromptBuildOptions = {
     apiConfigId?: string;
 };
 
-async function buildGroupChatPromptMessages(
+export async function buildGroupChatPromptMessages(
     session: ChatSession,
     history: ChatMessage[],
     options?: GroupChatPromptBuildOptions,

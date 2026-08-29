@@ -73,26 +73,32 @@ function buildProactiveHint(
     context?: string,
     memoryContext?: string,
     timeContextText?: string,
+    gapMinutes?: number,
 ): string {
     const ctx = context ? `（背景：${context}）` : "";
     const timePart = timeContextText && timeContextText.trim()
         ? `\n现在是${timeContextText.trim()}。`
         : "";
+    // 间隔感知：角色主动私聊常发生在「用户一阵没来」之后。必须让模型知道真实过去多久，
+    // 否则会假装时间没流逝、接着上次没说完的话题当连续对话（跳戏）。与 idle-reconnect / 群暖场同源。
+    const gapPart = gapMinutes && gapMinutes > 1
+        ? `\n注意真实时间已经过去这么久（距你们上次聊天约 ${gapMinutes} 分钟前），不要假装时间没有流逝、不要接着上次没说完的话题当成连续对话；可以自然地隔几天重提旧事，或直接开个新话题。`
+        : "";
     switch (event) {
         case "group_dissolved":
-            return `【剧情提示·仅你可见，不要念出】你所在的一个群聊刚刚被解散了。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地聊起这件事、或顺着你们的关系说点什么。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
+            return `【剧情提示·仅你可见，不要念出】你所在的一个群聊刚刚被解散了。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地聊起这件事、或顺着你们的关系说点什么。${gapPart}直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
         case "friend_deleted":
-            return `【剧情提示·仅你可见】${userName}刚刚把你从好友里删除了。${ctx}现在由你主动重新给${userName}发一条私聊，以${charName}的身份自然地表达你的反应或想说的话。直接输出你要说的话，不要输出协议标签。`;
+            return `【剧情提示·仅你可见】${userName}刚刚把你从好友里删除了。${ctx}现在由你主动重新给${userName}发一条私聊，以${charName}的身份自然地表达你的反应或想说的话。${gapPart}直接输出你要说的话，不要输出协议标签。`;
         case "friend_rejected":
-            return `【剧情提示·仅你可见】${userName}刚刚拒绝了你的好友申请。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地回应。直接输出你要说的话，不要输出协议标签。`;
+            return `【剧情提示·仅你可见】${userName}刚刚拒绝了你的好友申请。${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地回应。${gapPart}直接输出你要说的话，不要输出协议标签。`;
         case "memory_care": {
             const memoryPart = memoryContext && memoryContext.trim()
                 ? `\n你想起了一些你们之间的过往：\n${memoryContext.trim()}\n`
                 : "";
-            return `【剧情提示·仅你可见，不要念出】${timePart}你刚刚想起了和${userName}之间的共同经历。${memoryPart}${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地提起其中一件你们一起经历过的、值得怀念或关心的事。注意要贴合当下的时间与情境：只提现在这个时间点说依然自然、合适的话题；如果记忆里的往事与当前时段明显不搭（例如深夜时分不宜提早上上学、早餐、晨跑这类事），就换一件更合适的事，或换个贴合当下的关心角度（比如问问今天过得怎么样、有没有好好吃饭、早点休息）。语气要像真的想起老朋友一样自然、有温度，不要机械复述记忆原文。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
+            return `【剧情提示·仅你可见，不要念出】${timePart}你刚刚想起了和${userName}之间的共同经历。${memoryPart}${ctx}现在由你主动给${userName}发一条私聊，以${charName}的身份自然地提起其中一件你们一起经历过的、值得怀念或关心的事。注意要贴合当下的时间与情境：只提现在这个时间点说依然自然、合适的话题；如果记忆里的往事与当前时段明显不搭（例如深夜时分不宜提早上上学、早餐、晨跑这类事），就换一件更合适的事，或换个贴合当下的关心角度（比如问问今天过得怎么样、有没有好好吃饭、早点休息）。${gapPart}语气要像真的想起老朋友一样自然、有温度，不要机械复述记忆原文。直接输出你要说的话，不要输出任何协议标签（如[内心]、[状态栏]）。`;
         }
         default:
-            return `【剧情提示·仅你可见】现在由你主动给${userName}发一条私聊，以${charName}的身份自然地开启话题。${ctx}直接输出你要说的话，不要输出协议标签。`;
+            return `【剧情提示·仅你可见】现在由你主动给${userName}发一条私聊，以${charName}的身份自然地开启话题。${ctx}${gapPart}直接输出你要说的话，不要输出协议标签。`;
     }
 }
 
@@ -135,7 +141,12 @@ export async function triggerProactiveDM(
         const session = createOrGetSession(characterId);
 
         const messages = loadChatMessages(session.id);
-        const hint = buildProactiveHint(event, char.name, userName, opts.context, opts.memoryContext, describeCurrentMoment(char.timeZone));
+        // 间隔感知：取本会话最后一条消息的实时差，让模型知道「距上次互动过了多久」。
+        const lastMsg = messages.length ? messages[messages.length - 1] : null;
+        const elapsedMinutes = lastMsg && lastMsg.createdAt
+            ? Math.max(1, Math.round((Date.now() - new Date(lastMsg.createdAt).getTime()) / 60000))
+            : 1;
+        const hint = buildProactiveHint(event, char.name, userName, opts.context, opts.memoryContext, describeCurrentMoment(char.timeZone), elapsedMinutes);
         const augmented = [
             ...messages,
             {
@@ -151,7 +162,11 @@ export async function triggerProactiveDM(
         const aiRaw = flattenCompletionResult(await generateChatCompletion(
             session,
             augmented,
-            { appId: opts.appId ?? "chat" },
+            {
+                appId: opts.appId ?? "chat",
+                timedWakeElapsedMinutes: elapsedMinutes,
+                timedWakeIntent: `角色主动私聊:${event}`,
+            },
         ));
 
         const parsed = parseAIResponse(aiRaw, []);

@@ -41,11 +41,12 @@ import { VideoCallScreen } from "./video-call-screen";
 import { GroupCallScreen } from "./group-call-screen";
 import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
-import { ConfirmDialog } from "@/components/ui/modal";
+import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
 import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { extractGroupBubbles, realizeOfflineTurnsToGroup, type ExtractedBubble } from "@/lib/group-offline-realize";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
 import { useKeyboardDismissAutoSend } from "@/components/chat/use-keyboard-dismiss-auto-send";
@@ -1201,6 +1202,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [activeOfflineTarget, setActiveOfflineTarget] = useState<OfflineActionTarget | null>(null);
     const [editingOfflineTarget, setEditingOfflineTarget] = useState<OfflineActionTarget | null>(null);
     const [editingOfflineContent, setEditingOfflineContent] = useState("");
+    // 「群聊线下剧情 → 真实群聊」桥：落成弹窗状态
+    const [realizeOpen, setRealizeOpen] = useState(false);
+    const [realizeLoading, setRealizeLoading] = useState(false);
+    const [realizeBubbles, setRealizeBubbles] = useState<ExtractedBubble[]>([]);
+    const realizeRoster = useMemo(() => {
+        const chars = loadCharacters();
+        return (session.participantIds || []).map((id) => {
+            const c = chars.find((ch) => ch.id === id);
+            return { id, name: c?.name || id };
+        });
+    }, [session.participantIds]);
     const [regexRevision, setRegexRevision] = useState(0);
     // 小卷/设置面板改写自定义状态栏后，强制聊天窗口重读 getStatusRegionConfig 刷新状态栏渲染
     const [statusRegionRevision, setStatusRegionRevision] = useState(0);
@@ -4645,6 +4657,62 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     };
 
+    // 「落成真实群」：把群聊线下叙事抽成真实气泡，预览可改后落成
+    const handleRealizeOpen = async () => {
+        if (!session.isGroup) return;
+        if (offlineTurns.length === 0) {
+            showChatToast("还没有线下剧情可落成");
+            return;
+        }
+        setRealizeLoading(true);
+        try {
+            const bubbles = await extractGroupBubbles(session, offlineTurns);
+            if (bubbles.length === 0) {
+                showChatToast("没有可落成的对话（剧情里似乎没有角色发言）");
+                return;
+            }
+            setRealizeBubbles(bubbles);
+            setRealizeOpen(true);
+        } catch (error: any) {
+            showChatToast(`抽取失败: ${error?.message || String(error)}`, 3000);
+        } finally {
+            setRealizeLoading(false);
+        }
+    };
+
+    const handleRealizeSpeakerChange = (idx: number, speakerId: string) => {
+        setRealizeBubbles(prev => prev.map((b, i) => (i === idx ? { ...b, speakerId: speakerId || null } : b)));
+    };
+
+    const handleRealizeLineChange = (idx: number, line: string) => {
+        setRealizeBubbles(prev => prev.map((b, i) => (i === idx ? { ...b, line } : b)));
+    };
+
+    const handleRealizeRemove = (idx: number) => {
+        setRealizeBubbles(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const handleRealizeConfirm = async () => {
+        const kept = realizeBubbles
+            .filter(b => b.speakerId && b.line.trim())
+            .map(b => ({ line: b.line.trim(), speakerId: b.speakerId }));
+        if (kept.length === 0) {
+            showChatToast("没有可落成的气泡（都跳过了）");
+            setRealizeOpen(false);
+            setRealizeBubbles([]);
+            return;
+        }
+        try {
+            const res = await realizeOfflineTurnsToGroup(session, kept);
+            showChatToast(`已落成 ${res.pushed} 条${res.skipped ? `，跳过 ${res.skipped} 条` : ""} 到真实群`);
+        } catch (error: any) {
+            showChatToast(`落成失败: ${error?.message || String(error)}`, 3000);
+        } finally {
+            setRealizeOpen(false);
+            setRealizeBubbles([]);
+        }
+    };
+
     const handleRetry = async (msgId: string) => {
         const msgIndex = messages.findIndex(m => m.id === msgId);
         if (msgIndex === -1 || messages[msgIndex].role !== "assistant") return;
@@ -5825,6 +5893,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             >
                 {offlineMode && (
                     <div className="chat-offline-body">
+                        {session.isGroup && (
+                            <div className="chat-offline-realize-bar">
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-primary chat-offline-realize-btn"
+                                    disabled={realizeLoading}
+                                    onClick={() => void handleRealizeOpen()}
+                                >
+                                    {realizeLoading ? "抽取中…" : "落成真实群"}
+                                </button>
+                                <span className="chat-offline-realize-hint">把剧本里角色说的话，落成进这个真实群聊</span>
+                            </div>
+                        )}
                         {offlineTurns.length === 0 && !pendingOfflineUserText ? (
                             <div className="chat-offline-empty">
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z" /><circle cx="12" cy="10" r="3" /></svg>
@@ -6701,6 +6782,50 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     onSend={handleTextPhotoSend}
                     onClose={() => setRichModal(null)}
                 />
+            )}
+            {realizeOpen && (
+                <ContentDialog
+                    title="落成真实群"
+                    confirmLabel="落成"
+                    cancelLabel="取消"
+                    onConfirm={() => void handleRealizeConfirm()}
+                    onCancel={() => { setRealizeOpen(false); setRealizeBubbles([]); }}
+                >
+                    <div className="realize-bubble-list">
+                        <p className="realize-bubble-tip">以下是从线下剧情里抽出的角色发言，确认后会以对应角色身份发进真实群。可改内容、改发言者，或选「跳过」不导入。</p>
+                        {realizeBubbles.length === 0 && <p className="realize-bubble-empty">没有可落成的气泡。</p>}
+                        {realizeBubbles.map((b, idx) => (
+                            <div className="realize-bubble-row" key={idx}>
+                                <div className="realize-bubble-head">
+                                    <select
+                                        className="realize-bubble-speaker"
+                                        value={b.speakerId ?? ""}
+                                        onChange={(e) => handleRealizeSpeakerChange(idx, e.target.value)}
+                                    >
+                                        <option value="">跳过 / 不导入</option>
+                                        {realizeRoster.map((r) => (
+                                            <option key={r.id} value={r.id}>{r.name}</option>
+                                        ))}
+                                    </select>
+                                    {!b.speakerId && b.speakerName && (
+                                        <span className="realize-bubble-unmatched">未匹配成员：{b.speakerName}</span>
+                                    )}
+                                    <button
+                                        type="button"
+                                        className="realize-bubble-remove"
+                                        aria-label="移除"
+                                        onClick={() => handleRealizeRemove(idx)}
+                                    >移除</button>
+                                </div>
+                                <textarea
+                                    className="realize-bubble-text ui-textarea"
+                                    value={b.line}
+                                    onChange={(e) => handleRealizeLineChange(idx, e.target.value)}
+                                />
+                            </div>
+                        ))}
+                    </div>
+                </ContentDialog>
             )}
             {richModal === "photo" && (
                 <PhotoInputModal

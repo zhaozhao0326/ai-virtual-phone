@@ -35,6 +35,15 @@ import {
 import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
 import { loadCharacters } from "@/lib/character-storage";
+import {
+    loadGroupWarmupEnabled,
+    saveGroupWarmupEnabled,
+    loadGroupWarmupWhitelist,
+    saveGroupWarmupWhitelist,
+    getGroupWarmupRule,
+    upsertGroupWarmupRule,
+    type GroupWarmupRule,
+} from "@/lib/group-warmup-storage";
 import { isAgentComputerConfigured } from "@/lib/agent-computer";
 import { CharacterComputerPage } from "./character-computer-page";
 import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
@@ -299,6 +308,50 @@ export function ChatSettingsPanel({
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
     // 每角色独立开关：角色主动想起我（记忆唤起主动关心）
     const [memoryCareOn, setMemoryCareOn] = useState(() => isMemoryCareEnabled(session.contactId));
+    // ── 群冷场自动暖场（频率滑块 + 选人白名单，铁律：默认全关） ──
+    const [gwRule, setGwRule] = useState<GroupWarmupRule | undefined>(() => (session.isGroup ? getGroupWarmupRule(session.id) : undefined));
+    const [gwEnabled, setGwEnabled] = useState(() => loadGroupWarmupEnabled());
+    const [gwWhitelist, setGwWhitelist] = useState<string[]>(() => loadGroupWarmupWhitelist());
+    const [gwInterval, setGwInterval] = useState(() => gwRule?.intervalMinutes ?? 360);
+    const [gwSpeakerMode, setGwSpeakerMode] = useState<string>(() => gwRule?.speakerMode ?? "auto");
+    const gwAllChars = loadCharacters();
+    useEffect(() => {
+        if (!session.isGroup) return;
+        setGwEnabled(loadGroupWarmupEnabled());
+        setGwWhitelist(loadGroupWarmupWhitelist());
+        const r = getGroupWarmupRule(session.id);
+        setGwRule(r);
+        setGwInterval(r?.intervalMinutes ?? 360);
+        setGwSpeakerMode(r?.speakerMode ?? "auto");
+    }, [session.id]);
+    const persistGwRule = (patch: Partial<GroupWarmupRule>) => {
+        const base: GroupWarmupRule = gwRule ?? {
+            id: `gw_${session.id}`,
+            groupSessionId: session.id,
+            enabled: false,
+            intervalMinutes: gwInterval,
+            speakerMode: gwSpeakerMode,
+            consecutiveCount: 0,
+            createdAt: Date.now(),
+        };
+        const next = { ...base, ...patch };
+        setGwRule(next);
+        upsertGroupWarmupRule(next);
+    };
+    const handleGwGlobalToggle = (on: boolean) => { setGwEnabled(on); saveGroupWarmupEnabled(on); };
+    const handleGwRuleToggle = (on: boolean) => { persistGwRule({ enabled: on }); };
+    const handleGwInterval = (val: number) => { setGwInterval(val); persistGwRule({ intervalMinutes: val }); };
+    const handleGwSpeakerMode = (mode: string) => { setGwSpeakerMode(mode); persistGwRule({ speakerMode: mode }); };
+    const handleGwWhitelistToggle = (charId: string, on: boolean) => {
+        const next = on ? Array.from(new Set([...gwWhitelist, charId])) : gwWhitelist.filter((id) => id !== charId);
+        setGwWhitelist(next);
+        saveGroupWarmupWhitelist(next);
+    };
+    const gwIntervalLabel = gwInterval < 60
+        ? `${gwInterval} 分钟`
+        : gwInterval % (24 * 60) === 0
+            ? `${gwInterval / (24 * 60)} 天`
+            : `${(gwInterval / 60).toFixed(1)} 小时`;
     // 自定义状态栏（状态区）
     const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
@@ -947,6 +1000,84 @@ export function ChatSettingsPanel({
                                     <span className="menu-desc">上帝操作：无视群规则直接拿回群主</span>
                                 </div>
                             </button>
+                        )}
+                    </div>
+                    {/* 群冷场自动暖场：频率滑块 + 选人白名单 */}
+                    <div className="menu-group">
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">群冷场自动暖场（总开关）</span>
+                                <span className="menu-desc">群太久没消息，允许的角色会主动接话暖场；角色有强烈分享欲时不受此限制</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle checked={gwEnabled} onChange={handleGwGlobalToggle} />
+                            </div>
+                        </div>
+                        {gwEnabled && (
+                            <>
+                                <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                                    <ChatInfoIcon icon={MessageSquare} color={CONTENT_APP_ACCENTS.chat} />
+                                    <div className="menu-label-group" style={{ width: "100%" }}>
+                                        <span className="menu-label">本群冷场频率</span>
+                                        <span className="menu-desc">超过 {gwIntervalLabel}（{gwInterval} 分钟）没消息就暖场；有互动不强制触发</span>
+                                        <input
+                                            type="range"
+                                            min={30}
+                                            max={4320}
+                                            step={30}
+                                            value={gwInterval}
+                                            onChange={(e) => handleGwInterval(Number(e.target.value))}
+                                            className="gw-slider"
+                                        />
+                                        <div className="gw-presets">
+                                            {[360, 720, 1440, 2880].map((p) => (
+                                                <button
+                                                    key={p}
+                                                    type="button"
+                                                    className={`gw-preset${gwInterval === p ? " active" : ""}`}
+                                                    onClick={() => handleGwInterval(p)}
+                                                >
+                                                    {p === 360 ? "6 小时" : p === 720 ? "12 小时" : p === 1440 ? "24 小时" : "48 小时"}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="menu-right">
+                                        <Toggle checked={!!gwRule?.enabled} onChange={handleGwRuleToggle} />
+                                    </div>
+                                </div>
+                                <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                                    <ChatInfoIcon icon={Users} color={BINDING_ACCENTS.preset} />
+                                    <div className="menu-label-group" style={{ width: "100%" }}>
+                                        <span className="menu-label">发言角色</span>
+                                        <span className="menu-desc">系统自动挑（从下方白名单）或固定一位</span>
+                                        <select
+                                            value={gwSpeakerMode}
+                                            onChange={(e) => handleGwSpeakerMode(e.target.value)}
+                                            className="gw-speaker-select"
+                                        >
+                                            <option value="auto">系统自动挑</option>
+                                            {groupChars.map((c) => (c ? <option key={c.id} value={c.id}>{c.name}</option> : null))}
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                                    <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.voice} />
+                                    <div className="menu-label-group" style={{ width: "100%" }}>
+                                        <span className="menu-label">允许暖场的角色（选人）</span>
+                                        <span className="menu-desc">默认全关，逐个勾选；只有勾选的角色会在群里冷场时暖场</span>
+                                        <div className="gw-whitelist">
+                                            {gwAllChars.map((c) => (
+                                                <label key={c.id} className="gw-whitelist-row">
+                                                    <Toggle checked={gwWhitelist.includes(c.id)} onChange={(on) => handleGwWhitelistToggle(c.id, on)} />
+                                                    <span className="gw-whitelist-name">{c.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
                         )}
                     </div>
                     </>

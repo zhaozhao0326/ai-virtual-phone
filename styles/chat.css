@@ -769,6 +769,98 @@
   gap: 12px;
 }
 
+/* 「落成真实群」工具栏 */
+.chat-offline-realize-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-card) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 34%, transparent);
+}
+.chat-offline-realize-btn {
+  flex: 0 0 auto;
+}
+.chat-offline-realize-hint {
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.7;
+  line-height: 1.4;
+}
+
+/* 落成弹窗：气泡编辑器 */
+.realize-bubble-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.realize-bubble-tip {
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.8;
+  margin: 0 0 2px;
+  line-height: 1.5;
+}
+.realize-bubble-empty {
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.6;
+}
+.realize-bubble-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-card) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 26%, transparent);
+}
+.realize-bubble-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.realize-bubble-speaker {
+  flex: 0 0 auto;
+  max-width: 45%;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 40%, transparent);
+  background: var(--c-input, var(--c-card));
+  color: var(--c-text);
+  font-size: calc(12px*var(--app-text-scale,1));
+}
+.realize-bubble-unmatched {
+  flex: 1 1 auto;
+  font-size: calc(11px*var(--app-text-scale,1));
+  color: var(--c-warn, #c08a2e);
+  opacity: 0.9;
+}
+.realize-bubble-remove {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 40%, transparent);
+  background: transparent;
+  color: var(--c-icon);
+  font-size: calc(11px*var(--app-text-scale,1));
+  cursor: pointer;
+}
+.realize-bubble-remove:hover {
+  color: var(--c-danger, #d9534f);
+  border-color: color-mix(in srgb, var(--c-danger, #d9534f) 50%, transparent);
+}
+.realize-bubble-text {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+}
+
 .chat-offline-empty {
   align-self: center;
   margin-top: 28vh;
@@ -7376,4 +7468,63 @@
 }
 .chat-todo-del:hover {
   color: #ff3b4f;
+}
+/* 群冷场自动暖场（频率滑块 + 选人白名单） */
+.gw-slider {
+  width: 100%;
+  margin-top: 8px;
+  accent-color: var(--c-accent, #eb7340);
+}
+.gw-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.gw-preset {
+  flex: 1 1 auto;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--c-line, #e6e6e6);
+  background: var(--c-soft, #f6f7f9);
+  color: var(--c-text, #1f2329);
+  font-size: 12px;
+  cursor: pointer;
+}
+.gw-preset.active {
+  border-color: var(--c-accent, #eb7340);
+  color: var(--c-accent, #eb7340);
+  background: transparent;
+}
+.gw-speaker-select {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--c-line, #e6e6e6);
+  background: var(--c-input, #fff);
+  color: var(--c-text, #1f2329);
+  font-size: 13px;
+}
+.gw-whitelist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.gw-whitelist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--c-soft, #f6f7f9);
+  cursor: pointer;
+}
+.gw-whitelist-name {
+  font-size: 13px;
+  color: var(--c-text, #1f2329);
 }
