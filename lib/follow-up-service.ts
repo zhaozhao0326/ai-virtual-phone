@@ -52,6 +52,7 @@ import {
 } from "./generated-image-retry";
 import {
     loadTimedWakeSchedules,
+    markTimedWakeFired,
     removeTimedWakeSchedule,
     type TimedWakeSchedule,
 } from "./timed-wake-storage";
@@ -949,6 +950,12 @@ async function fireTimedWake(sched: TimedWakeSchedule) {
             latestMessages,
         );
         console.log(`[TimedWake] Result: hasVisible=${hasVisible}`);
+
+        // 记一笔自主唤醒：对方一直没回就累计，回过则清零（配合工具侧护栏，阻断角色无限自我续期）
+        if (sched.source !== "user") {
+            const lastUserMsg = [...latestMessages].reverse().find(m => m.role === "user");
+            markTimedWakeFired(session.id, lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : 0);
+        }
 
         if (hasVisible) {
             scheduleFollowUp(session.id, 0, stateValues);

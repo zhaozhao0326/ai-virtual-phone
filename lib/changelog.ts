@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.60";
+export const APP_VERSION = "1.7.61";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.61",
+    date: "2026-08-30",
+    title: "主动联系频率收敛",
+    highlights: [
+      "「稍后主动联系」的最短间隔调整为 30 分钟，避免过密的主动消息打扰",
+      "对方一直未回应时，角色自主发起的主动联系达到上限后会自动停下，收到回复后恢复",
+    ],
+  },
   {
     version: "1.7.60",
     date: "2026-08-30",

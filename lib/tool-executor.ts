@@ -77,7 +77,13 @@ import {
     readLocalDataRecord,
     searchLocalDataRecords,
 } from "./local-data-fs";
-import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
+import {
+    TIMED_WAKE_MAX_CONSECUTIVE,
+    evaluateTimedWakeQuota,
+    makeTimedWakeId,
+    saveTimedWakeSchedule,
+} from "./timed-wake-storage";
+import { loadChatMessages } from "./chat-storage";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 import {
@@ -3109,7 +3115,20 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         };
     }
 
-    const delayMinutes = numberArg(call.args.delayMinutes ?? call.args.delay_minutes, 1, 10080, 15);
+    // 自我续期护栏：对方一直没回应时，不许角色无限次再约（否则会变成隔几分钟一条私聊）
+    const lastUserMsg = [...loadChatMessages(context.sessionId)].reverse().find(m => m.role === "user");
+    const lastUserAt = lastUserMsg ? new Date(lastUserMsg.createdAt).getTime() : 0;
+    if (!evaluateTimedWakeQuota(context.sessionId, lastUserAt)) {
+        return {
+            name: "稍后主动联系",
+            success: false,
+            error: `对方还没有回应，你已连续主动找了 ${TIMED_WAKE_MAX_CONSECUTIVE} 次。先停下来，把开口的主动权留给对方。`,
+            userNotice: "对方还没回，暂时不再安排主动联系",
+        };
+    }
+
+    // 下限 30 分钟：几分钟就再找对方属于打扰，也避免角色反复自我续期把对话刷屏（与工具描述一致）
+    const delayMinutes = numberArg(call.args.delayMinutes ?? call.args.delay_minutes, 30, 10080, 60);
     const now = Date.now();
     const schedule = {
         id: makeTimedWakeId(context.sessionId),

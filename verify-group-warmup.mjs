@@ -20,6 +20,9 @@ const F = {
   settings: ROOT + "components/chat/chat-settings-panel.tsx",
   changelog: ROOT + "lib/changelog.ts",
   css: ROOT + "styles/chat.css",
+  twStorage: ROOT + "lib/timed-wake-storage.ts",
+  toolExec: ROOT + "lib/tool-executor.ts",
+  capability: ROOT + "lib/internal-capability-storage.ts",
 };
 for (const [k, f] of Object.entries(F)) {
   if (!existsSync(f)) { console.error("源码缺失: " + f); process.exit(2); }
@@ -124,9 +127,26 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.60",
-  src.changelog.includes('APP_VERSION = "1.7.60"') &&
-  src.changelog.includes('version: "1.7.60"'));
+check("changelog 升到 1.7.61",
+  src.changelog.includes('APP_VERSION = "1.7.61"') &&
+  src.changelog.includes('version: "1.7.61"'));
+
+// ── 稍后主动联系 · 自我续期护栏（防角色隔几分钟一条私聊的无限循环）──
+check("delayMinutes 执行侧硬下限抬到 30 分钟",
+  /numberArg\(call\.args\.delayMinutes[^)]*,\s*30,\s*10080/.test(src.toolExec));
+check("工具描述与示例同步为至少 30 分钟（模型不会照抄旧的短间隔示例）",
+  src.capability.includes("至少 30 分钟") &&
+  !src.capability.includes('"delayMinutes":15'));
+check("连发上限常量存在",
+  /TIMED_WAKE_MAX_CONSECUTIVE\s*=\s*2/.test(src.twStorage));
+check("角色再约前走 evaluateTimedWakeQuota 闸门",
+  src.toolExec.includes("evaluateTimedWakeQuota(context.sessionId") &&
+  src.twStorage.includes("export function evaluateTimedWakeQuota"));
+check("到点发过一次后记数（仅角色自主唤醒，用户预约的不计）",
+  src.follow.includes("markTimedWakeFired(session.id") &&
+  src.follow.includes('sched.source !== "user"'));
+check("对方回复后连发计数清零",
+  src.twStorage.includes("if (lastUserMessageAt > getTimedWakeLastFireAt(sessionId))"));
 
 console.log("");
 console.log("═══════════════════════════════════════════════");
