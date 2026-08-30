@@ -9,6 +9,7 @@ import { loadTimedWakeSchedules, removeTimedWakeSchedule } from "./timed-wake-st
 import { loadIdleReconnectRules, removeIdleReconnectRule } from "./idle-reconnect-storage";
 import { loadChatSessions, loadAllFollowUpSchedules, clearFollowUpSchedule, deleteChatSession } from "./chat-storage";
 import { cancelBailoutKey, cancelBailoutPrefix, cancelFollowUpBailout } from "./push-bailout-client";
+import { loadGroupWarmupRules, upsertGroupWarmupRule } from "./group-warmup-storage";
 
 /** 角色销毁时调用：清掉该角色名下所有 1:1 会话及其排期（本地 + 服务端预约）。
  *  群聊不删（群是共享容器，删除角色后群内发言候选经白名单过滤自然失效）。 */
@@ -37,4 +38,18 @@ export function purgeCharacterRelatedData(characterId: string): void {
     // ④ 删除 1:1 会话本身（含消息）：本地任何触发路径（fireTimedWake / fireIdleReconnect）
     //    按 session 查不到即 return，双重保险。
     for (const s of sessions) deleteChatSession(s.id);
+
+    // ⑤ 群暖场白名单残留：从所有群的 whitelist 里移除该角色（运行时已有
+    //    participants∩whitelist 兜底不会误发，这里顺手清掉脏数据）。
+    const rules = loadGroupWarmupRules();
+    let touched = false;
+    for (const r of rules) {
+        if (r.whitelist.includes(characterId)) {
+            r.whitelist = r.whitelist.filter(id => id !== characterId);
+            touched = true;
+        }
+    }
+    if (touched) {
+        for (const r of rules) upsertGroupWarmupRule(r);
+    }
 }

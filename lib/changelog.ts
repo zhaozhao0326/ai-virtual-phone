@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.65";
+export const APP_VERSION = "1.7.66";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.66",
+    date: "2026-08-31",
+    title: "追问上限统一",
+    highlights: [
+      "服务端与本地追问上限统一，避免绕过本地护栏",
+      "删除角色时同步清理群暖场白名单等残留数据",
+    ],
+  },
   {
     version: "1.7.65",
     date: "2026-08-30",

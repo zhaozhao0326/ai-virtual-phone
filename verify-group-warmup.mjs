@@ -27,6 +27,7 @@ const F = {
   phoneApp: ROOT + "components/phone-character-app.tsx",
   profilePanel: ROOT + "components/chat/user-profile-panel.tsx",
   settingsStorage: ROOT + "lib/settings-storage.ts",
+  outbox: ROOT + "lib/push-outbox-client.ts",
 };
 for (const [k, f] of Object.entries(F)) {
   if (!existsSync(f)) { console.error("源码缺失: " + f); process.exit(2); }
@@ -131,9 +132,18 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.65",
-  src.changelog.includes('APP_VERSION = "1.7.65"') &&
-  src.changelog.includes('version: "1.7.65"'));
+check("changelog 升到 1.7.66",
+  src.changelog.includes('APP_VERSION = "1.7.66"') &&
+  src.changelog.includes('version: "1.7.66"'));
+
+// ── 追问上限一致性 + 删除角色白名单清理（1.7.66）──
+check("outbox 追问上限与本地一致（引用 MAX_FOLLOW_UPS，不再硬编码 10）",
+  src.outbox.includes("MAX_FOLLOW_UPS") &&
+  !src.outbox.includes("newCount < 10") &&
+  src.follow.includes("export const MAX_FOLLOW_UPS = 3;"));
+check("删除角色同时清理群暖场白名单残留",
+  src.cleanup.includes("loadGroupWarmupRules()") &&
+  src.cleanup.includes("r.whitelist.filter"));
 
 // ── 焦虑追问：每角色独立开关 + 关闭冷却期（关过再开不立即反复）──
 check("每角色独立开关存储（override null/true/false）",

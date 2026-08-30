@@ -77,7 +77,7 @@ import {
 } from "./menstrual-storage";
 
 // ── Constants ──────────────────────────────────────────────
-const MAX_FOLLOW_UPS = 3;
+export const MAX_FOLLOW_UPS = 3;
 const POLL_INTERVAL_MS = 3000; // check every 3 s
 const PERIOD_CARE_POLL_INTERVAL_MS = 60_000;
 const BACKGROUND_MESSAGE_STAGGER_MS = 800;

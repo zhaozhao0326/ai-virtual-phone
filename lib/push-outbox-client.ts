@@ -1,7 +1,7 @@
 // 离线推送·回端合并：App 打开/回前台时拉取服务端生成的原始输出，
 // 用客户端同一条解析管线（输出正则 → parseAndSaveResponse）落进聊天记录。
 
-import { parseAndSaveResponse, scheduleFollowUp } from "./follow-up-service";
+import { MAX_FOLLOW_UPS, parseAndSaveResponse, scheduleFollowUp } from "./follow-up-service";
 import { applyOutputRegex } from "./llm-prompt-assembler";
 import type { RegexConfig } from "./settings-types";
 import { stripHallucinatedTimestamps } from "./llm-provider-adapter";
@@ -111,7 +111,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                                 loadChatMessages(replySessionId),
                                 { silent: options?.silent !== false },
                             );
-                            if (hasVisible && newCount < 10) scheduleFollowUp(replySessionId, newCount, stateValues);
+                            if (hasVisible && newCount < MAX_FOLLOW_UPS) scheduleFollowUp(replySessionId, newCount, stateValues);
                         }
                         consumedIds.push(entry.id);
                         if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
@@ -173,7 +173,7 @@ export async function consumeServerOutbox(options?: { silent?: boolean; force?: 
                         existingMessages,
                         { silent: options?.silent !== false },
                     );
-                    if (hasVisible && newCount < 10) scheduleFollowUp(sessionId, newCount, stateValues);
+                    if (hasVisible && newCount < MAX_FOLLOW_UPS) scheduleFollowUp(sessionId, newCount, stateValues);
                     clearTimedWakeIfHandled(entry.trigger_key);
                     consumedIds.push(entry.id);
                     if (entry.trigger_key) handledTriggerKeys.add(entry.trigger_key);
