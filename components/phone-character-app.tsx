@@ -56,6 +56,7 @@ import {
   type CharacterVersion,
 } from "@/lib/character-version-storage";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import { purgeCharacterRelatedData } from "@/lib/schedule-cleanup";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 import { computeRelationshipGrowth, type RelationshipGrowth } from "@/lib/relationship-growth";
@@ -1391,6 +1392,7 @@ function CharListView({
                 if (!deleteConfirmReady) return;
                 if (deleteConfirm.type === 'char') {
                   onUpdateChars(characters.filter(c => c.id !== deleteConfirm.id));
+                  purgeCharacterRelatedData(deleteConfirm.id); // 清会话+排期（本地与服务端预约），根治删除后仍自动发消息
                   onNotice?.("已销毁调查档案");
                 } else {
                   onUpdateBgItems((bgItems || []).filter(b => b.id !== deleteConfirm.id));

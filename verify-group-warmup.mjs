@@ -23,6 +23,8 @@ const F = {
   twStorage: ROOT + "lib/timed-wake-storage.ts",
   toolExec: ROOT + "lib/tool-executor.ts",
   capability: ROOT + "lib/internal-capability-storage.ts",
+  cleanup: ROOT + "lib/schedule-cleanup.ts",
+  phoneApp: ROOT + "components/phone-character-app.tsx",
 };
 for (const [k, f] of Object.entries(F)) {
   if (!existsSync(f)) { console.error("源码缺失: " + f); process.exit(2); }
@@ -127,9 +129,9 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.62",
-  src.changelog.includes('APP_VERSION = "1.7.62"') &&
-  src.changelog.includes('version: "1.7.62"'));
+check("changelog 升到 1.7.63",
+  src.changelog.includes('APP_VERSION = "1.7.63"') &&
+  src.changelog.includes('version: "1.7.63"'));
 
 // ── 群暖场「有来有回（一轮）」：一次生成含起头+接话，按群开关控制落条数 ──
 check("暖场预设有来有回指令（起头 + 接话，2~3 行）",
@@ -146,6 +148,16 @@ check("设置面板有「有来有回（一轮）」开关",
   src.settings.includes("gwExchange") &&
   src.settings.includes("handleGwExchange") &&
   src.settings.includes("有来有回（一轮）"));
+
+// ── 删除角色时排期大扫除（根治"角色删了还在自动发消息"）──
+check("清理函数覆盖：定时唤醒 / 冷场重连 / 追问链 / 会话（本地+服务端）",
+  src.cleanup.includes("purgeCharacterRelatedData") &&
+  src.cleanup.includes("cancelBailoutKey(`timedwake:") &&
+  src.cleanup.includes("cancelBailoutPrefix(`idle:") &&
+  src.cleanup.includes("cancelFollowUpBailout(sched.sessionId)") &&
+  src.cleanup.includes("deleteChatSession(s.id)"));
+check("角色销毁入口调用清理函数",
+  src.phoneApp.includes("purgeCharacterRelatedData(deleteConfirm.id)"));
 
 // ── 稍后主动联系 · 自我续期护栏（防角色隔几分钟一条私聊的无限循环）──
 check("delayMinutes 执行侧硬下限抬到 30 分钟",

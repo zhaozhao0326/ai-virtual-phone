@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.62";
+export const APP_VERSION = "1.7.63";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.63",
+    date: "2026-08-30",
+    title: "删除角色彻底清理",
+    highlights: [
+      "删除角色时一并清除其聊天会话与定时唤醒、冷场重连等排期，避免角色已删除仍自动发消息",
+    ],
+  },
   {
     version: "1.7.62",
     date: "2026-08-30",
