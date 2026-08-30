@@ -131,9 +131,27 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.64",
-  src.changelog.includes('APP_VERSION = "1.7.64"') &&
-  src.changelog.includes('version: "1.7.64"'));
+check("changelog 升到 1.7.65",
+  src.changelog.includes('APP_VERSION = "1.7.65"') &&
+  src.changelog.includes('version: "1.7.65"'));
+
+// ── 焦虑追问：每角色独立开关 + 关闭冷却期（关过再开不立即反复）──
+check("每角色独立开关存储（override null/true/false）",
+  src.settingsStorage.includes("getFollowUpCharOverride") &&
+  src.settingsStorage.includes("setFollowUpCharOverride"));
+check("关闭冷却期：per-char grace + 全局 grace（24h）",
+  src.settingsStorage.includes("FOLLOW_UP_GRACE_HOURS = 24") &&
+  src.settingsStorage.includes("recordFollowUpGrace") &&
+  src.settingsStorage.includes("recordGlobalFollowUpGrace"));
+check("scheduleFollowUp 检查每角色开关与冷却期",
+  src.follow.includes("getFollowUpCharOverride(followSession.contactId)") &&
+  src.follow.includes("getFollowUpGraceUntil(followSession.contactId)") &&
+  src.follow.includes("getGlobalFollowUpGraceUntil()"));
+check("角色设置面板有「焦虑追问（此角色）」独立开关",
+  src.settings.includes("焦虑追问（此角色）") &&
+  src.settings.includes("disableFollowUpForCharacter(session.contactId)"));
+check("全局关闭时记录冷却期",
+  src.profilePanel.includes("recordGlobalFollowUpGrace()"));
 
 // ── 焦虑值驱动追问链：加总开关 + 收紧上限（原机制无开关、模型可持续输出高焦虑导致无限追发）──
 check("FollowUpConfig 含 enabled 总开关且默认开",

@@ -1072,6 +1072,50 @@ export function saveFollowUpConfig(config: FollowUpConfig): void {
     kvSet(FOLLOW_UP_CONFIG_KEY, JSON.stringify(config));
 }
 
+// ── 焦虑追问 · 每角色独立开关 + 关闭冷却期 ──
+// 背景：全局总开关一关全关，用户要「每角色独立开关」避免一次性搞死所有人；
+// 且关闭后上下文里积压的高焦虑值还在，直接再开会立即反复 → 关闭时记录冷却期
+// （默认 24h），冷却期内即使重新打开也不排追问，让高焦虑上下文自然消退。
+export const FOLLOW_UP_CHAR_KEY_PREFIX = "ai_phone_followup_char_";
+export const FOLLOW_UP_CHAR_GRACE_PREFIX = "ai_phone_followup_grace_char_";
+export const FOLLOW_UP_GLOBAL_GRACE_KEY = "ai_phone_followup_global_grace";
+export const FOLLOW_UP_GRACE_HOURS = 24;
+
+/** 每角色覆盖值：null=未设置（跟随全局总开关）；true=开；false=关 */
+export function getFollowUpCharOverride(characterId: string): boolean | null {
+    if (typeof window === "undefined") return null;
+    const raw = kvGet(FOLLOW_UP_CHAR_KEY_PREFIX + characterId);
+    if (raw === "1") return true;
+    if (raw === "0") return false;
+    return null;
+}
+export function setFollowUpCharOverride(characterId: string, on: boolean | null): void {
+    if (typeof window === "undefined") return;
+    kvSet(FOLLOW_UP_CHAR_KEY_PREFIX + characterId, on === null ? "" : (on ? "1" : "0"));
+}
+
+export function getFollowUpGraceUntil(characterId: string): number {
+    if (typeof window === "undefined") return 0;
+    return Number(kvGet(FOLLOW_UP_CHAR_GRACE_PREFIX + characterId) || "0") || 0;
+}
+export function recordFollowUpGrace(characterId: string): void {
+    if (typeof window === "undefined") return;
+    kvSet(FOLLOW_UP_CHAR_GRACE_PREFIX + characterId, String(Date.now() + FOLLOW_UP_GRACE_HOURS * 3_600_000));
+}
+export function clearFollowUpGrace(characterId: string): void {
+    if (typeof window === "undefined") return;
+    kvSet(FOLLOW_UP_CHAR_GRACE_PREFIX + characterId, "0");
+}
+
+export function getGlobalFollowUpGraceUntil(): number {
+    if (typeof window === "undefined") return 0;
+    return Number(kvGet(FOLLOW_UP_GLOBAL_GRACE_KEY) || "0") || 0;
+}
+export function recordGlobalFollowUpGrace(): void {
+    if (typeof window === "undefined") return;
+    kvSet(FOLLOW_UP_GLOBAL_GRACE_KEY, String(Date.now() + FOLLOW_UP_GRACE_HOURS * 3_600_000));
+}
+
 export function loadChatSendConfig(): ChatSendConfig {
     if (typeof window === "undefined") return getDefaultChatSendConfig();
     try {

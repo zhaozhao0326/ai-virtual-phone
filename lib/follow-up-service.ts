@@ -38,7 +38,15 @@ import {
     suppressGroupWarmupUntil,
     resetGroupWarmupForSession,
 } from "./group-warmup-storage";
-import { loadFollowUpConfig } from "./settings-storage";
+import {
+    getFollowUpCharOverride,
+    getFollowUpGraceUntil,
+    getGlobalFollowUpGraceUntil,
+    loadFollowUpConfig,
+    setFollowUpCharOverride,
+    recordFollowUpGrace,
+    clearFollowUpGrace,
+} from "./settings-storage";
 import { parseAIResponse } from "./rich-message-parser";
 import type { ParsedMessagePart } from "./rich-message-parser";
 import { isKnownStickerLabel } from "./sticker-data";
@@ -231,6 +239,30 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
         return;
     }
 
+    // 全局关闭冷却期：全局总开关被关过，重新打开后 24h 内不立即续排，防旧高焦虑上下文反复
+    if (Date.now() < getGlobalFollowUpGraceUntil()) {
+        clearFollowUpSchedule(sessionId);
+        cancelFollowUpBailout(sessionId);
+        return;
+    }
+
+    // 每角色独立开关 + 关闭冷却期（1:1 会话按 contactId 判断；群聊继续跟随全局）
+    const followSession = loadChatSessions().find(s => s.id === sessionId);
+    if (followSession && !followSession.isGroup && followSession.contactId) {
+        const override = getFollowUpCharOverride(followSession.contactId);
+        const charEnabled = override === null ? config.enabled : override;
+        if (!charEnabled) {
+            clearFollowUpSchedule(sessionId);
+            cancelFollowUpBailout(sessionId);
+            return;
+        }
+        if (Date.now() < getFollowUpGraceUntil(followSession.contactId)) {
+            clearFollowUpSchedule(sessionId);
+            cancelFollowUpBailout(sessionId);
+            return;
+        }
+    }
+
     if (!stateValues || stateValues.length === 0) {
         console.log(`[FollowUp] No state values, not scheduling.`);
         clearFollowUpSchedule(sessionId);
@@ -262,6 +294,23 @@ export function scheduleFollowUp(sessionId: string, count: number, stateValues?:
     saveFollowUpSchedule({ sessionId, fireAt, count, delaySec });
     // 离线推送兜底：把本轮追问的完整请求快照预约到服务端，App 被杀时由服务端接管
     void armFollowUpBailout(sessionId, count, delaySec, fireAt);
+}
+
+/** 关闭某角色的焦虑追问：清其所有 1:1 会话的已排追问（本地+服务端）并记 24h 冷却期，
+ *  冷却期内即使重新打开也不立即续排（防上下文积压的高焦虑值一开就反复）。 */
+export function disableFollowUpForCharacter(characterId: string): void {
+    setFollowUpCharOverride(characterId, false);
+    recordFollowUpGrace(characterId);
+    const sessions = loadChatSessions().filter(s => !s.isGroup && s.contactId === characterId);
+    for (const s of sessions) {
+        clearFollowUpSchedule(s.id);
+        cancelFollowUpBailout(s.id);
+    }
+}
+
+/** 打开某角色的焦虑追问。冷却期保留（由 scheduleFollowUp 的 grace 检查兜底），让高焦虑上下文自然消退。 */
+export function enableFollowUpForCharacter(characterId: string): void {
+    setFollowUpCharOverride(characterId, true);
 }
 
 export async function requestBackgroundChatReply(sessionId: string): Promise<{ ok: boolean; skipped?: string }> {

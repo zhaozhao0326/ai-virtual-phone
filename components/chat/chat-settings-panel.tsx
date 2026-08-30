@@ -51,7 +51,8 @@ import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
 import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Brain, type LucideIcon } from "lucide-react";
-import { isMemoryCareEnabled, setMemoryCareEnabled } from "@/lib/follow-up-service";
+import { isMemoryCareEnabled, setMemoryCareEnabled, disableFollowUpForCharacter, enableFollowUpForCharacter } from "@/lib/follow-up-service";
+import { getFollowUpCharOverride, loadFollowUpConfig } from "@/lib/settings-storage";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -306,6 +307,11 @@ export function ChatSettingsPanel({
     const [isPinned, setIsPinned] = useState(session.isPinned || false);
     // 每角色独立开关：角色主动想起我（记忆唤起主动关心）
     const [memoryCareOn, setMemoryCareOn] = useState(() => isMemoryCareEnabled(session.contactId));
+    // 每角色独立开关：焦虑追问（关闭只影响本角色并附带 24h 冷却，避免一关全关、再开反复）
+    const [followUpCharOn, setFollowUpCharOn] = useState<boolean>(() => {
+        if (session.isGroup) return true;
+        return getFollowUpCharOverride(session.contactId) ?? loadFollowUpConfig().enabled;
+    });
     // ── 群冷场自动暖场（频率滑块 + 选人白名单，铁律：默认全关） ──
     const [gwRule, setGwRule] = useState<GroupWarmupRule | undefined>(() => (session.isGroup ? getGroupWarmupRule(session.id) : undefined));
     const [gwEnabled, setGwEnabled] = useState(() => loadGroupWarmupEnabled());
@@ -1160,6 +1166,25 @@ export function ChatSettingsPanel({
                                 <Toggle
                                     checked={memoryCareOn}
                                     onChange={c => { setMemoryCareOn(c); setMemoryCareEnabled(c, session.contactId); }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={MessageSquare} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">焦虑追问（此角色）</span>
+                                <span className="menu-desc">焦虑值达阈值时自动追发消息；关闭只影响本角色并附 24h 冷却，避免一关全关、再开反复</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle
+                                    checked={followUpCharOn}
+                                    onChange={c => {
+                                        setFollowUpCharOn(c);
+                                        if (c) enableFollowUpForCharacter(session.contactId);
+                                        else disableFollowUpForCharacter(session.contactId);
+                                    }}
                                 />
                             </div>
                         </div>

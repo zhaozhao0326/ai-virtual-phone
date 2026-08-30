@@ -6,6 +6,7 @@ import {
     loadFollowUpConfig,
     saveFollowUpConfig,
     getDefaultFollowUpConfig,
+    recordGlobalFollowUpGrace,
     resolveUserIdentity,
 } from "@/lib/settings-storage";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
@@ -636,7 +637,11 @@ function FollowUpSettingsEditor({ onBack }: { onBack: () => void }) {
                             <span className="menu-desc">开启后，角色焦虑值达到阈值会自动追发消息；关闭则完全不再追发</span>
                         </div>
                         <div className="menu-right">
-                            <Toggle checked={config.enabled} onChange={(on) => updateConfig({ enabled: on })} />
+                            <Toggle checked={config.enabled} onChange={(on) => {
+                                updateConfig({ enabled: on });
+                                // 关闭时记 24h 全局冷却：重新打开后也不会立即追发（防旧高焦虑上下文反复）
+                                if (!on) recordGlobalFollowUpGrace();
+                            }} />
                         </div>
                     </div>
                     <div className="menu-item">
