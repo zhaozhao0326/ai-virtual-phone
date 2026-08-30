@@ -183,14 +183,16 @@ export function startFollowUpService() {
         };
         window.addEventListener("menstrual-period-care-updated", periodCareUpdateHandler);
         scheduledOutboxVisibilityHandler = () => {
-            if (!document.hidden) extendScheduledOutboxGrace();
+            if (!document.hidden) { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); }
         };
-        scheduledOutboxFocusHandler = extendScheduledOutboxGrace;
-        scheduledOutboxPageShowHandler = extendScheduledOutboxGrace;
+        scheduledOutboxFocusHandler = () => { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); };
+        scheduledOutboxPageShowHandler = () => { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); };
         document.addEventListener("visibilitychange", scheduledOutboxVisibilityHandler);
         window.addEventListener("focus", scheduledOutboxFocusHandler);
         window.addEventListener("pageshow", scheduledOutboxPageShowHandler);
     }
+    // 进 App 立即补一次冷场检查（不保活回来时后台心跳是死的，靠这次补触发）
+    kickGroupWarmupCheck();
 }
 
 export function stopFollowUpService() {
@@ -752,8 +754,15 @@ const groupWarmupFiringSet = new Set<string>();
 let lastGroupWarmupPollAt = 0;
 const GROUP_WARMUP_POLL_INTERVAL_MS = 60_000;
 
-function pollGroupWarmup(now: number) {
-    if (now - lastGroupWarmupPollAt < GROUP_WARMUP_POLL_INTERVAL_MS) return;
+/** 进 App / 回前台主动补一次冷场检查：绕过 60s 节流与 8s 发送宽限，让"已到设定时间"的群
+ * 立即暖场，不必等下一次后台心跳轮到。仍尊重安静时段（不吵）。 */
+export function kickGroupWarmupCheck(): void {
+    if (!loadGroupWarmupEnabled()) return;
+    pollGroupWarmup(Date.now(), true);
+}
+
+function pollGroupWarmup(now: number, force = false) {
+    if (!force && now - lastGroupWarmupPollAt < GROUP_WARMUP_POLL_INTERVAL_MS) return;
     lastGroupWarmupPollAt = now;
 
     // 边界约束：暖场只写「真实群消息流」，绝不触碰「群聊线下模式」的离线轮次
@@ -788,7 +797,7 @@ function pollGroupWarmup(now: number) {
             rule.suppressedUntil ?? 0,
         );
         if (now < nextDueAt) continue;
-        if (now < scheduledOutboxGraceUntil) continue;
+        if (!force && now < scheduledOutboxGraceUntil) continue;
         if (isWithinPushQuietHours(now)) continue; // 安静时段本地也不打扰，出时段后自然触发
 
         console.log(`[GroupWarmup] Firing for group=${session.id}, idle=${Math.round((now - lastMsgAt) / 60000)}min`);

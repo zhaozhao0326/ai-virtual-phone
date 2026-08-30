@@ -42,7 +42,18 @@ console.log("══════════════════════�
 // 1. 心跳真调到 pollGroupWarmup（调用点接上）
 check("pollSchedules 心跳调用 pollGroupWarmup",
   src.follow.includes("pollGroupWarmup(now)") &&
-  /function pollGroupWarmup\(now: number\)/.test(src.follow));
+  /function pollGroupWarmup\(now: number/.test(src.follow));
+check("进 App/回前台补触发冷场检查（kickGroupWarmupCheck）",
+  src.follow.includes("export function kickGroupWarmupCheck(): void") &&
+  src.follow.includes("kickGroupWarmupCheck();"));
+check("pollGroupWarmup 支持 force 绕过 60s 节流与 8s 宽限",
+  src.follow.includes("function pollGroupWarmup(now: number, force = false)") &&
+  src.follow.includes("!force && now - lastGroupWarmupPollAt") &&
+  src.follow.includes("!force && now < scheduledOutboxGraceUntil"));
+check("回前台 visibility/focus/pageshow handler 均补触发冷场检查",
+  src.follow.includes("if (!document.hidden) { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); }") &&
+  src.follow.includes("scheduledOutboxFocusHandler = () => { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); }") &&
+  src.follow.includes("scheduledOutboxPageShowHandler = () => { extendScheduledOutboxGrace(); kickGroupWarmupCheck(); }"));
 
 // 2. 总开关/白名单铁律默认关
 check("总开关 loadGroupWarmupEnabled 默认返回 false",
@@ -113,9 +124,9 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.59",
-  src.changelog.includes('APP_VERSION = "1.7.59"') &&
-  src.changelog.includes('version: "1.7.59"'));
+check("changelog 升到 1.7.60",
+  src.changelog.includes('APP_VERSION = "1.7.60"') &&
+  src.changelog.includes('version: "1.7.60"'));
 
 console.log("");
 console.log("═══════════════════════════════════════════════");
