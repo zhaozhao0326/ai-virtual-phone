@@ -147,6 +147,10 @@ check("到点发过一次后记数（仅角色自主唤醒，用户预约的不�
   src.follow.includes('sched.source !== "user"'));
 check("对方回复后连发计数清零",
   src.twStorage.includes("if (lastUserMessageAt > getTimedWakeLastFireAt(sessionId))"));
+check("护栏计数与排期同存 kv（不依赖裸 localStorage，排期在计数就在）",
+  src.twStorage.includes("TIMED_WAKE_STATE_KEY") &&
+  src.twStorage.includes("registerKvMigration(TIMED_WAKE_STATE_KEY)") &&
+  !src.twStorage.includes("TIMED_WAKE_CONSEC_PREFIX"));
 
 console.log("");
 console.log("═══════════════════════════════════════════════");
