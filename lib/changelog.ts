@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.61";
+export const APP_VERSION = "1.7.62";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.62",
+    date: "2026-08-30",
+    title: "群暖场有来有回",
+    highlights: [
+      "群冷场暖场默认带一小段「起头 + 接话」，像真的聊起来了；可在该群设置里关闭，改回只发一句",
+      "单次暖场消息数量设上限，避免刷屏",
+    ],
+  },
   {
     version: "1.7.61",
     date: "2026-08-30",

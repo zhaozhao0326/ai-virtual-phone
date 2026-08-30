@@ -20,6 +20,8 @@ registerKvMigration(GROUP_WARMUP_ENABLED_KEY);
 
 /** 连发上限：群冷场后角色连续暖场次数（没人接话时）上限，回复后清零 */
 export const GROUP_WARMUP_MAX_CONSECUTIVE = 3;
+/** 一次暖场最多落几条消息（有来有回模式：起头 + 接话，偶尔第三位，上限 3 防刷屏） */
+export const GROUP_WARMUP_EXCHANGE_MAX_LINES = 3;
 
 export type GroupWarmupRule = {
     id: string;
@@ -32,6 +34,8 @@ export type GroupWarmupRule = {
     speakerMode: "auto" | string;
     /** 本群允许冷场时暖场的成员 characterId（仅限群成员可选，默认空=无人暖场） */
     whitelist: string[];
+    /** 有来有回：一次暖场产出一小段互动（起头 + 接话，上限 GROUP_WARMUP_EXCHANGE_MAX_LINES 行）。默认 true；false=只发一句。 */
+    exchange?: boolean;
     /** 用户附加意图（可空） */
     intent?: string;
     /** 自上次群消息以来已连发次数（用于连发上限） */
@@ -75,7 +79,11 @@ export function loadGroupWarmupRules(): GroupWarmupRule[] {
         const raw = kvGet(GROUP_WARMUP_RULES_KEY);
         const parsed = raw ? JSON.parse(raw) : [];
         return Array.isArray(parsed)
-            ? parsed.filter(isRule).map((r) => ({ ...r, whitelist: Array.isArray(r.whitelist) ? r.whitelist : [] }))
+            ? parsed.filter(isRule).map((r) => ({
+                ...r,
+                whitelist: Array.isArray(r.whitelist) ? r.whitelist : [],
+                exchange: r.exchange !== false, // 老规则默认有来有回
+            }))
             : [];
     } catch {
         return [];

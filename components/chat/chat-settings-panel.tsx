@@ -312,6 +312,7 @@ export function ChatSettingsPanel({
     const [gwWhitelist, setGwWhitelist] = useState<string[]>(() => gwRule?.whitelist ?? []);
     const [gwInterval, setGwInterval] = useState(() => gwRule?.intervalMinutes ?? 360);
     const [gwSpeakerMode, setGwSpeakerMode] = useState<string>(() => gwRule?.speakerMode ?? "auto");
+    const [gwExchange, setGwExchange] = useState<boolean>(() => gwRule?.exchange !== false);
     useEffect(() => {
         if (!session.isGroup) return;
         setGwEnabled(loadGroupWarmupEnabled());
@@ -320,6 +321,7 @@ export function ChatSettingsPanel({
         setGwWhitelist(r?.whitelist ?? []);
         setGwInterval(r?.intervalMinutes ?? 360);
         setGwSpeakerMode(r?.speakerMode ?? "auto");
+        setGwExchange(r?.exchange !== false);
     }, [session.id]);
     const persistGwRule = (patch: Partial<GroupWarmupRule>) => {
         const base: GroupWarmupRule = gwRule ?? {
@@ -329,6 +331,7 @@ export function ChatSettingsPanel({
             intervalMinutes: gwInterval,
             speakerMode: gwSpeakerMode,
             whitelist: [],
+            exchange: true,
             consecutiveCount: 0,
             createdAt: Date.now(),
         };
@@ -340,6 +343,7 @@ export function ChatSettingsPanel({
     const handleGwRuleToggle = (on: boolean) => { persistGwRule({ enabled: on }); };
     const handleGwInterval = (val: number) => { setGwInterval(val); persistGwRule({ intervalMinutes: val }); };
     const handleGwSpeakerMode = (mode: string) => { setGwSpeakerMode(mode); persistGwRule({ speakerMode: mode }); };
+    const handleGwExchange = (on: boolean) => { setGwExchange(on); persistGwRule({ exchange: on }); };
     const handleGwWhitelistToggle = (charId: string, on: boolean) => {
         const next = on ? Array.from(new Set([...gwWhitelist, charId])) : gwWhitelist.filter((id) => id !== charId);
         setGwWhitelist(next);
@@ -1073,6 +1077,14 @@ export function ChatSettingsPanel({
                                                 </label>
                                             ) : null)}
                                         </div>
+                                    </div>
+                                </div>
+                                <div className="menu-item" style={{ cursor: "default", alignItems: "flex-start" }}>
+                                    <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.voice} />
+                                    <div className="menu-label-group" style={{ width: "100%" }}>
+                                        <span className="menu-label">有来有回（一轮）</span>
+                                        <span className="menu-desc">暖场时让群里自然聊起一小段（起头 + 接话）；关闭则只发一句</span>
+                                        <Toggle checked={gwExchange} onChange={handleGwExchange} />
                                     </div>
                                 </div>
                             </>

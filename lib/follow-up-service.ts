@@ -30,6 +30,7 @@ import {
     type IdleReconnectRule,
 } from "./idle-reconnect-storage";
 import {
+    GROUP_WARMUP_EXCHANGE_MAX_LINES,
     GROUP_WARMUP_MAX_CONSECUTIVE,
     loadGroupWarmupEnabled,
     loadGroupWarmupRules,
@@ -858,6 +859,8 @@ async function fireGroupWarmup(
         // 逐段解析「角色名：内容」，只落成白名单内且是候选的角色
         const texts = rounds.map((r) => r.text).join("\n");
         const lines = texts.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        // 有来有回（默认）：一次暖场最多落 3 条（起头+接话+偶尔第三位）；关了只落 1 条，防刷屏
+        const maxLines = rule.exchange === false ? 1 : GROUP_WARMUP_EXCHANGE_MAX_LINES;
         let pushed = 0;
         for (const line of lines) {
             const m = line.match(/^([^：:]+)[：:]\s*([\s\S]*)$/);
@@ -877,6 +880,7 @@ async function fireGroupWarmup(
                 senderName: char.name,
             });
             pushed += 1;
+            if (pushed >= maxLines) break;
         }
         // 兜底：模型没按「角色名：内容」输出（整段就是一句话）→ 用候选首位落成
         if (pushed === 0 && texts.trim()) {

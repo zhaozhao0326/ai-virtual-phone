@@ -127,9 +127,25 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.61",
-  src.changelog.includes('APP_VERSION = "1.7.61"') &&
-  src.changelog.includes('version: "1.7.61"'));
+check("changelog 升到 1.7.62",
+  src.changelog.includes('APP_VERSION = "1.7.62"') &&
+  src.changelog.includes('version: "1.7.62"'));
+
+// ── 群暖场「有来有回（一轮）」：一次生成含起头+接话，按群开关控制落条数 ──
+check("暖场预设有来有回指令（起头 + 接话，2~3 行）",
+  src.preset.includes("一句起头 + 一到两句自然接话") &&
+  src.preset.includes("总共 2~3 行即可"));
+check("规则含 exchange 字段且默认 true（老规则兼容）",
+  src.gwStorage.includes("exchange?: boolean") &&
+  src.gwStorage.includes("exchange: r.exchange !== false") &&
+  src.gwStorage.includes("GROUP_WARMUP_EXCHANGE_MAX_LINES = 3"));
+check("运行时按 exchange 控制落条数（false=1 行，防刷屏）",
+  src.follow.includes("const maxLines = rule.exchange === false ? 1 : GROUP_WARMUP_EXCHANGE_MAX_LINES") &&
+  src.follow.includes("if (pushed >= maxLines) break;"));
+check("设置面板有「有来有回（一轮）」开关",
+  src.settings.includes("gwExchange") &&
+  src.settings.includes("handleGwExchange") &&
+  src.settings.includes("有来有回（一轮）"));
 
 // ── 稍后主动联系 · 自我续期护栏（防角色隔几分钟一条私聊的无限循环）──
 check("delayMinutes 执行侧硬下限抬到 30 分钟",
