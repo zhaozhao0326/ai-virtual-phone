@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.63";
+export const APP_VERSION = "1.7.64";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.64",
+    date: "2026-08-30",
+    title: "追问链防刷屏",
+    highlights: [
+      "焦虑值驱动的自动追问新增总开关，可在追发设置中完全关闭",
+      "连续追问上限收紧、最短间隔拉长，避免角色反复追发消息",
+    ],
+  },
   {
     version: "1.7.63",
     date: "2026-08-30",

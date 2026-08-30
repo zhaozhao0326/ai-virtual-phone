@@ -69,7 +69,7 @@ import {
 } from "./menstrual-storage";
 
 // ── Constants ──────────────────────────────────────────────
-const MAX_FOLLOW_UPS = 10;
+const MAX_FOLLOW_UPS = 3;
 const POLL_INTERVAL_MS = 3000; // check every 3 s
 const PERIOD_CARE_POLL_INTERVAL_MS = 60_000;
 const BACKGROUND_MESSAGE_STAGGER_MS = 800;
@@ -223,6 +223,13 @@ export function stopFollowUpService() {
  *  Purely anxiety-driven: no anxiety field or below threshold → no follow-up. */
 export function scheduleFollowUp(sessionId: string, count: number, stateValues?: StateValue[]) {
     const config = loadFollowUpConfig();
+
+    // 总开关：关掉后不再安排任何焦虑驱动追问（原机制无开关、且模型可持续输出高焦虑值导致无限追发）
+    if (!config.enabled) {
+        clearFollowUpSchedule(sessionId);
+        cancelFollowUpBailout(sessionId);
+        return;
+    }
 
     if (!stateValues || stateValues.length === 0) {
         console.log(`[FollowUp] No state values, not scheduling.`);

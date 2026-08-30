@@ -25,6 +25,8 @@ const F = {
   capability: ROOT + "lib/internal-capability-storage.ts",
   cleanup: ROOT + "lib/schedule-cleanup.ts",
   phoneApp: ROOT + "components/phone-character-app.tsx",
+  profilePanel: ROOT + "components/chat/user-profile-panel.tsx",
+  settingsStorage: ROOT + "lib/settings-storage.ts",
 };
 for (const [k, f] of Object.entries(F)) {
   if (!existsSync(f)) { console.error("源码缺失: " + f); process.exit(2); }
@@ -129,9 +131,25 @@ check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共
   src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.63",
-  src.changelog.includes('APP_VERSION = "1.7.63"') &&
-  src.changelog.includes('version: "1.7.63"'));
+check("changelog 升到 1.7.64",
+  src.changelog.includes('APP_VERSION = "1.7.64"') &&
+  src.changelog.includes('version: "1.7.64"'));
+
+// ── 焦虑值驱动追问链：加总开关 + 收紧上限（原机制无开关、模型可持续输出高焦虑导致无限追发）──
+check("FollowUpConfig 含 enabled 总开关且默认开",
+  src.settingsStorage.includes("enabled: boolean") &&
+  src.settingsStorage.includes("enabled: true,"));
+check("scheduleFollowUp 尊重总开关（关掉即不再排）",
+  src.follow.includes("if (!config.enabled) {") &&
+  src.follow.includes("clearFollowUpSchedule(sessionId)"));
+check("连续追问上限收紧到 3 条（原 10）",
+  src.follow.includes("const MAX_FOLLOW_UPS = 3;"));
+check("最短间隔默认提到 2 分钟（原 15 秒，防刷屏）",
+  src.settingsStorage.includes("anxietyMinDelay: 120,") &&
+  src.settingsStorage.includes("anxietyMaxDelay: 600,"));
+check("设置面板有「焦虑追问总开关」",
+  src.profilePanel.includes("焦虑追问总开关") &&
+  src.profilePanel.includes("updateConfig({ enabled: on })"));
 
 // ── 群暖场「有来有回（一轮）」：一次生成含起头+接话，按群开关控制落条数 ──
 check("暖场预设有来有回指令（起头 + 接话，2~3 行）",

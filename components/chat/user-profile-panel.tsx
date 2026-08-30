@@ -632,6 +632,16 @@ function FollowUpSettingsEditor({ onBack }: { onBack: () => void }) {
                     <div className="menu-item">
                         <ProfileSettingsIcon icon={SlidersHorizontal} color={BINDING_ACCENTS.preset} />
                         <div className="menu-label-group">
+                            <span className="menu-label">焦虑追问总开关</span>
+                            <span className="menu-desc">开启后，角色焦虑值达到阈值会自动追发消息；关闭则完全不再追发</span>
+                        </div>
+                        <div className="menu-right">
+                            <Toggle checked={config.enabled} onChange={(on) => updateConfig({ enabled: on })} />
+                        </div>
+                    </div>
+                    <div className="menu-item">
+                        <ProfileSettingsIcon icon={SlidersHorizontal} color={BINDING_ACCENTS.preset} />
+                        <div className="menu-label-group">
                             <span className="menu-label">状态值字段名</span>
                             <span className="menu-desc">用于读取角色状态中的焦虑值</span>
                         </div>
