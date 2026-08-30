@@ -3,8 +3,8 @@
 // 允许暖场的角色主动说句话暖场；角色有强烈分享欲等特殊触发不受此频率限制，随时可发。
 //
 // 设计铁律（来自用户需求）：
-//  - 总开关默认关（GROUP_WARMUP_ENABLED_KEY=false）；白名单默认空（GROUP_WARMUP_WHITELIST_KEY=[]）。
-//    即"选人白名单"模式：只有用户勾选允许暖场的角色才会动，绝不默认全员。
+//  - 总开关默认关（GROUP_WARMUP_ENABLED_KEY=false）；每个群规则自带 whitelist（该群成员 characterId，默认空）。
+//    即"选人白名单"模式：只有用户在该群里勾选允许暖场的成员才会动，绝不默认全员、且仅限群成员可选。
 //  - 频率只管「冷太久就兜底暖场」的基线节奏；有互动（任意角色刚发过消息）就不强制触发。
 //  - 安静：沿用 idle-reconnect 的轮询范式（心跳节流，非裸定时器狂刷），过安静时段不烧 token。
 //
@@ -15,10 +15,8 @@ import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
 export const GROUP_WARMUP_RULES_KEY = "ai_phone_group_warmup_rules_v1";
 export const GROUP_WARMUP_ENABLED_KEY = "ai_phone_group_warmup_enabled_v1";
-export const GROUP_WARMUP_WHITELIST_KEY = "ai_phone_group_warmup_whitelist_v1";
 registerKvMigration(GROUP_WARMUP_RULES_KEY);
 registerKvMigration(GROUP_WARMUP_ENABLED_KEY);
-registerKvMigration(GROUP_WARMUP_WHITELIST_KEY);
 
 /** 连发上限：群冷场后角色连续暖场次数（没人接话时）上限，回复后清零 */
 export const GROUP_WARMUP_MAX_CONSECUTIVE = 3;
@@ -32,6 +30,8 @@ export type GroupWarmupRule = {
     intervalMinutes: number;
     /** 发言模式："auto"=系统从白名单里挑一位群成员；或指定某角色 characterId */
     speakerMode: "auto" | string;
+    /** 本群允许冷场时暖场的成员 characterId（仅限群成员可选，默认空=无人暖场） */
+    whitelist: string[];
     /** 用户附加意图（可空） */
     intent?: string;
     /** 自上次群消息以来已连发次数（用于连发上限） */
@@ -57,23 +57,6 @@ export function saveGroupWarmupEnabled(enabled: boolean): void {
     kvSet(GROUP_WARMUP_ENABLED_KEY, enabled ? "1" : "0");
 }
 
-// ── 全局白名单：允许在群里冷场时暖场的角色 characterId ──
-export function loadGroupWarmupWhitelist(): string[] {
-    if (typeof window === "undefined") return [];
-    try {
-        const raw = kvGet(GROUP_WARMUP_WHITELIST_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string") : [];
-    } catch {
-        return [];
-    }
-}
-export function saveGroupWarmupWhitelist(ids: string[]): void {
-    if (typeof window === "undefined") return;
-    const uniq = Array.from(new Set(ids.filter((x) => typeof x === "string")));
-    kvSet(GROUP_WARMUP_WHITELIST_KEY, JSON.stringify(uniq));
-}
-
 function isRule(value: unknown): value is GroupWarmupRule {
     if (!value || typeof value !== "object") return false;
     const item = value as Partial<GroupWarmupRule>;
@@ -91,7 +74,9 @@ export function loadGroupWarmupRules(): GroupWarmupRule[] {
     try {
         const raw = kvGet(GROUP_WARMUP_RULES_KEY);
         const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed.filter(isRule) : [];
+        return Array.isArray(parsed)
+            ? parsed.filter(isRule).map((r) => ({ ...r, whitelist: Array.isArray(r.whitelist) ? r.whitelist : [] }))
+            : [];
     } catch {
         return [];
     }

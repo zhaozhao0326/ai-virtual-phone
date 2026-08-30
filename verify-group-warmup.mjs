@@ -49,12 +49,12 @@ check("总开关 loadGroupWarmupEnabled 默认返回 false",
   src.gwStorage.includes("export function loadGroupWarmupEnabled(): boolean") &&
   src.gwStorage.includes("kvGet(GROUP_WARMUP_ENABLED_KEY) === \"1\""),
   "默认未存=关");
-check("白名单默认空（loadGroupWarmupWhitelist 无 key 返回 []）",
-  src.gwStorage.includes("kvGet(GROUP_WARMUP_WHITELIST_KEY)") &&
-  src.gwStorage.includes("return [];"));
-check("pollGroupWarmup 双重拦截：关总开关或无白名单即 return",
+check("每群白名单默认空（GroupWarmupRule.whitelist 默认 []）",
+  src.gwStorage.includes("whitelist: string[];") &&
+  src.gwStorage.includes("whitelist: Array.isArray(r.whitelist) ? r.whitelist : []"));
+check("pollGroupWarmup 双重拦截：关总开关或无（该群）白名单即跳过",
   src.follow.includes("if (!loadGroupWarmupEnabled()) return;") &&
-  src.follow.includes("if (whitelist.size === 0) return;"));
+  src.follow.includes("if (!rule.whitelist || rule.whitelist.length === 0) continue;"));
 
 // 3. 冷场锚点：loadChatMessages 升序 + reverse()[0]=最新（不反）
 check("冷场锚点取最新消息 [...messages].reverse()[0]",
@@ -103,16 +103,19 @@ check("群设置面板渲染「群冷场自动暖场（总开关）」",
   src.settings.includes("群冷场自动暖场（总开关）"));
 check("频率拉动条 menu-slider 存在",
   src.settings.includes("menu-slider") && src.css.includes(".menu-slider {"));
-check("白名单选人（逐个角色开关）区存在",
+check("白名单选人（逐个群成员开关）区存在且列表源为群成员",
   src.settings.includes("gwWhitelist") &&
   src.settings.includes("handleGwWhitelistToggle") &&
   src.settings.includes('gwWhitelist.includes(c.id)') &&
+  src.settings.includes("groupChars.map((c) => c ? (") &&
   src.css.includes(".gw-whitelist-row {"));
+check("白名单勾选写入该群规则 whitelist（按群隔离，非全局共享）",
+  src.settings.includes("persistGwRule({ whitelist: next })"));
 
 // 9. 版本已升
-check("changelog 升到 1.7.58",
-  src.changelog.includes('APP_VERSION = "1.7.58"') &&
-  src.changelog.includes('version: "1.7.58"'));
+check("changelog 升到 1.7.59",
+  src.changelog.includes('APP_VERSION = "1.7.59"') &&
+  src.changelog.includes('version: "1.7.59"'));
 
 console.log("");
 console.log("═══════════════════════════════════════════════");

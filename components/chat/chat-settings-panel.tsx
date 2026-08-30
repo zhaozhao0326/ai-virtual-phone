@@ -38,8 +38,6 @@ import { loadCharacters } from "@/lib/character-storage";
 import {
     loadGroupWarmupEnabled,
     saveGroupWarmupEnabled,
-    loadGroupWarmupWhitelist,
-    saveGroupWarmupWhitelist,
     getGroupWarmupRule,
     upsertGroupWarmupRule,
     type GroupWarmupRule,
@@ -311,16 +309,15 @@ export function ChatSettingsPanel({
     // ── 群冷场自动暖场（频率滑块 + 选人白名单，铁律：默认全关） ──
     const [gwRule, setGwRule] = useState<GroupWarmupRule | undefined>(() => (session.isGroup ? getGroupWarmupRule(session.id) : undefined));
     const [gwEnabled, setGwEnabled] = useState(() => loadGroupWarmupEnabled());
-    const [gwWhitelist, setGwWhitelist] = useState<string[]>(() => loadGroupWarmupWhitelist());
+    const [gwWhitelist, setGwWhitelist] = useState<string[]>(() => gwRule?.whitelist ?? []);
     const [gwInterval, setGwInterval] = useState(() => gwRule?.intervalMinutes ?? 360);
     const [gwSpeakerMode, setGwSpeakerMode] = useState<string>(() => gwRule?.speakerMode ?? "auto");
-    const gwAllChars = loadCharacters();
     useEffect(() => {
         if (!session.isGroup) return;
         setGwEnabled(loadGroupWarmupEnabled());
-        setGwWhitelist(loadGroupWarmupWhitelist());
         const r = getGroupWarmupRule(session.id);
         setGwRule(r);
+        setGwWhitelist(r?.whitelist ?? []);
         setGwInterval(r?.intervalMinutes ?? 360);
         setGwSpeakerMode(r?.speakerMode ?? "auto");
     }, [session.id]);
@@ -331,6 +328,7 @@ export function ChatSettingsPanel({
             enabled: false,
             intervalMinutes: gwInterval,
             speakerMode: gwSpeakerMode,
+            whitelist: [],
             consecutiveCount: 0,
             createdAt: Date.now(),
         };
@@ -345,7 +343,7 @@ export function ChatSettingsPanel({
     const handleGwWhitelistToggle = (charId: string, on: boolean) => {
         const next = on ? Array.from(new Set([...gwWhitelist, charId])) : gwWhitelist.filter((id) => id !== charId);
         setGwWhitelist(next);
-        saveGroupWarmupWhitelist(next);
+        persistGwRule({ whitelist: next });
     };
     const gwIntervalLabel = gwInterval < 60
         ? `${gwInterval} 分钟`
@@ -1068,12 +1066,12 @@ export function ChatSettingsPanel({
                                         <span className="menu-label">允许暖场的角色（选人）</span>
                                         <span className="menu-desc">默认全关，逐个勾选；只有勾选的角色会在群里冷场时暖场</span>
                                         <div className="gw-whitelist">
-                                            {gwAllChars.map((c) => (
+                                            {groupChars.map((c) => c ? (
                                                 <label key={c.id} className="gw-whitelist-row">
                                                     <Toggle checked={gwWhitelist.includes(c.id)} onChange={(on) => handleGwWhitelistToggle(c.id, on)} />
                                                     <span className="gw-whitelist-name">{c.name}</span>
                                                 </label>
-                                            ))}
+                                            ) : null)}
                                         </div>
                                     </div>
                                 </div>

@@ -32,7 +32,6 @@ import {
 import {
     GROUP_WARMUP_MAX_CONSECUTIVE,
     loadGroupWarmupEnabled,
-    loadGroupWarmupWhitelist,
     loadGroupWarmupRules,
     markGroupWarmupFired,
     suppressGroupWarmupUntil,
@@ -762,11 +761,11 @@ function pollGroupWarmup(now: number) {
     // 暖场只是真实群的一个叠加层，二者互不替代、互不抑制。
     // 铁律：总开关关、或无白名单，一律不动作
     if (!loadGroupWarmupEnabled()) return;
-    const whitelist = new Set(loadGroupWarmupWhitelist());
-    if (whitelist.size === 0) return;
 
     for (const rule of loadGroupWarmupRules()) {
         if (!rule.enabled) continue;
+        // 铁律：每群白名单默认空，无勾选成员一律不动作
+        if (!rule.whitelist || rule.whitelist.length === 0) continue;
         if (groupWarmupFiringSet.has(rule.groupSessionId)) continue;
         if (firingSet.has(rule.groupSessionId)) continue;
 
@@ -793,14 +792,13 @@ function pollGroupWarmup(now: number) {
         if (isWithinPushQuietHours(now)) continue; // 安静时段本地也不打扰，出时段后自然触发
 
         console.log(`[GroupWarmup] Firing for group=${session.id}, idle=${Math.round((now - lastMsgAt) / 60000)}min`);
-        void fireGroupWarmup(rule, session, whitelist, lastMsg);
+        void fireGroupWarmup(rule, session, lastMsg);
     }
 }
 
 async function fireGroupWarmup(
     rule: import("./group-warmup-storage").GroupWarmupRule,
     session: import("./chat-storage").ChatSession,
-    whitelist: Set<string>,
     lastMsg: import("./chat-storage").ChatMessage,
 ) {
     groupWarmupFiringSet.add(session.id);
@@ -810,6 +808,8 @@ async function fireGroupWarmup(
             .map((id) => chars.find((c) => c.id === id))
             .filter((c): c is NonNullable<typeof c> => Boolean(c));
         const lastSpeakerId = lastMsg.role === "assistant" ? (lastMsg.senderCharacterId ?? null) : null;
+        // 白名单按群隔离：仅该群被勾选的成员可暖场（whitelist 已是群成员子集）
+        const whitelist = new Set(rule.whitelist || []);
 
         // 候选发言者：群成员 ∩ 白名单；auto 模式排除刚发言者，指定模式锁定该角色
         let candidates = participants.filter((c) => whitelist.has(c.id));

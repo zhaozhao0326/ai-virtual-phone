@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.58";
+export const APP_VERSION = "1.7.59";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.59",
+    date: "2026-08-30",
+    title: "群冷场暖场白名单限定为本群成员",
+    highlights: [
+      "群冷场暖场的允许暖场名单现仅列出该群成员，避免误勾选到非本群角色",
+      "每个群各自维护独立的允许暖场名单，互不共享",
+      "总开关与默认关闭策略不变，仍未勾选成员的群不会自动暖场",
+    ],
+  },
   {
     version: "1.7.58",
     date: "2026-08-30",
