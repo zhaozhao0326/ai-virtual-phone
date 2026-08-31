@@ -93,8 +93,10 @@ export function splitCategoryPath(raw: string): string[] {
 }
 
 /**
- * 书里可能带着文件夹表（id → 名字），条目上只存 id。
- * 不映射的话，分类名会变成一堆看不懂的 id。
+ * 书里可能带着文件夹表（id → 名字，且文件夹之间有 parent 父子链）。
+ * 条目上通常只存叶子文件夹的 id，所以这里把「id → 完整路径（地理/青丘国）」算出来，
+ * 这样条目归类时不会丢掉父级（否则只能看到「青丘国」而看不到它属于「地理」）。
+ * 同时把文件夹名字也映射到路径，兼容「条目直接写文件夹名而非 id」的卡。
  */
 export function buildFolderNameMap(book: Record<string, unknown> | null): Map<string, string> {
     const map = new Map<string, string>();
@@ -106,11 +108,37 @@ export function buildFolderNameMap(book: Record<string, unknown> | null): Map<st
               const dict = asRecord(raw);
               return dict ? Object.entries(dict).map(([id, v]) => ({ id, ...(asRecord(v) ?? {}) })) : [];
           })();
+
+    const meta = new Map<string, { name: string; parent: string | null }>();
     for (const item of list) {
         const rec = asRecord(item) ?? {};
-        const id = firstString(rec.id, rec.uid, rec.key);
+        const idRaw = rec.id ?? rec.uid ?? rec.key;
+        const id = idRaw === undefined || idRaw === null ? "" : String(idRaw);
         const name = firstString(rec.name, rec.title, rec.label);
-        if (id && name) map.set(id, name);
+        const parentRaw = rec.parent ?? rec.parentId ?? rec.parent_id;
+        const parent = parentRaw === undefined || parentRaw === null ? "" : String(parentRaw);
+        if (id && name) meta.set(id, { name, parent: parent || null });
+    }
+
+    const resolvePath = (id: string, seen: Set<string>): string => {
+        const m = meta.get(id);
+        if (!m) return "";
+        if (seen.has(id)) return m.name; // 防环
+        seen.add(id);
+        if (m.parent && meta.has(m.parent)) {
+            const p = resolvePath(m.parent, seen);
+            return p ? `${p}/${m.name}` : m.name;
+        }
+        return m.name;
+    };
+
+    for (const id of meta.keys()) {
+        const path = resolvePath(id, new Set());
+        if (!path) continue;
+        map.set(id, path);
+        // 名字也映射到路径：兼容条目直接写文件夹名（而非 id）的卡
+        const name = meta.get(id)!.name;
+        if (!map.has(name)) map.set(name, path);
     }
     return map;
 }
@@ -124,9 +152,30 @@ export function extractTavernCategoryPath(
     entry: Record<string, unknown>,
     folderNames?: Map<string, string>
 ): string[] {
-    const resolve = (v: string): string => (folderNames?.get(v) ?? v);
-    const direct = firstString(entry.category, entry.folder, entry.group);
-    if (direct) return splitCategoryPath(resolve(direct));
+    const resolve = (v: unknown): string => {
+        const s = typeof v === "string" ? v : v === null || v === undefined ? "" : String(v);
+        return folderNames?.get(s) ?? s;
+    };
+
+    // 条目上可能直接写了分类/文件夹：category、folder（id 或名字或数组）、group
+    const categoryLike = firstString(entry.category, entry.group);
+    if (categoryLike) return splitCategoryPath(resolve(categoryLike));
+
+    const folderVal = entry.folder;
+    const folderToStr = (f: unknown): string => (typeof f === "string" ? f : typeof f === "number" ? String(f) : "").trim();
+    if (Array.isArray(folderVal)) {
+        // 多文件夹：取第一个能解析出名字的
+        for (const f of folderVal) {
+            const s = folderToStr(f);
+            if (s) {
+                const p = splitCategoryPath(resolve(s));
+                if (p.length) return p;
+            }
+        }
+    } else {
+        const s = folderToStr(folderVal);
+        if (s) return splitCategoryPath(resolve(s));
+    }
 
     const ext = asRecord(entry.extensions);
     if (ext) {
@@ -451,7 +500,7 @@ export type TavernParsedBook = {
     };
 };
 
-const MEGA_SPLIT_MIN_LENGTH = 1200;
+const MEGA_SPLIT_MIN_LENGTH = 600;
 const EXTRA_DISABLE_LENGTH = 2000;
 
 function isTavernDefaultSystemPrompt(text: string): boolean {
@@ -513,6 +562,11 @@ export function collectTavernExtraEntries(data: Record<string, unknown>): Tavern
 /**
  * 解析内嵌世界书：按分类分组 + 超长条目二次切分 + 触发词补全。
  * 只返回结构化结果，落库/绑定由调用方负责（这样特调侧能复用同一份分组）。
+ *
+ * 支持三种世界书形态：
+ *   - 标准：character_book.entries 是数组（或 { id: entry } 字典）
+ *   - 文件夹层级：entries[].folder 指向 folders[] 里的 id/名字，并能沿 parent 链拼出「地理/青丘国」
+ *   - 嵌套字典：character_book = { 地理: { 青丘国: "内容", 昆仑: "内容" }, 人物: {...} }
  */
 export function parseTavernWorldBook(
     data: Record<string, unknown>,
@@ -521,26 +575,85 @@ export function parseTavernWorldBook(
     const bookRaw = data.character_book;
     if (!bookRaw) return null;
 
-    // entries 既可能是数组，也可能是 { id: entry } 字典（老格式）
-    let rawEntries: unknown[] = [];
+    const WB_META_KEYS = new Set([
+        "name", "entries", "folders", "fields", "version", "description",
+        "creator", "creator_comment", "scan_depth", "token_budget", "recursive",
+        "extensions", "regex_scripts", "field", "constant", "uuid", "metadata",
+        "_", "author", "original_author", "comment", "instructions", "order",
+    ]);
+
+    // 嵌套字典：把 { 地理: { 青丘国: "内容" } } 这类结构压平为带分类路径的条目
+    const collectNested = (
+        node: unknown,
+        path: string[],
+        out: { raw: unknown; categoryPath: string[] }[]
+    ): void => {
+        const rec = asRecord(node);
+        if (!rec) return;
+        const looksLikeEntry =
+            typeof rec.content === "string" ||
+            Array.isArray(rec.keys) ||
+            rec.keys !== undefined ||
+            (rec.comment !== undefined && (rec.content !== undefined || rec.name !== undefined));
+        if (looksLikeEntry && !Array.isArray((rec as Record<string, unknown>).entries)) {
+            out.push({ raw: rec, categoryPath: path });
+            return;
+        }
+        for (const [k, v] of Object.entries(rec)) {
+            if (WB_META_KEYS.has(k)) continue;
+            const sub = asRecord(v);
+            if (sub) {
+                collectNested(sub, [...path, k], out);
+            } else if (Array.isArray(v)) {
+                for (const item of v) {
+                    const ir = asRecord(item);
+                    if (ir) collectNested(ir, [...path, k], out);
+                    else if (typeof item === "string" && item.trim())
+                        out.push({ raw: { comment: k, content: item }, categoryPath: path });
+                }
+            } else if (typeof v === "string" && v.trim()) {
+                out.push({ raw: { comment: k, content: v }, categoryPath: path });
+            }
+        }
+    };
+
+    type RawItem = { raw: unknown; categoryPath: string[] };
+    let rawEntries: RawItem[] = [];
     let bookName = fallbackName;
     const bookRec = asRecord(bookRaw);
     if (bookRec) {
         bookName = firstString(bookRec.name, bookRec.bookName) || fallbackName;
         const entries = bookRec.entries;
-        rawEntries = Array.isArray(entries) ? entries : entries && typeof entries === "object" ? Object.values(entries as Record<string, unknown>) : [];
+        const standard = Array.isArray(entries)
+            ? entries
+            : entries && typeof entries === "object"
+            ? Object.values(entries as Record<string, unknown>)
+            : [];
+        if (standard.length) {
+            rawEntries = standard.map((e) => ({ raw: e, categoryPath: [] }));
+        } else {
+            // 标准 entries 为空 → 可能是嵌套字典（文件夹直接作为键）
+            const nested: RawItem[] = [];
+            collectNested(bookRec, [], nested);
+            rawEntries = nested;
+        }
     } else if (Array.isArray(bookRaw)) {
-        rawEntries = bookRaw;
+        rawEntries = bookRaw.map((e) => ({ raw: e, categoryPath: [] }));
     }
     if (!rawEntries.length) return null;
 
     const folderNames = buildFolderNameMap(bookRec);
     const parsed: TavernParsedEntry[] = [];
-    for (const raw of rawEntries) {
-        const rec = asRecord(raw);
+    for (const item of rawEntries) {
+        const rec = asRecord(item.raw);
         if (!rec) continue;
+        // 嵌套字典已带路径；标准条目再尝试从 folder/category/comment 推断
+        const categoryPath =
+            item.categoryPath.length > 0
+                ? item.categoryPath
+                : extractTavernCategoryPath(rec, folderNames);
         const built = buildTavernEntry(rec as Parameters<typeof buildTavernEntry>[0], {
-            categoryPath: extractTavernCategoryPath(rec, folderNames),
+            categoryPath,
         });
         if (built) parsed.push(built);
     }

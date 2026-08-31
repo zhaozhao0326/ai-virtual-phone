@@ -70,8 +70,8 @@ check("A21 特调侧不再拼一坨世界书", !/name: `\$\{name\}·世界书`,/
 check("A22 特调侧预设摊成基底材料", /flattenTavernPresetPrompts\(/.test(mixSrc));
 
 check("A23 V3 卡 assets 里带的图可作头像兜底", /src\.assets/.test(charSrc) && /validAvatar\(asset\.uri/.test(charSrc));
-check("A24 changelog 版本已升到 1.7.67", /APP_VERSION = "1\.7\.67"/.test(changelogSrc));
-check("A25 changelog 头部记录了本次改动", /version: "1\.7\.67"/.test(changelogSrc) && /角色卡导入按分类拆解/.test(changelogSrc));
+check("A24 changelog 版本已升到 1.7.68", /APP_VERSION = "1\.7\.68"/.test(changelogSrc));
+check("A25 changelog 头部记录了本次改动", /version: "1\.7\.68"/.test(changelogSrc) && /特调世界书按分类拆解/.test(changelogSrc));
 
 console.log("\n── B. 运行时逻辑（跑真函数）──");
 
@@ -112,6 +112,54 @@ check("B1.8 文件夹 id 按书里的文件夹表翻译成名字",
     JSON.stringify(extractTavernCategoryPath({ folder: "f_007" }, buildFolderNameMap({ folders: [{ id: "f_007", name: "地理" }] }))) === '["地理"]');
 check("B1.9 文件夹表缺失时 id 原样保留（不猜）",
     JSON.stringify(extractTavernCategoryPath({ folder: "f_007" })) === '["f_007"]');
+
+// —— B1 续：用户真机卡里会遇到的「文件夹里含子文件夹」——
+const folderTreeBook = {
+    folders: [
+        { id: "f_geo", name: "地理", parent: null },
+        { id: "f_sub", name: "青丘国", parent: "f_geo" },
+        { id: "f_ppl", name: "人物", parent: null },
+    ],
+};
+check("B1.10 父级文件夹链拼成 地理/青丘国",
+    JSON.stringify(extractTavernCategoryPath({ folder: "f_sub" }, buildFolderNameMap(folderTreeBook))) === '["地理","青丘国"]');
+check("B1.11 数字文件夹 id 也能解析",
+    JSON.stringify(extractTavernCategoryPath({ folder: 2 }, buildFolderNameMap({
+        folders: [{ id: 1, name: "地理", parent: null }, { id: 2, name: "青丘国", parent: 1 }],
+    }))) === '["地理","青丘国"]');
+check("B1.12 多文件夹数组取首个可解析的",
+    JSON.stringify(extractTavernCategoryPath({ folder: ["f_ppl", "f_sub"] }, buildFolderNameMap(folderTreeBook))) === '["人物"]');
+
+// —— B1 续：整本世界书格式直接跑回真实分组 ——
+const nestedBook = parseTavernWorldBook({
+    name: "角色",
+    character_book: {
+        name: "世界观",
+        地理: { 青丘国: "青丘是狐国，位于东方。", 昆仑: "昆仑是神山。" },
+        人物: { 陛下: "陛下统治青丘。", 将军: "将军镇守边关。" },
+    },
+}, "角色");
+check("B1.13 嵌套字典世界书被识别（不再 null）", !!nestedBook);
+check("B1.14 嵌套字典按顶层文件夹分两类", nestedBook && JSON.stringify(nestedBook.stats.categories) === '["地理","人物"]');
+
+const parentChainBook = parseTavernWorldBook({
+    name: "角色",
+    character_book: {
+        name: "世界观",
+        entries: [
+            { id: "1", keys: ["青丘"], content: "青丘是狐国。", folder: "f_sub", insertion_order: 1 },
+            { id: "2", keys: ["陛下"], content: "陛下统治。", folder: "f_ppl", insertion_order: 2 },
+        ],
+        folders: [
+            { id: "f_geo", name: "地理", parent: null },
+            { id: "f_sub", name: "青丘国", parent: "f_geo" },
+            { id: "f_ppl", name: "人物", parent: null },
+        ],
+    },
+}, "角色");
+check("B1.15 标准 entries + 文件夹父级链拆出 地理/青丘国",
+    parentChainBook && JSON.stringify(parentChainBook.stats.categories) === '["地理/青丘国","人物"]');
+
 
 // —— B2 触发词补全 + 常驻兜底（导入了却永不生效的核心坑）——
 const noKey = parseTavernWorldBook(

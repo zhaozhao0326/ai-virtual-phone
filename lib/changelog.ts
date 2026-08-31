@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.67";
+export const APP_VERSION = "1.7.68";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,18 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.68",
+    date: "2026-08-31",
+    title: "特调世界书按分类拆解（修）",
+    highlights: [
+      "修复特调导入角色卡后世界书仍挤成一长串的问题：兼容多种世界书结构",
+      "支持文件夹父子层级，如「地理」下的「青丘国」会归类为「地理/青丘国」而非丢失父级",
+      "支持嵌套字典式世界书（分类直接作为键）与数字文件夹 id 这类写法",
+      "单条超长设定带章节标题时，按标题切成多条并归入对应分类",
+      "小手机侧同样受益：导入时分类识别更稳，地理等子文件夹不再漏提",
+    ],
+  },
   {
     version: "1.7.67",
     date: "2026-08-31",
