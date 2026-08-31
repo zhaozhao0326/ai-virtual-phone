@@ -132,7 +132,7 @@ function insertPngTextChunk(u8: Uint8Array, keyword: string, text: string): Uint
 }
 
 /** 从 PNG 卡解析材料；酒馆卡（SillyTavern V2/V3）自动适配为私人角色卡 */
-export function parseMixMaterialsFromPng(buffer: ArrayBuffer): MixMaterial[] {
+export function parseMixMaterialsFromPng(buffer: ArrayBuffer): TavernCardImportResult {
     const u8 = new Uint8Array(buffer);
     if (!isPng(u8)) throw new Error("这不是一个有效的 PNG 文件。");
     const chunks = readPngTextChunks(u8);
@@ -159,8 +159,8 @@ export function parseMixMaterialsFromPng(buffer: ArrayBuffer): MixMaterial[] {
             if (!parsed) throw new Error("这张酒馆卡里的数据不是有效的 JSON。");
             // PNG 本体就是封面
             const cover = pngToDataUrl(u8);
-            const materials = parseSillyTavernCharacterCard(parsed, cover);
-            if (materials.length) return materials;
+            const cardResult = parseSillyTavernCharacterCard(parsed, cover);
+            if (cardResult.materials.length) return cardResult;
             throw new Error("这张酒馆卡里没有能认出来的角色数据。");
         }
     }
@@ -195,8 +195,26 @@ function parseJsonLoose(text: string): unknown {
  * 产出：一张私人角色卡 + 可选的基底（世界书 / 系统提示）+ 苦精（追加指令）。
  * 全部打 private 标记：只在酒柜私人区出现，不能发布到公开渠道。
  */
-function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): MixMaterial[] {
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+export type TavernCardImportResult = {
+    materials: MixMaterial[];
+    /** 世界书按分类拆出的分类名（多级用 / 连接）；含空串表示存在「未分类」的通用分组 */
+    worldBookCategories: string[];
+    /** 是否真的解析到世界书（区分「没世界书」与「有但未分类」） */
+    hasWorldBook: boolean;
+    hasRegex: boolean;
+    hasPreset: boolean;
+};
+
+const EMPTY_IMPORT_RESULT: TavernCardImportResult = {
+    materials: [],
+    worldBookCategories: [],
+    hasWorldBook: false,
+    hasRegex: false,
+    hasPreset: false,
+};
+
+function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): TavernCardImportResult {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return EMPTY_IMPORT_RESULT;
     const root = parsed as Record<string, unknown>;
     const spec = typeof root.spec === "string" ? root.spec : "";
     const isV2 = /^chara_card/i.test(spec);
@@ -204,12 +222,12 @@ function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): MixMate
     const data = isV2 && root.data && typeof root.data === "object" && !Array.isArray(root.data)
         ? (root.data as Record<string, unknown>)
         : root;
-    if (!isV2 && !("first_mes" in data) && !("mes_example" in data)) return [];
+    if (!isV2 && !("first_mes" in data) && !("mes_example" in data)) return EMPTY_IMPORT_RESULT;
 
     const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
     const strArr = (v: unknown): string[] => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
     const name = str(data.name);
-    if (!name) return [];
+    if (!name) return EMPTY_IMPORT_RESULT;
 
     const now = Date.now();
     const openings = [str(data.first_mes), ...strArr(data.alternate_greetings)].filter(Boolean);
@@ -339,7 +357,16 @@ function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): MixMate
         } as MixTextMaterial);
     }
 
-    return materials;
+    const worldBookCategories = parsedBook
+        ? parsedBook.groups.filter((g) => !g.extraOnly).map((g) => g.category || "")
+        : [];
+    return {
+        materials,
+        worldBookCategories,
+        hasWorldBook: Boolean(parsedBook),
+        hasRegex: regexRules.length > 0,
+        hasPreset: Boolean(presetHit),
+    };
 }
 
 /**
@@ -465,7 +492,7 @@ function repairJsonText(text: string): string | null {
  * 兼容三种写法：本工具导出的带壳文件、裸材料对象、以及一次多件的数组。
  * 导入一律换新 id，避免覆盖酒柜里的同名旧件。
  */
-export function parseMixMaterialsFromJson(text: string): MixMaterial[] {
+export function parseMixMaterialsFromJson(text: string): TavernCardImportResult {
     let parsed: unknown;
     try {
         parsed = JSON.parse(text);
@@ -548,12 +575,12 @@ export function parseMixMaterialsFromJson(text: string): MixMaterial[] {
         const thirdParty = candidates.find(isThirdPartyCard);
         if (thirdParty) {
             const mapped = parseSillyTavernCharacterCard(thirdParty);
-            if (mapped.length) return mapped;
+            if (mapped.materials.length) return mapped;
             throw new Error("这张酒馆卡里没有能认出来的角色数据。");
         }
         throw new Error("文件里没有能认出来的材料。");
     }
-    return materials;
+    return { materials, worldBookCategories: [], hasWorldBook: false, hasRegex: false, hasPreset: false };
 }
 
 // ── 配方文件（整杯打包） ─────────────────────────────
@@ -670,4 +697,20 @@ export function importMixRecipePack(pack: { recipe: MixRecipe; materials: MixMat
         createdAt: prior?.createdAt ?? pack.recipe.createdAt,
     });
     return `配方「${pack.recipe.name}」已入吧台，${pack.materials.length} 味材料入柜${keptNote}——导入的作品不能发布，材料内容不可改，搭配可以自己换`;
+}
+
+/** 把酒馆卡导入结果转成给用户看的一句中文提示（让「世界书有没有按分类拆开」一眼可见） */
+export function describeTavernImportResult(r: TavernCardImportResult): string {
+    const cats = r.worldBookCategories.filter(Boolean);
+    const parts: string[] = [];
+    if (cats.length) {
+        const shown = cats.slice(0, 4).join("、");
+        parts.push(`世界书已按 ${cats.length} 类拆成 ${cats.length} 件基底（${shown}${cats.length > 4 ? " 等" : ""}）`);
+    } else if (r.hasWorldBook) {
+        parts.push("世界书已导入，但未检测到可归类线索（如需按类拆分，贴一条条目原始结构给我即可）");
+    }
+    if (r.hasRegex) parts.push("含 1 组正则");
+    if (r.hasPreset) parts.push("含 1 份预设");
+    const head = r.materials.length > 1 ? `已导入 ${r.materials.length} 件材料` : `「${r.materials[0]?.name ?? "材料"}」已入柜`;
+    return parts.length ? `${head}：${parts.join("；")}` : head;
 }

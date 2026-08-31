@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.68";
+export const APP_VERSION = "1.7.69";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.69",
+    date: "2026-08-31",
+    title: "特调导入自报世界书分类",
+    highlights: [
+      "导入酒馆角色卡后，提示会直接说明世界书按几类拆成了几件基底（如地理/青丘国、人物、历史）",
+      "若世界书存在但没检测到可归类线索，提示会明确指出，便于针对性补识别规则",
+      "同时提示含正则、预设等附带内容，导入结果一目了然",
+    ],
+  },
   {
     version: "1.7.68",
     date: "2026-08-31",

@@ -70,8 +70,8 @@ check("A21 特调侧不再拼一坨世界书", !/name: `\$\{name\}·世界书`,/
 check("A22 特调侧预设摊成基底材料", /flattenTavernPresetPrompts\(/.test(mixSrc));
 
 check("A23 V3 卡 assets 里带的图可作头像兜底", /src\.assets/.test(charSrc) && /validAvatar\(asset\.uri/.test(charSrc));
-check("A24 changelog 版本已升到 1.7.68", /APP_VERSION = "1\.7\.68"/.test(changelogSrc));
-check("A25 changelog 头部记录了本次改动", /version: "1\.7\.68"/.test(changelogSrc) && /特调世界书按分类拆解/.test(changelogSrc));
+check("A24 changelog 版本已升到 1.7.69", /APP_VERSION = "1\.7\.69"/.test(changelogSrc));
+check("A25 changelog 头部记录了本次改动", /version: "1\.7\.69"/.test(changelogSrc) && /特调导入自报世界书分类/.test(changelogSrc));
 
 console.log("\n── B. 运行时逻辑（跑真函数）──");
 

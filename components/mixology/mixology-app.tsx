@@ -69,7 +69,7 @@ import {
 } from "@/lib/mixology/types";
 import { fetchCurrentAccount } from "@/lib/account-client";
 import { MixHallGoneError, shareHallMaterial, shareHallRecipe, updateHallMaterial, updateHallRecipe } from "@/lib/mixology/hall-client";
-import { exportMixMaterial, exportMixMaterialPng, exportMixRecipeFile, importMixRecipePack, parseMixMaterialsFromJson, parseMixMaterialsFromPng, parseMixRecipeFile } from "@/lib/mixology/transfer";
+import { exportMixMaterial, exportMixMaterialPng, exportMixRecipeFile, importMixRecipePack, parseMixMaterialsFromJson, parseMixMaterialsFromPng, parseMixRecipeFile, describeTavernImportResult } from "@/lib/mixology/transfer";
 import { MixMaterialEditor } from "./mixology-editor";
 import { MixMatAutoCover, mixMatHasAutoCover } from "./mixology-preview";
 import { MixologyGame } from "./mixology-game";
@@ -337,9 +337,10 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
         if (!file || !editor) return;
         try {
             const isPng = file.type === "image/png" || /\.png$/i.test(file.name);
-            const materials = isPng
+            const result = isPng
                 ? parseMixMaterialsFromPng(await file.arrayBuffer())
                 : parseMixMaterialsFromJson(await file.text());
+            const materials = result.materials;
             // 一件都认不出时解析函数自己会抛错，所以走到这里 materials 一定非空
             const picked = materials.find((m) => m.kind === editor.kind);
             if (!picked) {
@@ -382,12 +383,12 @@ export function MixologyApp({ onClose }: { onClose: () => void }) {
                     return;
                 }
             }
-            const materials = isPng
+            const result = isPng
                 ? parseMixMaterialsFromPng(await file.arrayBuffer())
                 : parseMixMaterialsFromJson(await file.text());
-            materials.forEach(saveMixMaterial);
+            result.materials.forEach(saveMixMaterial);
             refresh();
-            showToast(materials.length > 1 ? `已导入 ${materials.length} 件材料。` : `「${materials[0].name}」已入柜。`);
+            showToast(describeTavernImportResult(result));
         } catch (error) {
             showToast(error instanceof Error ? error.message : "导入失败");
         }

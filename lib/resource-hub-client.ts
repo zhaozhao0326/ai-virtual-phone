@@ -683,13 +683,13 @@ export async function importResourceHubFile(
             const { MIX_KIND_LABELS } = await import("./mixology/types");
             let materials;
             if (lower.endsWith(".png")) {
-                materials = parseMixMaterialsFromPng(await fetchResourceHubBinary(source, path));
+                materials = parseMixMaterialsFromPng(await fetchResourceHubBinary(source, path)).materials;
             } else {
                 const text = await fetchResourceHubText(source, path);
                 // 配方文件（整杯打包）：配方与材料一起落库，规矩同下
                 const pack = parseMixRecipeFile(text);
                 if (pack) return importMixRecipePack(pack, options?.authorName);
-                materials = parseMixMaterialsFromJson(text);
+                materials = parseMixMaterialsFromJson(text).materials;
             }
             if (!materials.length) throw new Error("没有解析到特调材料，请确认文件是独家特调导出的 JSON 或 PNG");
             // 种类与件数文件自带，全部自动入柜，用户不用选。集市来源打 imported 标记，
