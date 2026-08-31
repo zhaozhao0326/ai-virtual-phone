@@ -70,8 +70,8 @@ check("A21 特调侧不再拼一坨世界书", !/name: `\$\{name\}·世界书`,/
 check("A22 特调侧预设摊成基底材料", /flattenTavernPresetPrompts\(/.test(mixSrc));
 
 check("A23 V3 卡 assets 里带的图可作头像兜底", /src\.assets/.test(charSrc) && /validAvatar\(asset\.uri/.test(charSrc));
-check("A24 changelog 版本已升到 1.7.69", /APP_VERSION = "1\.7\.69"/.test(changelogSrc));
-check("A25 changelog 头部记录了本次改动", /version: "1\.7\.69"/.test(changelogSrc) && /特调导入自报世界书分类/.test(changelogSrc));
+check("A24 changelog 版本已升到 1.7.70", /APP_VERSION = "1\.7\.70"/.test(changelogSrc));
+check("A25 changelog 头部记录了本次改动", /version: "1\.7\.70"/.test(changelogSrc) && /特调世界书识别更多章节格式/.test(changelogSrc));
 
 console.log("\n── B. 运行时逻辑（跑真函数）──");
 
@@ -250,6 +250,29 @@ check("B4.4 三级标题成了条目标题", megaBook.groups.some((g) => g.entri
 check("B4.5 切分后仍全部可激活", megaBook.groups.every((g) =>
     g.entries.every((e) => e.constant || e.key.split(",").filter(Boolean).length > 0)));
 check("B4.6 短内容不会被误切", splitMegaContent("很短的一段话。\n另一句话。") === null);
+
+// —— B4 续：用户真机卡里的「状态A/B/C/D + 要求 + 群聊部分」格式 ——
+const stateStyle = [
+    "状态A【对方未读】：对方发了消息，姜照临没看，unread填对方发的条数，红点显示数字，detail只有对方的消息，没有姜照临的回复。",
+    "",
+    "状态B【已读未回】：对方发了消息，姜照临看了但没回，unread填0，preview显示对方最后一条消息，detail只有对方的消息，没有姜照临的回复。",
+    "",
+    "状态C【姜照临已回复】：双方有来有回，unread填0，detail里姜照临必须有至少一条回复，发送者直接写姜照临，避免写成第三人称。",
+    "",
+    "状态D【姜照临主动发消息】：姜照临主动发消息给对方，对方可能已读、未读或有回复，unread根据实际情况填写，detail里第一条是姜照临发的。",
+    "",
+    "要求：2-4组对话中，状态C或状态D至少出现一次，保证姜照临有实际参与至少一组对话。其余对话可以是A或B。姜照临的回复风格必须口语化、短句、符合其挑衅随意的人设。",
+    "",
+    "群聊部分：",
+    "固定群成员为姜照临、郁明也、宋烬扬、沈奕四人。群名由你根据当前剧情氛围自由生成，风格参考真实年轻人微信群名，带emoji、谐音梗、吐槽向、缩写等，禁止过于正式的群名。",
+].join("\n");
+const stateBook = parseTavernWorldBook(
+    { character_book: { name: "状态书", entries: [{ comment: "姜照临·世界书", content: stateStyle }] } },
+    "测试角色"
+);
+check("B4.7 状态A/B/C/D 格式被识别并切分", stateBook.stats.megaSplit === true && stateBook.stats.entries >= 5, `entries=${stateBook.stats.entries}`);
+check("B4.8 状态类标题成独立分类", stateBook.stats.categories.some((c) => c.startsWith("状态A") || c.startsWith("状态B")), stateBook.stats.categories.join("|"));
+check("B4.9 要求/群聊部分也被拆成独立分类", stateBook.stats.categories.includes("要求") && stateBook.stats.categories.includes("群聊部分"), stateBook.stats.categories.join("|"));
 
 // —— B5 位置 / 顺序映射 ——
 check("B5.1 position 0 → before_char", mapTavernPosition(0) === "before_char");

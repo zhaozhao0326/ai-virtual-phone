@@ -409,6 +409,18 @@ const HEADING_PATTERNS: { re: RegExp; level: (m: RegExpMatchArray) => number; ti
         level: () => 2,
         title: (m) => m[0].trim(),
     },
+    // 状态A【对方未读】：内容 / 阶段一【设定】：内容
+    {
+        re: /^\s*(状态[ABCD]|阶段[一二三四五六七八九十]|阶段\d+|类型[ABCD]|类型\d+|模块[一二三四五六七八九十]|模块\d+)\s*[【\[（(]\s*([^】\]）)]{1,40}?)\s*[】\]）)]\s*[：:]\s*\S.*$/,
+        level: () => 2,
+        title: (m) => `${m[1].trim()}-${m[2].trim()}`,
+    },
+    // 要求：内容 / 群聊部分：内容 / 附注：内容 / 规则：内容（标题后可直接跟内容，也可独占一行）
+    {
+        re: /^\s*(要求|群聊部分|群聊设定|单人部分|单人设定|附注|说明|规则|设定|注意|提示|备注|补充|背景|人物|剧情|关系|事件|场景)\s*[：:]\s*(?:\S.*)?$/,
+        level: () => 2,
+        title: (m) => m[1].trim(),
+    },
 ];
 
 /**
@@ -445,11 +457,15 @@ export function splitMegaContent(content: string): TavernHeadingSplit[] | null {
     for (let i = 0; i < found.length; i++) {
         const start = found[i].line + 1;
         const end = i + 1 < found.length ? found[i + 1].line : lines.length;
-        const body = lines
+        // 标题行本身可能已携带内容（如 "状态A【对方未读】：对方发了消息..."），
+        // 提取第一个冒号后的内容作为该段 body 的开头，避免整段内容被丢弃。
+        const headingLine = lines[found[i].line] ?? "";
+        const inlineBody = headingLine.replace(/^.*?[：:]\s*/, "").trim();
+        const tailLines = lines
             .slice(start, end)
-            .filter((l) => !SEPARATOR_LINE.test(l))
-            .join("\n")
-            .trim();
+            .filter((l) => !SEPARATOR_LINE.test(l));
+        const bodyParts = inlineBody ? [inlineBody, ...tailLines] : tailLines;
+        const body = bodyParts.join("\n").trim();
         if (body.length < 20) continue;
         out.push({ level: found[i].level, title: found[i].title, body });
     }
@@ -500,7 +516,6 @@ export type TavernParsedBook = {
     };
 };
 
-const MEGA_SPLIT_MIN_LENGTH = 600;
 const EXTRA_DISABLE_LENGTH = 2000;
 
 function isTavernDefaultSystemPrompt(text: string): boolean {
@@ -660,11 +675,10 @@ export function parseTavernWorldBook(
 
     // 整本被压成一两条超长条目（作者没用分类）→ 按标题层级切开，标题即分类
     let megaSplit = false;
-    const longOnes = parsed.filter((p) => p.entry.content.length >= MEGA_SPLIT_MIN_LENGTH);
-    if (parsed.length <= 3 && longOnes.length > 0) {
+    if (parsed.length <= 3) {
         const rebuilt: TavernParsedEntry[] = [];
         for (const p of parsed) {
-            const splits = p.entry.content.length >= MEGA_SPLIT_MIN_LENGTH ? splitMegaContent(p.entry.content) : null;
+            const splits = splitMegaContent(p.entry.content);
             if (!splits) {
                 rebuilt.push(p);
                 continue;

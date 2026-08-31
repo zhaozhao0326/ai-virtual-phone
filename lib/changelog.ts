@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.69";
+export const APP_VERSION = "1.7.70";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.70",
+    date: "2026-09-01",
+    title: "特调世界书识别更多章节格式",
+    highlights: [
+      "修复特调导入后世界书仍一整坨的问题：新增对「状态A【标题】：内容」「要求：内容」「群聊部分：内容」等常见章节格式的识别",
+      "超长条目按标题切分时，标题行本身携带的内容不再丢失，整段完整归入对应分类",
+      "降低标题切分触发阈值，让中等长度的分章世界书也能自动拆解",
+    ],
+  },
   {
     version: "1.7.69",
     date: "2026-08-31",
