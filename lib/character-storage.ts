@@ -248,10 +248,24 @@ function parseSillyTavernCharacterData(
     persona += `\n\n【示例对话】\n${mesExample.trim()}`;
   }
 
+  // V3 卡把图放在 assets 数组里（icon / 背景 / 表情包），头像字段常常是空的。
+  // 卡里带的第一张可用图拿来当头像；ccdefault: 之类的内置占位会被 validAvatar 挡掉。
+  let avatar = validAvatar(src.avatar);
+  if (!avatar && Array.isArray(src.assets)) {
+    for (const raw of src.assets) {
+      const asset = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const candidate = validAvatar(asset.uri ?? asset.url);
+      if (candidate) {
+        avatar = candidate;
+        break;
+      }
+    }
+  }
+
   return {
     name,
     persona: persona.trim(),
-    avatar: validAvatar(src.avatar),
+    avatar,
     appearance:
       typeof src.appearance === "string" && src.appearance.trim()
         ? src.appearance
@@ -265,7 +279,7 @@ function parseSillyTavernCharacterData(
 
 // ── PNG import/export ────────────────────────────────
 
-function readPngTextChunk(u8: Uint8Array, keyword: string): string | null {
+export function readPngTextChunk(u8: Uint8Array, keyword: string): string | null {
   const sig = [137, 80, 78, 71, 13, 10, 26, 10];
   for (let i = 0; i < 8; i++) {
     if (u8[i] !== sig[i]) return null;
@@ -356,64 +370,8 @@ export function parseCharacterFromPng(
   return null;
 }
 
-// 核心：从已解析的酒馆角色卡对象提取内嵌世界书（v2/v3 通用）
-function extractSillyTavernWorldBookFromObj(
-  obj: Record<string, unknown>
-): { name: string; entries: unknown[] } | null {
-  const src =
-    typeof obj.data === "object" && obj.data !== null
-      ? (obj.data as Record<string, unknown>)
-      : obj;
-
-  const book = src.character_book;
-  if (!book || typeof book !== "object") return null;
-
-  const bookObj = book as Record<string, unknown>;
-  const rawEntries = Array.isArray(bookObj.entries) ? bookObj.entries : [];
-  // 酒馆条目的扩展字段（extensions/secondary_keys 等）会被世界书导入器
-  // 判为"不支持格式"而整个拒收——这里剥掉，只留本 App 认识的字段。
-  const CLEAN_FIELDS = ["selectiveLogic", "secondary_keys", "extensions", "characterFilter", "vectorized"];
-  const entries = rawEntries
-    .map((e) => {
-      if (!e || typeof e !== "object" || Array.isArray(e)) return e;
-      const rec = { ...(e as Record<string, unknown>) };
-      for (const f of CLEAN_FIELDS) delete rec[f];
-      return rec;
-    })
-    .filter((e): e is unknown => Boolean(e));
-  return {
-    name: String(bookObj.name || "导入的世界书"),
-    entries,
-  };
-}
-
-export function extractSillyTavernWorldBookFromPng(
-  buffer: ArrayBuffer
-): { name: string; entries: unknown[] } | null {
-  const u8 = new Uint8Array(buffer);
-  const charaBase64 = readPngTextChunk(u8, "chara");
-  if (!charaBase64) return null;
-
-  try {
-    const jsonStr = decodeURIComponent(escape(atob(charaBase64)));
-    const obj = JSON.parse(jsonStr) as Record<string, unknown>;
-    return extractSillyTavernWorldBookFromObj(obj);
-  } catch {
-    return null;
-  }
-}
-
-// 从酒馆 JSON 角色卡（v2/v3）文本提取内嵌世界书，供 JSON 导入流程复用
-export function extractSillyTavernWorldBookFromJson(
-  text: string
-): { name: string; entries: unknown[] } | null {
-  try {
-    const obj = JSON.parse(text) as Record<string, unknown>;
-    return extractSillyTavernWorldBookFromObj(obj);
-  } catch {
-    return null;
-  }
-}
+// 注：内嵌世界书 / 正则 / 预设的提取已迁到 lib/tavern-card-parse.ts + lib/tavern-card-import.ts
+// （按分类拆书、触发词补全、正则与预设适配都在那里），这里只保留角色本体的解析。
 
 // ── CRC32 ────────────────────────────────────────────
 

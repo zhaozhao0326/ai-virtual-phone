@@ -21,6 +21,11 @@ export type WorldBookEntry = {
     useProbability?: boolean;
     role?: number;
     insertion_order: number;
+    /**
+     * 分类 / 文件夹（多级用 / 连接）。导入第三方角色卡时按原卡分类写入，
+     * 便于事后「按分类拆分」重组；存量条目没有这个字段不影响使用。
+     */
+    category?: string;
 };
 
 export type WorldBookConfig = SettingItemMeta & {

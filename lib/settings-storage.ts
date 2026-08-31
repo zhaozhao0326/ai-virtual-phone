@@ -422,6 +422,7 @@ function parseWorldBookEntry(e: any): WorldBookEntry {
         useProbability: Boolean(e.useProbability || false),
         role: Number(e.role) || 0,
         insertion_order: Number(e.order ?? e.insertion_order ?? 50),
+        category: typeof e.category === "string" && e.category.trim() ? e.category.trim() : undefined,
     };
 }
 

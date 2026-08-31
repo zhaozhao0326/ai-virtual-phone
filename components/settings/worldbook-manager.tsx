@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useContext, useCallback } from "react";
-import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, ChevronDown, AlertCircle, Maximize2, Replace, FileText } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, Download, ChevronLeft, ChevronDown, AlertCircle, Maximize2, Replace, FileText, FolderTree } from "lucide-react";
 import {
     loadWorldBooks,
     saveWorldBooks,
@@ -12,6 +12,7 @@ import {
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { importWorldBooksFromDocs, extractTextFromWordFile } from "@/lib/worldbook-doc-import";
+import { resplitWorldBookByCategory } from "@/lib/tavern-card-import";
 import type { WorldBookConfig, WorldBookEntry } from "@/lib/settings-types";
 import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
@@ -28,6 +29,10 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const [expandUid, setExpandUid] = useState<string | null>(null);
     const [importError, setImportError] = useState<string | null>(null);
     const [importMenuOpen, setImportMenuOpen] = useState(false);
+    const [notice, setNotice] = useState<string | null>(null);
+    const [resplitTarget, setResplitTarget] = useState<{ id: string; name: string } | null>(null);
+    const [resplitBusy, setResplitBusy] = useState(false);
+    const [resplitResult, setResplitResult] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const docFileInputRef = useRef<HTMLInputElement>(null);
@@ -366,6 +371,29 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
         await downloadFile(blob, `${book.name || "worldbook"}.json`);
     };
 
+    // 把整本被挤成一坨的世界书，按条目自带分类重新拆成多本（补救早年导入的卡）
+    const handleResplitConfirm = () => {
+        if (!resplitTarget || resplitBusy) return;
+        setResplitBusy(true);
+        try {
+            const result = resplitWorldBookByCategory(resplitTarget.id);
+            if (result && result.books.length > 1) {
+                setBooks(loadWorldBooks());
+                setActiveBookId(result.books[0].id);
+                setResplitResult(
+                    `已按分类拆分为 ${result.books.length} 本世界书，共重新归类 ${result.entries} 条条目（分类：${result.categories.slice(0, 6).join("、")}${result.categories.length > 6 ? " 等" : ""}）。原书已被替换，绑定关系一并迁移。`
+                );
+            } else {
+                setResplitResult("这本书拆不出分类（条目缺少可用的分类信息），无需拆分。");
+            }
+        } catch (e) {
+            setResplitResult(`拆分失败：${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setResplitBusy(false);
+            setResplitTarget(null);
+        }
+    };
+
     // --- Entry Level Operations ---
     const activeBook = books.find(b => b.id === activeBookId);
 
@@ -639,6 +667,14 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                                 >
                                     <Trash2 size={15} strokeWidth={1.8} />
                                     <span>删除世界书</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setResplitTarget({ id: activeBook.id, name: activeBook.name })}
+                                    className="inline-flex h-10 items-center justify-center gap-1.5 rounded-[20px] border border-black/10 bg-white px-4 text-xs font-bold text-[var(--c-accent)] shadow-sm transition-all hover:bg-gray-50 hover:shadow-md active:scale-95"
+                                >
+                                    <FolderTree size={15} strokeWidth={1.8} />
+                                    <span>按分类拆分</span>
                                 </button>
                             </div>
 
@@ -973,6 +1009,32 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                     cancelLabel=""
                     onConfirm={() => setImportError(null)}
                     onCancel={() => setImportError(null)}
+                />
+            )}
+
+            {resplitTarget && (
+                <ConfirmDialog
+                    title="按分类拆分世界书"
+                    message={`将把「${resplitTarget.name}」按条目分类重新拆分为多本世界书，原书会被替换、绑定关系一并迁移。此操作不可逆，确定继续？`}
+                    icon={FolderTree}
+                    variant="action"
+                    confirmLabel={resplitBusy ? "拆分中…" : "确认拆分"}
+                    cancelLabel="取消"
+                    onConfirm={handleResplitConfirm}
+                    onCancel={() => setResplitTarget(null)}
+                />
+            )}
+
+            {resplitResult && (
+                <ConfirmDialog
+                    title="拆分结果"
+                    message={resplitResult}
+                    icon={FolderTree}
+                    variant="action"
+                    confirmLabel="知道了"
+                    cancelLabel=""
+                    onConfirm={() => setResplitResult(null)}
+                    onCancel={() => setResplitResult(null)}
                 />
             )}
 

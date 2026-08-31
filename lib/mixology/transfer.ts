@@ -4,9 +4,16 @@
 
 import { downloadFile } from "@/lib/download-utils";
 import {
+    collectTavernRegexScripts,
+    findTavernPresetObject,
+    flattenTavernPresetPrompts,
+    parseTavernWorldBook,
+} from "@/lib/tavern-card-parse";
+import {
     MIX_SLOT_ORDER,
     createMixId,
     type MixCharacterCard,
+    type MixFilterMaterial,
     type MixMaterial,
     type MixMaterialKind,
     type MixRecipe,
@@ -228,33 +235,77 @@ function parseSillyTavernCharacterCard(parsed: unknown, cover?: string): MixMate
     };
     const materials: MixMaterial[] = [card];
 
-    // 内嵌世界书（character_book）→ 基底材料：enabled 条目拼成 【关键词】内容
-    const book = data.character_book;
-    if (book && typeof book === "object" && !Array.isArray(book)) {
-        const entries = (book as Record<string, unknown>).entries;
-        if (Array.isArray(entries)) {
+    // 内嵌世界书（character_book）→ 基底材料：按原卡的分类/文件夹拆成多件，
+    // 不再全挤成一件（原来"一坨什么都塞在里面"没法按类选装）；
+    // 分类识别、超长条目按标题切开、触发词补全都走 tavern-card-parse，与小手机导入同一套。
+    const parsedBook = parseTavernWorldBook(data, name);
+    if (parsedBook) {
+        for (const group of parsedBook.groups) {
+            // 系统设定 / 作者注释 由下面的专属材料负责，这里跳过免得重复
+            if (group.extraOnly) continue;
             const lines: string[] = [];
-            for (const entry of entries) {
-                if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-                const rec = entry as Record<string, unknown>;
-                if (rec.enabled === false) continue;
-                const content = str(rec.content);
+            for (const entry of group.entries) {
+                if (entry.disable) continue;
+                const content = entry.content?.trim();
                 if (!content) continue;
-                const keys = Array.isArray(rec.keys) ? rec.keys.filter((k): k is string => typeof k === "string") : [];
-                lines.push(keys.length ? `【${keys.join("、")}】${content}` : content);
+                const keys = String(entry.key || "")
+                    .split(",")
+                    .map((k) => k.trim())
+                    .filter(Boolean);
+                const title = String(entry.comment || "").replace(/（[^）]*）/g, "").trim();
+                const head = title || keys.join("、");
+                lines.push(head ? `【${head}】${content}` : content);
             }
-            if (lines.length) {
-                materials.push({
-                    kind: "base",
-                    id: createMixId("mixmat"),
-                    name: `${name}·世界书`,
-                    hook: "从酒馆角色卡导入的世界书",
-                    content: lines.join("\n\n"),
-                    private: true,
-                    createdAt: now,
-                    updatedAt: now,
-                } as MixTextMaterial);
-            }
+            if (!lines.length) continue;
+            materials.push({
+                kind: "base",
+                id: createMixId("mixmat"),
+                name: group.category ? `${name}·${group.category}` : `${name}·世界书`,
+                hook: group.category
+                    ? `从角色卡导入的世界书（分类：${group.category}）`
+                    : "从酒馆角色卡导入的世界书",
+                content: lines.join("\n\n"),
+                private: true,
+                createdAt: now,
+                updatedAt: now,
+            } as MixTextMaterial);
+        }
+    }
+
+    // 正则脚本 → 滤网材料（酒馆的 placement 2 = AI 输出，对应"进上下文"清洗）
+    const regexRules = collectTavernRegexScripts(root, data);
+    if (regexRules.length) {
+        materials.push({
+            kind: "filter",
+            id: createMixId("mixmat"),
+            name: `${name}·正则`,
+            hook: "从酒馆角色卡导入的正则脚本",
+            rules: regexRules.map((r) => ({
+                find: r.findRegex,
+                replace: r.replaceString,
+                mode: r.placement.includes(2) ? "context" : "display",
+            })),
+            private: true,
+            createdAt: now,
+            updatedAt: now,
+        } as MixFilterMaterial);
+    }
+
+    // 卡里附带的预设 → 基底材料（按原顺序摊成文本，只收启用的条目）
+    const presetHit = findTavernPresetObject(root, data, name);
+    if (presetHit) {
+        const presetText = flattenTavernPresetPrompts(presetHit.obj);
+        if (presetText) {
+            materials.push({
+                kind: "base",
+                id: createMixId("mixmat"),
+                name: presetHit.name || `${name}·预设`,
+                hook: "从酒馆角色卡导入的预设提示词",
+                content: presetText,
+                private: true,
+                createdAt: now,
+                updatedAt: now,
+            } as MixTextMaterial);
         }
     }
 

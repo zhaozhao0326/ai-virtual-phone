@@ -12,16 +12,15 @@ import {
   saveCharacters,
   loadBackgroundItems,
   saveBackgroundItems,
-  extractSillyTavernWorldBookFromPng,
-  extractSillyTavernWorldBookFromJson,
   type CharacterImportData,
 
   CHAR_BLOCKED_FIELDS,
 } from "@/lib/character-storage";
+import { readTavernCardFromJsonText, readTavernCardFromPng, importCardExtras } from "@/lib/tavern-card-import";
 import { extractTextFromWordFile } from "@/lib/worldbook-doc-import";
 import { generateBriefPersonaText, generateAppearanceText, generateDeepDivePersona, isBriefPersonaStale, type DeepDivePersonaProfile } from "@/lib/brief-persona";
 import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
-import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity, createWorldBook, saveWorldBooks, parseWorldBookFromJson, loadWorldBooks, loadBindingConfig, saveBindingConfig, getCharacterBinding, setCharacterBinding } from "@/lib/settings-storage";
+import { loadImageGenerationSettings, setCharacterReferenceFromDataUrl, setWorldUserIdentity } from "@/lib/settings-storage";
 import { generateSupportingCharacters, materializeSupportingCharacter, type GeneratedSupportingCharacter } from "@/lib/npc-generator";
 import {
   addCharacterWorldRelation,
@@ -897,13 +896,9 @@ function CharListView({
         c.polaroidStyle = styleIdx;
         onStartCharPlacement(c);
 
-        // 提取内嵌世界书并自动绑定（与 PNG 导入一致）
-        const embeddedWb = extractSillyTavernWorldBookFromJson(text);
-        let wbNotice = "";
-        if (embeddedWb && embeddedWb.entries.length > 0) {
-          wbNotice = attachEmbeddedWorldBook(embeddedWb, c.id);
-        }
-        onNotice(`点击画布放置角色${wbNotice}`);
+        // 卡里带着的世界书 / 正则 / 预设一并落库绑定（世界书按分类拆成多本）
+        const extras = importCardExtras(readTavernCardFromJsonText(text), c.name, c.id);
+        onNotice(`点击画布放置角色${extras?.notice ?? ""}`);
       } else if (file.type === "image/png" || file.name.endsWith(".png")) {
         const buffer = await file.arrayBuffer();
         const data = parseCharacterFromPng(buffer);
@@ -921,14 +916,9 @@ function CharListView({
         c.polaroidStyle = styleIdx;
         onStartCharPlacement(c);
 
-        // 提取内嵌世界书并自动绑定（与 JSON 导入共用）
-        const stWorldBook = extractSillyTavernWorldBookFromPng(buffer);
-        let wbNotice = "";
-        if (stWorldBook && stWorldBook.entries.length > 0) {
-          wbNotice = attachEmbeddedWorldBook(stWorldBook, c.id);
-        }
-
-        onNotice(`点击画布放置角色${wbNotice}`);
+        // 卡里带着的世界书 / 正则 / 预设一并落库绑定（与 JSON 导入共用同一套解析）
+        const extras = importCardExtras(readTavernCardFromPng(buffer), c.name, c.id);
+        onNotice(`点击画布放置角色${extras?.notice ?? ""}`);
       } else if (/\.(docx?|txt)$/i.test(file.name)) {
         const text = await extractTextFromWordFile(file);
         if (!text.trim()) return onNotice("文档内容为空或无法读取");
@@ -951,32 +941,6 @@ function CharListView({
       } else {
         onNotice("解析失败，请检查文件格式");
       }
-    }
-  }
-
-  // 把内嵌世界书导入到世界书系统，并自动绑定到指定角色（PNG/JSON 导入共用）
-  function attachEmbeddedWorldBook(
-    wb: { name: string; entries: unknown[] },
-    characterId: string
-  ): string {
-    const parsedWb = parseWorldBookFromJson(
-      JSON.stringify({ name: wb.name, entries: wb.entries })
-    );
-    if (!parsedWb) return "，但内嵌世界书解析失败";
-    saveWorldBooks([parsedWb, ...loadWorldBooks()]);
-    window.dispatchEvent(new CustomEvent("settings-worldbooks-updated"));
-    try {
-      const bc = loadBindingConfig();
-      const cb = getCharacterBinding(bc, characterId);
-      const prev = cb.defaults.worldBookIds || [];
-      if (!prev.includes(parsedWb.id)) {
-        cb.defaults = { ...cb.defaults, worldBookIds: [...prev, parsedWb.id] };
-        saveBindingConfig(setCharacterBinding(bc, cb));
-      }
-      return `，世界书「${parsedWb.name}」(${parsedWb.entries.length} 条) 已导入并绑定该角色`;
-    } catch (be) {
-      console.error("Failed to bind embedded world book to character", be);
-      return `，世界书「${parsedWb.name}」已导入（但自动绑定失败，可在「配置绑定」手动绑定）`;
     }
   }
 
