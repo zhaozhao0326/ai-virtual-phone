@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.70";
+export const APP_VERSION = "1.7.71";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.71",
+    date: "2026-09-07",
+    title: "生图（OpenAI 兼容）支持国内中转站",
+    highlights: [
+      "修复生图模型下拉拉不出模型的问题：模型列表接口改为在「浏览器直连」模式下优先从本机直连拉取，不再写死走部署平台服务器，国内中转站也能正常列出模型",
+      "模型过滤补充 nai / diffusion 关键词，NovelAI 系列模型会正确显示在候选列表",
+      "生图请求尊重「请求方式」开关：选「浏览器直连」时只走直连、不再回落到海外服务器，避免国内中转站因部署平台够不到而报错",
+    ],
+  },
   {
     version: "1.7.70",
     date: "2026-09-01",

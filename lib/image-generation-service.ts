@@ -41,6 +41,8 @@ const IMAGE_MODEL_HINTS = [
   "qwen-image",
   "kolors",
   "wan",
+  "nai",
+  "diffusion",
 ];
 
 function mergePrompt(description: string, extraPrompt: string): string {
@@ -278,8 +280,55 @@ export function filterLikelyImageModels(models: string[]): string[] {
   return filtered.length > 0 ? filtered : models;
 }
 
+function extractModelList(data: unknown): string[] {
+  const results: string[] = [];
+  const push = (value: unknown) => {
+    if (typeof value !== "string") return;
+    const normalized = value.replace(/^models\//, "").trim();
+    if (normalized) results.push(normalized);
+  };
+  if (Array.isArray(data)) {
+    data.forEach((item) => {
+      if (typeof item === "string") push(item);
+      else if (item && typeof item === "object") {
+        const row = item as Record<string, unknown>;
+        push(row.id ?? row.name ?? row.model);
+      }
+    });
+  } else if (data && typeof data === "object") {
+    const row = data as Record<string, unknown>;
+    for (const key of ["data", "models", "items"]) {
+      const value = row[key];
+      if (Array.isArray(value)) results.push(...extractModelList(value));
+    }
+    push(row.id ?? row.name ?? row.model);
+  }
+  return Array.from(new Set(results));
+}
+
 export async function fetchImageGenerationModels(settings: Pick<ImageGenerationSettings, "apiKey" | "baseUrl" | "requestMode">): Promise<string[]> {
-  // 始终走 Vercel 服务器中转获取模型列表（与生成一致），避免浏览器直连 api.openai.com 被墙。
+  const apiKey = settings.apiKey?.trim();
+  const baseUrl = settings.baseUrl?.trim();
+  // 浏览器直连：用户显式选择「浏览器直连」时，从当前设备直接拉模型列表，
+  // 绕过部署平台（海外 Vercel）连不上国内中转站的问题。失败再回落服务器。
+  if (settings.requestMode === "direct" && apiKey && baseUrl) {
+    try {
+      const u = baseUrl.replace(/\/+$/, "");
+      const modelsUrl = /\/models$/i.test(u) ? u : `${u}/models`;
+      const res = await fetch(modelsUrl, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => null);
+        const list = extractModelList(json);
+        if (list.length) return list;
+      }
+    } catch {
+      // 直连失败（CORS / 网络），回落服务器
+    }
+  }
+  // 回落：Vercel 服务器中转获取模型列表（与生成一致）
   const res = await fetch("/api/image-generation/models", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -677,6 +726,12 @@ async function generateImageViaServerOrProxy(params: {
   sceneLighting?: string;
   signal?: AbortSignal;
 }): Promise<ImageGenerationApiResponse> {
+  const requestMode = params.settings.requestMode;
+  // 显式浏览器直连：只走浏览器直连，不回落到海外部署平台服务器
+  // （国内中转站 Vercel 够不到，回落只会拿到 "Failed to fetch"）。
+  if (requestMode === "direct") {
+    return generateImageDirect(params);
+  }
   if (IMAGE_GEN_PROXY_URL) {
     try {
       return await generateImageDirect({ ...params, proxyBaseUrl: IMAGE_GEN_PROXY_URL });
@@ -687,6 +742,10 @@ async function generateImageViaServerOrProxy(params: {
       }
       throw error;
     }
+  }
+  // 显式服务端转发：不走浏览器直连探测，直接走部署平台服务器
+  if (requestMode === "server") {
+    return generateImageViaServer(params);
   }
   const baseUrlKey = normalizeBaseUrl(params.settings.baseUrl);
   if (!directCorsFailedBaseUrls.has(baseUrlKey)) {
