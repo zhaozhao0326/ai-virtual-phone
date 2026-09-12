@@ -41,7 +41,9 @@ function migrateLegacyKey(lsKey: string): void {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(lsKey);
     if (raw === null) return;
-    if (_cache.get(lsKey) !== raw) {
+    // 与 hydrateKvDb 同口径：只在 IndexedDB 尚无该键时才用 localStorage 兜底迁移，
+    // 避免「超大 value 跳过镜像写入」后残留的旧快照把用户已保存的修改回滚掉。
+    if (!_cache.has(lsKey)) {
         _cache.set(lsKey, raw);
         kvDb.entries.put({ key: lsKey, value: raw }).catch(() => {});
     }
@@ -126,7 +128,10 @@ export async function hydrateKvDb(): Promise<void> {
         for (const lsKey of _fixedKeys) {
             const raw = localStorage.getItem(lsKey);
             if (raw === null) continue;
-            if (_cache.get(lsKey) !== raw) {
+            // 只在 IndexedDB 里尚无该键时才用 localStorage 兜底迁移（旧版本只有 localStorage）。
+            // 若 IDB 已有数据，localStorage 那份可能只是「超大 value 跳过镜像写入」后残留的旧快照，
+            // 拿它覆盖会把用户后来做的修改回滚掉 —— IndexedDB 才是唯一真源。
+            if (!_cache.has(lsKey)) {
                 batch.push({ key: lsKey, value: raw });
                 _cache.set(lsKey, raw);
             }
@@ -139,7 +144,7 @@ export async function hydrateKvDb(): Promise<void> {
             if (!k || !matchesDynamicPrefix(k)) continue;
             const raw = localStorage.getItem(k);
             if (raw !== null) {
-                if (_cache.get(k) !== raw) {
+                if (!_cache.has(k)) {
                     batch.push({ key: k, value: raw });
                     _cache.set(k, raw);
                 }

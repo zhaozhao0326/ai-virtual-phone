@@ -7,6 +7,7 @@ import type {
     McpDiscoveredTool,
 } from "./settings-types";
 import {
+    LOCAL_DATA_LIBRARY_CAPABILITY_ID,
     findEnabledInternalSubToolDefinition,
     getEnabledInternalCapabilities,
     getInternalCapabilityToolDefinition,
@@ -436,6 +437,10 @@ export function getEnabledTools(appId?: string): EnabledTool[] {
     }
 
     for (const capability of getEnabledInternalCapabilities(appId)) {
+        // 本地资料库只作为内置工作流（如「查手机」套件）的底层数据通道，不向模型暴露入口：
+        // 否则模型会绕过工作流直接翻资料目录、把原始数据灌进上下文，挤掉角色设定。
+        // 工作流步骤走 lib/tool-executor.ts 的内部直连路径，不依赖这里，因此不受影响。
+        if (capability.id === LOCAL_DATA_LIBRARY_CAPABILITY_ID) continue;
         const tool = getInternalCapabilityToolDefinition(capability);
         if (!tool) continue;
         tools.push({

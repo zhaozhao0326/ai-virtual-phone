@@ -33,7 +33,7 @@ import {
     resolveUserIdentity,
 } from "./settings-storage";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
-import { estimateMessagesTokens } from "./token-counter";
+import { estimateMessagesTokens, estimateTokens } from "./token-counter";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
 import {
@@ -2915,35 +2915,73 @@ export async function previewPromptRequestSnapshot(
     });
 }
 
+/** 极端超限时，单条 system 消息允许被压缩到的字符下限，避免反复截断到空。 */
+const SYSTEM_TRIM_MIN_CHARS = 400;
+
+/** 单条消息占用的 token（与 estimateMessagesTokens 的单条口径一致）。 */
+function estimateSingleMessageTokens(msg: LLMMessage): number {
+    const content = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+    return estimateTokens(content) + 4;
+}
+
+/** 整组消息的 token 估算（含会话级开销）。 */
+function estimateTextMessagesTokens(messages: LLMMessage[]): number {
+    return estimateMessagesTokens(
+        messages.map(m => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })),
+    );
+}
+
 /**
  * 总 token 刹车：当拼装后的 prompt 总 token 超过 budget 时，
  * 优先从最旧的聊天历史消息开始裁掉（保留 system/角色卡/记忆等设定类内容），
  * 直到降到预算内或已无可裁的历史。避免超出模型上下文窗口导致回复失败。
+ *
+ * ⚠️ system（人设/世界书/记忆/输出格式）永远不整条删除：
+ * 拼装阶段相邻同 role 的消息会被合并成一条，所有设定类 system 内容都集中在数组头部那一条上；
+ * 一旦整条删掉 system，角色就会失去人设与全部记忆，退化成"没穿皮套的裸模型"。
+ * 因此当「设定类内容自身」就超出预算时（多见于导入了上下文窗口很小的预设 + 长人设/世界书/多层记忆），
+ * 改为从最大的那条 system 消息的【尾部】逐段截断，优先保住开头的角色身份与人设块。
  */
 function enforceTotalTokenBudget(messages: LLMMessage[], budget: number): LLMMessage[] {
-    let total = estimateMessagesTokens(
-        messages.map(m => ({ role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) })),
-    );
+    let total = estimateTextMessagesTokens(messages);
     if (total <= budget) return messages;
 
     const result = [...messages];
-    // 从最旧（数组头部）的非系统消息开始裁，系统消息最后才动。
+    // 第一轮：从最旧（数组头部）的历史消息开始裁，system 一律不动。
     for (let i = 0; i < result.length && total > budget; i += 1) {
         const msg = result[i];
         if (msg.role === "system") continue;
-        const dropTokens = estimateMessagesTokens([{ role: msg.role, content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }]);
+        total -= estimateSingleMessageTokens(msg);
         result.splice(i, 1);
         i -= 1;
-        total -= dropTokens;
     }
+    // 第二轮：设定类内容自身超预算时，压缩最大的 system 尾部（绝不整条删除）。
     if (total > budget) {
-        // 仍超限（极端情况下连历史都裁光了）：从最旧系统消息继续裁。
-        for (let i = 0; i < result.length && total > budget; i += 1) {
-            const msg = result[i];
-            const dropTokens = estimateMessagesTokens([{ role: msg.role, content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content) }]);
-            result.splice(i, 1);
-            i -= 1;
-            total -= dropTokens;
+        let trimCount = 0;
+        let guard = 0;
+        while (total > budget && guard < 200) {
+            guard += 1;
+            let targetIdx = -1;
+            let targetLen = 0;
+            for (let i = 0; i < result.length; i += 1) {
+                const candidate = result[i];
+                if (candidate.role !== "system" || typeof candidate.content !== "string") continue;
+                if (candidate.content.length > targetLen) {
+                    targetLen = candidate.content.length;
+                    targetIdx = i;
+                }
+            }
+            if (targetIdx < 0 || targetLen <= SYSTEM_TRIM_MIN_CHARS) break;
+            const text = result[targetIdx].content as string;
+            const ratio = Math.max(0.5, budget / total);
+            const keep = Math.max(SYSTEM_TRIM_MIN_CHARS, Math.floor(text.length * ratio));
+            if (keep >= text.length) break;
+            result[targetIdx].content = `${text.slice(0, keep)}\n\n[后续设定因超出模型上下文长度已自动省略]`;
+            trimCount += 1;
+            total = estimateTextMessagesTokens(result);
+        }
+        if (trimCount > 0) {
+            console.warn(`[token-budget] 设定类内容自身超出预算，已对 system 尾部截断 ${trimCount} 次以保留角色人设`);
         }
     }
     return result;

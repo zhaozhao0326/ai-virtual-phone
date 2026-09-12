@@ -529,6 +529,19 @@ async function executeSingleToolCall(
     if (resolvedName !== call.name) {
         call = { ...call, name: resolvedName };
     }
+    // 资料库动作限流：只在最外层调用时计数（复合工具内部步骤不重复计数）
+    if (hint.depth === 0 && isLocalDataToolName(call.name)) {
+        const blocked = checkLocalDataGuard(context, call);
+        if (blocked) {
+            return {
+                name: call.name,
+                success: false,
+                error: blocked,
+                userNotice: blocked,
+                continueConversation: true,
+            };
+        }
+    }
     const preferredType = hint.toolType && hint.toolType !== "auto" && hint.toolType !== "script" ? hint.toolType : undefined;
     const restTools = loadRestTools();
     const restPackages = loadRestToolPackages();
@@ -1162,7 +1175,51 @@ function isToolboxManagementToolName(name: string): boolean {
         || name === "删除组合工具";
 }
 
-const MAX_LOCAL_DATA_RESULT_LENGTH = 12000;
+const MAX_LOCAL_DATA_RESULT_LENGTH = 4000;
+
+/**
+ * 本地资料库调用的硬闸门。
+ *
+ * 背景：资料库类动作（列出资料目录 / 读取资料文件 / 搜索资料记录 …）一旦被模型获取过一次指令，
+ * 指令说明就会驻留上下文，模型很容易把「先列目录再读取」当成自己的任务反复执行——
+ * 表现出来就是角色不说话、只在刷「正在列出资料目录…」，同时把大量原始数据灌进上下文，
+ * 把角色设定/记忆挤出注意力范围（不读设定、自言自语）。
+ *
+ * 这里做代码级限流（不依赖提示词自觉）：同一会话、同一角色在滑动窗口内最多真正执行若干次，
+ * 重复的同名同参查询直接挡回，并明确要求模型回到聊天。
+ */
+const LOCAL_DATA_GUARD_WINDOW_MS = 60_000;
+const LOCAL_DATA_GUARD_MAX_CALLS = 2;
+const LOCAL_DATA_GUARD_MAX_KEYS = 200;
+
+type LocalDataGuard = { startedAt: number; count: number; seen: Set<string> };
+const localDataGuards = new Map<string, LocalDataGuard>();
+
+function checkLocalDataGuard(context: ToolExecutionContext | undefined, call: ToolCall): string | null {
+    if (localDataGuards.size > LOCAL_DATA_GUARD_MAX_KEYS) localDataGuards.clear();
+    const key = `${context?.sourceEngine ?? "unknown"}:${context?.sessionId ?? "unknown"}:${context?.characterId ?? "unknown"}`;
+    const now = Date.now();
+    let guard = localDataGuards.get(key);
+    if (!guard || now - guard.startedAt > LOCAL_DATA_GUARD_WINDOW_MS) {
+        guard = { startedAt: now, count: 0, seen: new Set<string>() };
+        localDataGuards.set(key, guard);
+    }
+    let signature: string;
+    try {
+        signature = `${call.name}:${JSON.stringify(call.args ?? {})}`;
+    } catch {
+        signature = `${call.name}:?`;
+    }
+    if (guard.seen.has(signature)) {
+        return "这个查询你刚刚已经做过了，重复查询没有意义。不要再调用资料动作，直接用你的角色身份把话接下去。";
+    }
+    if (guard.count >= LOCAL_DATA_GUARD_MAX_CALLS) {
+        return `本轮的资料查询次数已经用完（最多 ${LOCAL_DATA_GUARD_MAX_CALLS} 次）。不要再调用任何资料动作，也不要把查到的原始数据念出来，直接用你的角色身份回复对方。`;
+    }
+    guard.seen.add(signature);
+    guard.count += 1;
+    return null;
+}
 
 function stringifyLocalDataResult(value: unknown): string {
     let text: string;

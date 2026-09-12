@@ -6,6 +6,13 @@ import { loadBridgeDataItems, loadBridgeShortcutActions, parseBridgeActionParame
 const INTERNAL_CAPABILITIES_KEY = "ai_phone_internal_capabilities_v1";
 registerKvMigration(INTERNAL_CAPABILITIES_KEY);
 
+/**
+ * 一次性迁移标记：把「曾经以默认开启上线」的能力收回为默认关闭（只执行一次）。
+ * 收回是可逆的——用户之后在设置里自己打开，不会再被系统动。
+ */
+const INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY = "ai_phone_internal_capabilities_default_off_v1";
+registerKvMigration(INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY);
+
 export const MEMORY_WRITE_CAPABILITY_ID = "memory_write";
 export const NOTE_WALL_CAPABILITY_ID = "note_wall_service";
 export const MUSIC_CONTROL_CAPABILITY_ID = "music_control";
@@ -18,6 +25,17 @@ export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
 export const GROUP_CREATE_CAPABILITY_ID = "group_create";
 export const REALITY_BRIDGE_CAPABILITY_ID = "reality_bridge_send";
 export const USER_RELATIONSHIP_CAPABILITY_ID = "user_relationship";
+
+/**
+ * 曾经以「默认开启」上线、后被系统静默收回的能力（一次性回滚用，见 ensureBuiltinInternalCapabilities）。
+ *
+ * 目前为空。本地资料库曾被列入，但那会让「查手机」这类内置工作流一起报废
+ * ——其步骤直接调用本地资料库子工具，能力一关整条工作流即报错。故取消收回、恢复默认开启，
+ * 改为在执行层收敛：不把本地资料库作为可直调动作暴露给模型（lib/tool-storage.ts），
+ * 并保留单次对话内的调用限流（lib/tool-executor.ts）。
+ * 新增条目时务必先确认：不会连带废掉任何内置工作流。
+ */
+const SILENT_DEFAULT_OFF_CAPABILITY_IDS: string[] = [];
 
 export type InternalToolDefinition = {
     name: string;
@@ -727,30 +745,32 @@ const LOCAL_DATA_READ_RECORD_PARAMETER_SCHEMA = JSON.stringify({
     required: ["path", "key"],
 });
 
+const LOCAL_DATA_LIBRARY_GATE = "仅在用户明确要求查看 TA 手机里的本地数据时使用；日常聊天、角色扮演、寒暄时不要调用，也不要为了确认设定而翻看。";
+
 const LOCAL_DATA_LIBRARY_SUBTOOLS: InternalToolDefinition[] = [
     {
         name: "列出资料目录",
-        description: "列出本地资料库虚拟目录、数据源、文件、IndexedDB store 或记录键。",
+        description: `${LOCAL_DATA_LIBRARY_GATE}列出本地资料库虚拟目录、数据源、文件、IndexedDB store 或记录键。`,
         parameterSchema: LOCAL_DATA_LIST_PARAMETER_SCHEMA,
     },
     {
         name: "读取资料文件",
-        description: "读取本地资料库里的 KV/localStorage JSON 文件，或读取 IndexedDB store 的分页记录。",
+        description: `${LOCAL_DATA_LIBRARY_GATE}读取本地资料库里的 KV/localStorage JSON 文件，或读取 IndexedDB store 的分页记录。`,
         parameterSchema: LOCAL_DATA_READ_FILE_PARAMETER_SCHEMA,
     },
     {
         name: "查看资料字段",
-        description: "抽样查看某个资料文件或 IndexedDB store 可用字段，方便后续用 fields/select 只读取部分字段。",
+        description: `${LOCAL_DATA_LIBRARY_GATE}抽样查看某个资料文件或 IndexedDB store 可用字段，方便后续用 fields/select 只读取部分字段。`,
         parameterSchema: LOCAL_DATA_FIELDS_PARAMETER_SCHEMA,
     },
     {
         name: "搜索资料记录",
-        description: "在本地资料库指定路径内按关键词搜索记录；可用于查角色、聊天、朋友圈、工具箱等。",
+        description: `${LOCAL_DATA_LIBRARY_GATE}在本地资料库指定路径内按关键词搜索记录；可用于查角色、聊天、朋友圈、工具箱等。`,
         parameterSchema: LOCAL_DATA_SEARCH_PARAMETER_SCHEMA,
     },
     {
         name: "读取资料记录",
-        description: "按主键读取某个 IndexedDB store 中的一条记录。",
+        description: `${LOCAL_DATA_LIBRARY_GATE}按主键读取某个 IndexedDB store 中的一条记录。`,
         parameterSchema: LOCAL_DATA_READ_RECORD_PARAMETER_SCHEMA,
     },
 ];
@@ -759,6 +779,12 @@ const LOCAL_DATA_LIBRARY_USAGE_GUIDE = [
     "以下是你获取指令的返回结果：",
     "服务：本地资料库",
     "用途：浏览、读取和搜索{{user}}小手机里的本地数据，包括角色卡、聊天、朋友圈、记忆、工具箱、设置和应用数据。",
+    "",
+    "【使用门槛｜先判断要不要用，再动手】",
+    "- 只有{{user}}明确说出「帮我查一下 / 看看 / 找找」这类要求时才能用。",
+    "- 日常聊天、角色扮演、撒娇、情绪对话、寒暄里一律不要用；也不要为了「确认自己的设定」「确认对方是谁」「确认有没有相关记录」而主动翻看——那些信息已经在你的上下文里了。",
+    "- 一次对话最多查 1~2 次，查完立刻回到聊天；禁止反复列目录，禁止重复读取同一份数据。",
+    "- 查到的原始数据（JSON、字段名、文件路径）不要念给{{user}}听，用你自己的口吻自然说出来。",
     "",
     "这是一个虚拟文件系统，不是真实源码目录。先列目录，再按需读取或搜索，避免一次读取过多数据。",
     "",
@@ -1299,7 +1325,7 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: LOCAL_DATA_LIBRARY_CAPABILITY_ID,
         name: "本地资料库",
-        description: "浏览、读取和搜索{{user}}小手机里的本地数据，包括角色卡、聊天、朋友圈、记忆、工具箱、设置和应用数据。",
+        description: "内置工作流（如「查手机」套件）读取小手机本地数据的底层通道，包括角色卡、聊天、朋友圈、记忆、工具箱、设置和应用数据。角色不会直接调用它；关闭后依赖它的内置工作流会失效。",
         enabled: true,
         mode: "auto",
         createdAt: 0,
@@ -1345,9 +1371,39 @@ export function loadInternalCapabilities(): InternalCapabilityConfig[] {
     }
 }
 
+function writeInternalCapabilities(items: InternalCapabilityConfig[]): void {
+    kvSet(INTERNAL_CAPABILITIES_KEY, JSON.stringify(items));
+}
+
+/** 设置页保存：只写配置，不做任何自动回滚。 */
 export function saveInternalCapabilities(items: InternalCapabilityConfig[]): void {
     if (typeof window === "undefined") return;
-    kvSet(INTERNAL_CAPABILITIES_KEY, JSON.stringify(items));
+    writeInternalCapabilities(items);
+}
+
+/**
+ * 一次性回滚：把曾经「默认开启」的能力收回为关闭（本地资料库等）。
+ * 只跑一次；之后用户自己在设置里开启的开关完全尊重，不会再被动过。
+ */
+function migrateDefaultOnCapabilities(items: InternalCapabilityConfig[]): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        if (kvGet(INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY) === "1") return false;
+    } catch {
+        return false;
+    }
+    let changed = false;
+    for (const id of SILENT_DEFAULT_OFF_CAPABILITY_IDS) {
+        const item = items.find(entry => entry.id === id);
+        if (item && item.enabled) {
+            item.enabled = false;
+            changed = true;
+        }
+    }
+    try {
+        kvSet(INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY, "1");
+    } catch { /* ignore */ }
+    return changed;
 }
 
 export function getInternalCapability(id: string): InternalCapabilityConfig | null {
@@ -1602,6 +1658,8 @@ function ensureBuiltinInternalCapabilities(items: InternalCapabilityConfig[]): I
             changed = true;
         }
     }
-    if (changed) saveInternalCapabilities(items);
+    // 一次性回滚：收回曾替用户静默开启的能力（如本地资料库）。
+    if (migrateDefaultOnCapabilities(items)) changed = true;
+    if (changed) writeInternalCapabilities(items);
     return items;
 }
