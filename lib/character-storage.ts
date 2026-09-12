@@ -197,7 +197,7 @@ export function parseCharacterFromJson(
 
     return {
       name: String(src.name ?? ""),
-      persona: String(src.description ?? src.persona ?? ""),
+      persona: String(src.description ?? src.persona ?? src.personality ?? ""),
       avatar: validAvatar(src.avatar),
       appearance: typeof src.appearance === "string" && src.appearance.trim() ? src.appearance : undefined,
       personality: typeof src.personality === "string" && src.personality.trim() ? src.personality : undefined,
@@ -264,7 +264,7 @@ function parseSillyTavernCharacterData(
 
   return {
     name,
-    persona: persona.trim(),
+    persona: persona.trim() || personality.trim(),
     avatar,
     appearance:
       typeof src.appearance === "string" && src.appearance.trim()

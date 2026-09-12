@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.75";
+export const APP_VERSION = "1.7.76";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.76",
+    date: "2026-09-12",
+    title: "角色设定兜底与写入保护",
+    highlights: [
+      "修复：角色设定内容为空时，提示词里只剩下名字，角色会像没有任何设定的通用模型一样回话；现在会自动改用角色的简介、性格、外貌等已有内容兜底",
+      "新增写入保护：把「人设 / 名字」改成空内容会被拦下，避免设定被误清空后角色一直不像本人",
+      "导入角色卡时，若卡片只有性格没有描述，也会自动把性格作为人设读入",
+    ],
+  },
   {
     version: "1.7.75",
     date: "2026-09-12",

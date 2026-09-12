@@ -420,7 +420,13 @@ function getMarkerContent(
 ): string | null {
     switch (identifier) {
         case "charDescription": {
-            const base = `You are ${character.name}.\n${character.persona}\n\n[角色演绎锚定] 以上是你扮演「${character.name}」的核心身份与性格底色。请始终以此为基础去"准确演绎"这个角色——保持人设连贯一致；同时像真实的人一样，根据当下对话情境自然、灵活地回应，可以有情绪起伏、会即兴、会随着相处而成长，不要生硬照搬设定或背诵固定台词。`;
+            // 人设为空（未填写 / 写入失败 / 导入时字段不匹配）时给出兜底，
+            // 否则提示词会退化成「只有名字」的裸模型，角色完全不像本人。
+            const personaText = (character.persona || "").trim()
+                || (character.briefPersona || "").trim()
+                || (character.personality || "").trim()
+                || (character.appearance || "").trim();
+            const base = `You are ${character.name}.\n${personaText}\n\n[角色演绎锚定] 以上是你扮演「${character.name}」的核心身份与性格底色。请始终以此为基础去"准确演绎"这个角色——保持人设连贯一致；同时像真实的人一样，根据当下对话情境自然、灵活地回应，可以有情绪起伏、会即兴、会随着相处而成长，不要生硬照搬设定或背诵固定台词。`;
             // 人设深挖档案：锚定更细的稳定底盘，但保持弹性（不锁死）——只在有合法档案时注入
             const profile = character.personaProfile ? formatDeepDiveProfile(character.personaProfile) : null;
             if (profile) {

@@ -1895,6 +1895,13 @@ async function handleUpdateCharacterField(args: Record<string, unknown>, ctx: Ma
     const value = args.value as string;
     const now = new Date().toISOString();
     const char = { ...chars[idx] } as Record<string, unknown>;
+    if ((field === "persona" || field === "name") && !String(value ?? "").trim()) {
+        return {
+            name: "更新角色字段",
+            success: false,
+            error: `${field === "persona" ? "人设" : "名字"}不能写成空内容——空人设会让角色完全不按设定演绎。请先准备好要写入的完整内容再重试。`,
+        };
+    }
     if (field === "name" || field === "persona" || field === "personality") {
         char[field] = value;
     } else if (field === "briefPersona") {
