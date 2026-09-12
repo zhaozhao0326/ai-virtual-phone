@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.76";
+export const APP_VERSION = "1.7.77";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.77",
+    date: "2026-09-12",
+    title: "角色数据保真",
+    highlights: [
+      "修复：个别操作顺序下（例如同时开着多个页面、或长时间挂在后台），角色数据可能被旧内容覆盖，表现为角色莫名消失、或改好的设定又变回旧版",
+      "现在保存只影响本次改动的内容，其他角色不会再被连带改动；删除角色的用法与以前一致",
+    ],
+  },
   {
     version: "1.7.76",
     date: "2026-09-12",

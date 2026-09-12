@@ -652,7 +652,9 @@ export function ImageGenerationSettings() {
 
     // 更新角色的生图提示词（appearance），同步持久化
     const updateCharacterAppearance = (characterId: string, appearance: string) => {
-        const updated = characters.map(c =>
+        // 以库中最新角色表为基准，只改这一个字段。
+        // 本组件的 characters 是打开设置页时的快照，直接整表回写会把期间新增或改过的角色覆盖掉。
+        const updated = loadCharacters().map(c =>
             c.id === characterId ? { ...c, appearance } : c
         );
         setCharacters(updated);

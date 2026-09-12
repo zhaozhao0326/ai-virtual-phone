@@ -186,9 +186,23 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
     try { kvSet(WORLD_TAB_KEY, worldId); } catch { }
   }
 
-  function updateChars(next: Character[]) {
-    setCharacters(next);
-    saveCharacters(next);
+  /**
+   * 写回角色表。
+   * ⚠️ 默认是「合并写」而不是「整表覆盖」：本组件的 characters 只是挂载时的快照，
+   * 若期间别处（设置页 / 小卷 / 资源导入 / 另一个标签页）新增或改动过角色，
+   * 直接整表回写会把它们一并抹掉 —— 表现为「角色莫名消失」「聊天报 Character not found」
+   * 「刚改好的内容变回旧版」。所以默认保留库中最新存在、而 next 里缺失的角色，
+   * 确需删除时由调用方显式传 { allowRemoval: true }。
+   */
+  function updateChars(next: Character[], opts?: { allowRemoval?: boolean }) {
+    let finalNext = next;
+    if (!opts?.allowRemoval) {
+      const nextIds = new Set(next.map(c => c.id));
+      const missing = loadCharacters().filter(c => !nextIds.has(c.id));
+      if (missing.length > 0) finalNext = [...next, ...missing];
+    }
+    setCharacters(finalNext);
+    saveCharacters(finalNext);
     // 角色增删会影响世界成员归属（normalize），同步刷新分组
     setWorldGroups(loadCharacterWorldGroups());
   }
@@ -314,7 +328,8 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
             onDelete={() => {
               if (view.id) {
                 clearCharacterVersions(view.id);
-                updateChars(characters.filter((c) => c.id !== view.id));
+                // 以库中最新角色表为基准删除，避免顺带抹掉别处新增的角色
+                updateChars(loadCharacters().filter((c) => c.id !== view.id), { allowRemoval: true });
               }
               setView({ type: "list", id: null, isEditing: false });
               onNotice("已删除档案");
@@ -456,7 +471,7 @@ function CharListView({
   worldGroups: CharacterWorldGroup[];
   currentWorldId: string;
   onSelectWorld: (worldId: string) => void;
-  onUpdateChars: (next: Character[]) => void;
+  onUpdateChars: (next: Character[], opts?: { allowRemoval?: boolean }) => void;
   onUpdateBgItems: (next: CanvasBgItem[]) => void;
   onClose: () => void;
   onSelect: (char: Character, e: React.MouseEvent<HTMLDivElement>) => void;
@@ -1355,7 +1370,7 @@ function CharListView({
               <button className="char-punched-hole-btn danger" disabled={!deleteConfirmReady} onClick={() => {
                 if (!deleteConfirmReady) return;
                 if (deleteConfirm.type === 'char') {
-                  onUpdateChars(characters.filter(c => c.id !== deleteConfirm.id));
+                  onUpdateChars(loadCharacters().filter(c => c.id !== deleteConfirm.id), { allowRemoval: true });
                   purgeCharacterRelatedData(deleteConfirm.id); // 清会话+排期（本地与服务端预约），根治删除后仍自动发消息
                   onNotice?.("已销毁调查档案");
                 } else {
