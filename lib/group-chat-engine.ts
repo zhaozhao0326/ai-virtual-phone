@@ -769,6 +769,8 @@ export async function generateGroupChatCompletion(
     callbacks?: ChatCompletionCallbacks,
     options?: GroupChatPromptBuildOptions & { signal?: AbortSignal; skipMemorySummarization?: boolean },
 ): Promise<{ characterId: string; characterName: string; responseText: string }[]> {
+    // 群已解散：角色不再在群聊里生成新消息（仅保留历史，UI 已提示「已解散」），硬兜底 prompt 软约束
+    if (session.dissolved) return [];
     const { llmMessages, config, preset, regexes, nameToId, memberNames, enabledTools, userName, appTags } = await buildGroupChatPromptMessages(session, history, {
         appTags: options?.appTags,
         disableTools: options?.disableTools,
@@ -1027,6 +1029,8 @@ export async function generateGroupRawCompletion(
             apiConfigId: options?.apiConfigId,
         },
     );
+    // 群已解散：角色不再生成群消息（硬兜底 prompt 软约束）
+    if (session.dissolved) return { text: "", model: config.defaultModel, presetName: preset?.name || "默认预设" };
     const rawOutput = await sendLLMRequest(config, preset, llmMessages, regexes, {
         characterName: `群聊:${session.groupName || "群聊"}`,
     }, {

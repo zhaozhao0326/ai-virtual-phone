@@ -7246,6 +7246,21 @@
   font-size: 11px;
   color: #9a9a9a;
 }
+.chat-group-info-dissolve-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 59, 79, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 59, 79, 0.08);
+  color: #ff3b4f;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-group-info-dissolve-btn:hover {
+  background: rgba(255, 59, 79, 0.16);
+}
 .chat-group-info-body {
   display: flex;
   flex-direction: column;

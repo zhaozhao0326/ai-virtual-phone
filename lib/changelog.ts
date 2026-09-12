@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.71";
+export const APP_VERSION = "1.7.72";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.72",
+    date: "2026-09-12",
+    title: "群解散交互修复",
+    highlights: [
+      "修复群解散后成员仍在群内发言的问题：群聊生成链路在群已解散时不再驱动角色生成新消息，仅保留历史记录",
+      "补全群主手动解散群的入口：群信息面板新增「解散群」按钮（仅群主可见，需二次确认）",
+    ],
+  },
   {
     version: "1.7.71",
     date: "2026-09-07",

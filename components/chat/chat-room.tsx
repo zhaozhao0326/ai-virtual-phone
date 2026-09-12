@@ -89,7 +89,7 @@ import {
     rollChatDiceFace,
 } from "@/lib/chat-screen-effects";
 import { abortableDelay, throwIfAborted } from "@/lib/abort-utils";
-import { GROUP_SELF_KEY, canGroupAdminAct, applyGroupAdminAction, applyAIProactiveGroupCreate, buildGroupAdminNoticeText, getGroupMemberDisplayName, getGroupMuteRemainingMs, getGroupRole, isGroupMuted, formatMuteRemainingLabel, resolveGroupMemberKeyByName, type GroupAdminAction } from "@/lib/group-admin";
+import { GROUP_SELF_KEY, getGroupOwnerKey, canGroupAdminAct, applyGroupAdminAction, applyAIProactiveGroupCreate, buildGroupAdminNoticeText, getGroupMemberDisplayName, getGroupMuteRemainingMs, getGroupRole, isGroupMuted, formatMuteRemainingLabel, resolveGroupMemberKeyByName, type GroupAdminAction } from "@/lib/group-admin";
 import { extractTextToolDirectiveText } from "@/lib/text-tool-protocol";
 import { emitChatPluginEvent, getChatPluginHookBus, runChatPluginTransform } from "@/lib/chat-plugin-hooks";
 import { CHAT_PLUGIN_TOAST_EVENT, getChatPluginRuntime } from "@/lib/chat-plugin-runtime";
@@ -5870,6 +5870,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             </li>
                                         ))}
                                     </ul>
+                                </div>
+                            ) : null}
+                            {getGroupOwnerKey(session) === GROUP_SELF_KEY && !session.dissolved ? (
+                                <div className="chat-group-info-row">
+                                    <button
+                                        type="button"
+                                        className="chat-group-info-dissolve-btn"
+                                        onClick={() => {
+                                            if (window.confirm(`确定解散群「${session.groupName || "未命名群"}」？\n解散后聊天记录会保留，但成员不可再发言，此操作不可撤销。`)) {
+                                                applyGroupAdminAction(session, "dissolve", GROUP_SELF_KEY, GROUP_SELF_KEY);
+                                                pushChatMessage({ sessionId: session.id, role: "system", content: "你解散了群聊" });
+                                                window.dispatchEvent(new CustomEvent("chat-messages-updated", { detail: { sessionId: session.id } }));
+                                                setGroupInfoOpen(false);
+                                            }
+                                        }}
+                                    >
+                                        💥 解散群
+                                    </button>
                                 </div>
                             ) : null}
                         </div>
