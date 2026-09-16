@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.77";
+export const APP_VERSION = "1.7.79";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.79",
+    date: "2026-09-16",
+    title: "生图提示词保真与画面张力",
+    highlights: [
+      "修复：生图时英文画师串/风格标签会被错误地送去翻译，导致按同一串生成的画风不一致、时好时坏",
+      "修复：生图设置里的「质量标签」开关此前不起作用，现在关闭后会真正取消追加质量词",
+      "新增：NovelAI 内置风格预设增加「电影张力」（放开构图限制、补强镜头与光影），可在生图设置里点击切换",
+    ],
+  },
   {
     version: "1.7.78",
     date: "2026-09-16",

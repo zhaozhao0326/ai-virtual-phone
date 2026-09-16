@@ -79,6 +79,17 @@ const NAI_QUALITY_PRESETS = [
             "lowres, bad anatomy, worst quality, low quality, full body, wide shot, distant shot, small face, angular face, blocky face, long neck, mutated hands, poorly drawn face, mutation, deformed, extra limbs, ugly, blurry, amputation, watermark, text, signature",
     },
     {
+        // 2026-09-16 新增：专治「画面没张力」。
+        // 与前几个预设最大的区别在负面词——故意**不**禁 full body / wide shot / distant shot，
+        // 让构图能拉全身、拉远景、带环境叙事；正向补镜头语言（角度、光比、景深）。
+        id: "tension",
+        label: "电影张力",
+        qualitySuffix:
+            "cinematic, dramatic lighting, strong contrast, rim light, depth of field, dynamic angle, dutch angle, from below, intense expression, natural pose, motion, photorealistic, film grain, masterpiece",
+        negativePrompt:
+            "lowres, bad anatomy, worst quality, low quality, small face, long neck, mutated hands, poorly drawn face, mutation, deformed, extra limbs, ugly, blurry, amputation, watermark, text, signature, flat lighting, static pose, stiff",
+    },
+    {
         id: "anime",
         label: "动漫插画",
         qualitySuffix: "anime style, vibrant colors, clean lineart, detailed, cel shading",

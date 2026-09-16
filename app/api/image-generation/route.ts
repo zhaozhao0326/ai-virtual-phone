@@ -174,10 +174,18 @@ const NAI_SIZE_MAP: Record<string, [number, number]> = {
 
 function buildNaiPrompt(prompt: string, input: ImageGenerationRequest): string {
     const template = input.novelaiPromptTemplate || "{prompt}";
+    // v20：「质量标签 (Quality Tags)」开关接通。旧实现无视该开关、恒定追加正向质量词，
+    // 导致设置里拨它没有任何反应。关掉时不再追加（并清理模板里残留的逗号）。
+    const qualitySuffix = input.novelaiQualityTags === false
+        ? ""
+        : (input.novelaiQualitySuffix || "best quality, very aesthetic, masterpiece");
     return template
         .replace(/\{positive_prefix\}/gi, input.novelaiPositivePrefix || "")
-        .replace(/\{quality_suffix\}/gi, input.novelaiQualitySuffix || "best quality, very aesthetic, masterpiece")
-        .replace(/\{prompt\}/gi, prompt);
+        .replace(/\{quality_suffix\}/gi, qualitySuffix)
+        .replace(/\{prompt\}/gi, prompt)
+        .replace(/\s*,(\s*,)+\s*/g, ", ")
+        .replace(/^\s*[,\s]+/, "")
+        .replace(/[,\s]+$/, "");
 }
 
 // ── 结构化场景提示词拼装（v19：NAI 与 OpenAI 共用）──
@@ -227,6 +235,49 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
 // 检测是否含中日韩字符（中文提示词需要翻译给 NAI）
 function containsCJK(text: string): boolean {
     return /[一-鿿぀-ヿ㐀-䶿豈-﫿ｦ-ﾟ]/.test(text);
+}
+
+// ── v20 分段翻译：英文 tag / 画师串 / 权重语法绝不经翻译 ──
+// 旧实现把整段提示词（含用户粘贴的英文画师串）一次性丢给 Google 翻译，后果：
+//   ① 画师名与 {tag}、(tag:1.2) 等权重语法被机翻毁掉 → 同一个画师串每次出的风格都不一样；
+//   ② 锁脸锚点 {char1} 也可能被译坏 → character_reference 锁脸失效；
+//   ③ 免费翻译接口非确定性，导致同一提示词时好时坏。
+// 现在按分隔符切段，只翻「含中文」的片段，其余原样保留；片段内的 {} () [] 先占位保护、翻完还原。
+function protectTagTokens(text: string): { masked: string; restore: (value: string) => string } {
+    const kept: string[] = [];
+    const masked = text.replace(/\{[^{}]*\}|\([^()]*\)|\[[^\[\]]*\]/g, (match) => {
+        kept.push(match);
+        return ` zxq${kept.length - 1}zxq `;
+    });
+    return {
+        masked,
+        restore: (value: string) => value.replace(/zxq\s*(\d+)\s*zxq/gi, (_m, index: string) => kept[Number(index)] ?? ""),
+    };
+}
+
+function splitPromptSegments(text: string): string[] {
+    return text
+        .split(/[,，、;；|｜\r\n]+/)
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+}
+
+async function translatePromptPreservingTags(text: string): Promise<string> {
+    const segments = splitPromptSegments(text);
+    if (!segments.length) return text;
+    const out: string[] = [];
+    for (const segment of segments) {
+        // 纯英文 / danbooru tag / 画师串：一律原样保留，不送翻译
+        if (!containsCJK(segment)) {
+            out.push(segment);
+            continue;
+        }
+        const guard = protectTagTokens(segment);
+        const translated = await translateToEnglish(guard.masked);
+        const restored = guard.restore(translated).replace(/\s{2,}/g, " ").trim();
+        out.push(restored || segment);
+    }
+    return out.join(", ");
 }
 
 // ── 多源中文→英文翻译（NAI 不识别中文 tag）──
@@ -301,7 +352,7 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     const hasCJK = containsCJK(rawChinese);
     if (hasCJK) {
         try {
-            finalUserPrompt = await translateToEnglish(rawChinese);
+            finalUserPrompt = await translatePromptPreservingTags(rawChinese);
             console.log("[NAI-PROMPT] translated scene:", { from: rawChinese.slice(0, 80), to: finalUserPrompt.slice(0, 80), changed: finalUserPrompt !== rawChinese });
         } catch (e) {
             console.log("[NAI-PROMPT] translate error:", e);
@@ -436,7 +487,7 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
 
     // ── 诊断日志（Vercel Dashboard → Functions → Logs 可查看）──
     const diag = {
-      _codeVersion: "v19",  // v19=结构化场景提示词(NAI/OAI共用) + 参考图锁脸；OAI 现与 NAI 对等
+      _codeVersion: "v20",  // v20=分段翻译(英文画师串/权重/{charN}锚点不再被机翻毁) + 质量标签开关接通
       ts: new Date().toISOString(),
       model: input.novelaiModel || "nai-diffusion-4-5-full",
       size: `${width}x${height}`,
@@ -679,13 +730,13 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     if (!rawPrompt) return { status: 400, body: { error: "缺少提示词" } };
 
     // ── 结构化场景提示词拼装（与 NAI 一致：背景 + 光源 + 人物名(锚点) + 动作 + 用户原文）──
-    // GPT(OpenAI) 同样吃中文，但翻译为英文质量更稳定，故整段翻译。
+    // v20：与 NAI 一致，只翻中文片段，英文 tag / 画师串原样保留。
     const rawChinese = buildStructuredChinesePrompt(input);
     let finalPrompt = rawChinese;
     const hasCJK = containsCJK(rawChinese);
     if (hasCJK) {
       try {
-        finalPrompt = await translateToEnglish(rawChinese);
+        finalPrompt = await translatePromptPreservingTags(rawChinese);
         console.log("[OAI-PROMPT] translated:", { from: rawChinese.slice(0, 80), to: finalPrompt.slice(0, 80) });
       } catch (e) {
         console.log("[OAI-PROMPT] translate error:", e);
