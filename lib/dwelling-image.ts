@@ -121,6 +121,9 @@ export async function generateDwellingRoomImage(
             const result = await generateImageFromConfiguredApi({
                 description: buildRoomImagePrompt(room),
                 signal: controller.signal,
+                // 栖所生图显式钉死：不套 OpenAI 风格预设、尺寸用方图（房间横宽更合适）。
+                // 否则 settings 兜底会带默认 auto，误把聊天侧的电影感/氛围增强渗进栖所图。
+                settings: { ...loadImageGenerationSettings(), openaiStylePreset: "none", size: "1024x1024" },
             });
             if (!result) return { assetId: null, error: "生图未配置或已关闭" };
             return { assetId: result.mediaRef };

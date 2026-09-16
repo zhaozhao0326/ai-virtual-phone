@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.82";
+export const APP_VERSION = "1.7.83";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.83",
+    date: "2026-09-16",
+    title: "栖所生图隔离 + OAI 默认竖图",
+    highlights: [
+      "修复：栖所生图此前因 settings 兜底误带默认「自动增强」，会把聊天侧的电影感/氛围增强渗进栖所图——现已显式钉死 openaiStylePreset=none，栖所图不再受 OAI 风格预设影响",
+      "修复：栖所生图尺寸钉回 1024x1024（房间横宽更合适），不再随全局默认变化",
+      "优化：OpenAI 兼容生图默认尺寸 1024x1024 -> 1024x1536（竖图），主体不再被推到居中平铺，构图张力更强；仅影响聊天/朋友圈 OAI 图，栖所与 NAI 不受影响",
+    ],
+  },
   {
     version: "1.7.82",
     date: "2026-09-16",
