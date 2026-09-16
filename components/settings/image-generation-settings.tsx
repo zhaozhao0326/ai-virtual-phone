@@ -112,6 +112,32 @@ const NAI_QUALITY_PRESETS = [
     },
 ];
 
+/** OpenAI 兼容风格预设：仅 provider=openai 时生效，给翻译后的英文提示词追加电影感后缀。
+ *  OAI 没有 NAI 的 qualitySuffix/negativePrompt 体系，画面张力全靠文本提示词，故用自然语种后缀补足。 */
+const OAI_STYLE_PRESETS = [
+    { id: "none", label: "默认（不动）", suffix: "" },
+    {
+        id: "tension",
+        label: "电影张力",
+        suffix: "Cinematic composition with dramatic lighting, strong contrast, rim light, shallow depth of field, dynamic camera angle, intense expressive mood, film grain, photorealistic.",
+    },
+    {
+        id: "cinematic",
+        label: "电影感",
+        suffix: "Cinematic film still, anamorphic lens flare, film grain, depth of field, moody atmospheric lighting, photorealistic.",
+    },
+    {
+        id: "portrait",
+        label: "唯美写真",
+        suffix: "Elegant portrait photography, soft refined lighting, delicate details, magazine aesthetic, photorealistic.",
+    },
+    {
+        id: "neo_noir",
+        label: "霓虹暗调",
+        suffix: "Neon-noir mood, rain-slick streets, colored rim lights, high contrast, volumetric fog, cinematic, photorealistic.",
+    },
+];
+
 /** NAI 采样器选项（NAI 真实 sampler 名，带 k_ 前缀） */
 const NAI_SAMPLER_OPTIONS = [
     { value: "k_euler_ancestral", label: "k_euler_ancestral（推荐）" },
@@ -1379,6 +1405,29 @@ export function ImageGenerationSettings() {
                         <p className="menu-desc ml-1 opacity-70">
                             选择尺寸后会自动在末尾追加一句「{RATIO_HINT_MARKER}…」构图提示。
                         </p>
+                        {/* ── OAI 风格预设（电影张力等，仅 OpenAI 兼容生效）── */}
+                        <div className="flex flex-col gap-1">
+                            <label className="menu-desc ml-1 font-medium">OpenAI 风格预设</label>
+                            <div className="flex flex-wrap gap-2 ml-1">
+                                {OAI_STYLE_PRESETS.map((p) => {
+                                    const active = (settings.openaiStylePreset || "none") === p.id;
+                                    return (
+                                        <button
+                                            key={p.id}
+                                            type="button"
+                                            onClick={() => updateSettings({ openaiStylePreset: p.id })}
+                                            className={`px-3 py-1 rounded-full text-xs border transition-colors ${active ? "border-pink-400 bg-pink-400/15 text-pink-200" : "border-white/15 text-white/70 hover:border-white/40"}`}
+                                            title={p.suffix || "保持当前默认行为，不追加风格后缀"}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="menu-desc ml-1 opacity-50 text-[11px]">
+                                仅对 OpenAI 兼容生图生效（gpt-image / 第三方中继）。选中后给提示词追加电影感英文后缀，弥补 OpenAI 没有 NAI 那套质量词/负面词的短板；默认「默认（不动）」不改变现有行为。
+                            </p>
+                        </div>
                 </div>
             </div>
             )}

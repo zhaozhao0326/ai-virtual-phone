@@ -799,6 +799,7 @@ async function generateImageViaServer(params: {
         prompt,
         size: settings.size,
         quality: settings.quality,
+        openaiStylePreset: settings.openaiStylePreset,
         referenceImageDataUrl: referenceImageDataUrl || undefined,
         // NovelAI 字段（provider=novelai 时服务端使用）
         novelaiUrl: settings.novelai.url,

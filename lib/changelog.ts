@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.79";
+export const APP_VERSION = "1.7.80";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.80",
+    date: "2026-09-12",
+    title: "OpenAI 生图画面张力",
+    highlights: [
+      "新增：OpenAI 兼容生图（gpt-image / 第三方中继）增加「风格预设」开关，可选「电影张力 / 电影感 / 唯美写真 / 霓虹暗调」，给提示词追加电影感英文后缀",
+      "说明：OpenAI 没有 NovelAI 那套质量词/负面词体系，画面张力全靠文本提示词；此前 OAI 出的图偏平光、缺镜头语言，正是这个原因",
+      "默认「默认（不动）」，不改变现有生图行为；勾选后才生效",
+    ],
+  },
   {
     version: "1.7.79",
     date: "2026-09-16",

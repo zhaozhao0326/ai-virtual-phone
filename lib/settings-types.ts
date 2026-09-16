@@ -294,6 +294,8 @@ export type ImageGenerationSettings = {
     size: string;
     quality: string;
     extraPrompt: string;
+    /** OpenAI 风格预设：none / tension / cinematic / portrait / neo_noir，仅对 OpenAI 兼容 Provider 生效，给提示词追加电影感英文后缀 */
+    openaiStylePreset?: string;
     // --- 生图场景结构化字段（锁脸 + 结构化提示词用）---
     sceneBackground: string;   // 背景描述（中文），如「樱花公园、樱花飞舞」
     sceneLighting: string;     // 光源描述（中文），如「逆光、暖色夕阳、柔光」

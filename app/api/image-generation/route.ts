@@ -11,6 +11,8 @@ export type ImageGenerationRequest = {
   prompt?: string;
   size?: string;
   quality?: string;
+  /** OpenAI 风格预设：none / tension / cinematic / portrait / neo_noir，仅 provider=openai 生效 */
+  openaiStylePreset?: string;
   referenceImageDataUrl?: string;
   /** Provider 类型 */
   provider?: "openai" | "novelai" | "google-imagen";
@@ -718,6 +720,14 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
   }
 }
 
+// OpenAI 兼容风格预设后缀（自然语种，仅 provider=openai 且 openaiStylePreset≠none 时追加到提示词）
+const OAI_STYLE_PRESETS: Record<string, string> = {
+    tension: "Cinematic composition with dramatic lighting, strong contrast, rim light, shallow depth of field, dynamic camera angle, intense expressive mood, film grain, photorealistic.",
+    cinematic: "Cinematic film still, anamorphic lens flare, film grain, depth of field, moody atmospheric lighting, photorealistic.",
+    portrait: "Elegant portrait photography, soft refined lighting, delicate details, magazine aesthetic, photorealistic.",
+    neo_noir: "Neon-noir mood, rain-slick streets, colored rim lights, high contrast, volumetric fog, cinematic, photorealistic.",
+};
+
 // ── 原有 OpenAI 兼容生图 ──────────────────────────────────────────
 
 export async function runImageGeneration(input: ImageGenerationRequest): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -768,6 +778,15 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       );
       return ` The reference images are provided in this exact order: ${orderParts.join("; ")}. Reproduce each person's face STRICTLY from their corresponding reference image.`;
     })();
+    // ── OAI 风格预设：给翻译后的英文提示词追加电影感后缀（仅 provider=openai 且非 none）──
+    // OAI 没有 NAI 的 qualitySuffix/negativePrompt 体系，画面张力 100% 靠文本提示词；
+    // 故用自然语种后缀补足「电影张力/电影感」等，弥补中文描述机翻后平淡、缺镜头语言的问题。
+    // 默认 none = 不改变现有行为。
+    const oaiPreset = (input.openaiStylePreset || "none");
+    if (oaiPreset !== "none" && OAI_STYLE_PRESETS[oaiPreset]) {
+      finalPrompt = `${finalPrompt}, ${OAI_STYLE_PRESETS[oaiPreset]}`;
+    }
+
     if (hasReference) {
       // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
       // 场景、动作、构图必须由下方文字描述主导，禁止照搬参考图原背景/姿势/衣服，也禁止左右拼贴。
