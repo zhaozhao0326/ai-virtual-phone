@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.84";
+export const APP_VERSION = "1.7.85";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.85",
+    date: "2026-09-16",
+    title: "KV 层数据丢失风险修复（摘上游 2e2e01fc）",
+    highlights: [
+      "修复：hydrateKvDb 此前失败也置「已水合」，缓存是空的，任何一次整包读改写（如线下记录）都会拿空数据覆盖 IndexedDB 真实历史——现在改为成功才置位、失败暴露错误",
+      "修复：备份导出 readKvRecords 读不到 IndexedDB 时静默退回内存缓存，会生成「导出成功」但缺数据的 ZIP——现在直接抛错中止备份",
+      "水合失败时 MainApp 显示阻断重试页，不放用户进入空数据状态；保留 1.7.75「只在 IDB 无该键时才用 localStorage 兜底」守卫，不回滚用户修改",
+    ],
+  },
   {
     version: "1.7.84",
     date: "2026-09-16",
