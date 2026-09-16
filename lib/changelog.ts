@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.83";
+export const APP_VERSION = "1.7.84";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.84",
+    date: "2026-09-16",
+    title: "预设管理：多选 + 拖拽排序（摘上游）",
+    highlights: [
+      "摘上游能力（ad3f4b90 / 3e2b494f / e79d432d）：预设列表支持多选（右滑进入/点行切换选中）、拖拽排序、按 App 高亮/仅显示/折叠",
+      "SwipeActionRow 支持右滑回调；预设条目渲染拖拽优化。纯 UI 加法，不碰核心功能与红线文件",
+      "与现有预设管理共存，类型检查与生产构建均通过",
+    ],
+  },
   {
     version: "1.7.83",
     date: "2026-09-16",
