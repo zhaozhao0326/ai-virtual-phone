@@ -17,6 +17,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.7.78",
+    date: "2026-09-16",
+    title: "中文渲染与语音音质优化",
+    highlights: [
+      "修复：聊天气泡、共创、问答中，部分带全角标点紧贴的加粗写法（如 **『文字』**）偶发不生效、星号原样显示的问题",
+      "优化：iOS 上开启后台保活后角色语音明显发闷的问题，已通过提升静音音频采样率解决，语音恢复清晰",
+    ],
+  },
+  {
     version: "1.7.77",
     date: "2026-09-12",
     title: "角色数据保真",

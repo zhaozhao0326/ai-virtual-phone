@@ -4,6 +4,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
+// 修复中文加粗失效：CommonMark flanking 规则会让 **「加粗」** 这类紧贴全角标点的写法解析失败
+import remarkCjkFriendly from "remark-cjk-friendly";
 import { AppWindow, ArrowUp, BrushCleaning, Check, ChevronLeft, ChevronRight, Copy, Drama, Gamepad2, Github, Loader2, Menu, MoreVertical, Pencil, Pin, PinOff, Play, Plus, Square, Trash2, Wrench, X } from "lucide-react";
 import { QaFileCard } from "@/components/qa-file-card";
 import { parseQaFileMarker } from "@/lib/qa-computer-tools";
@@ -261,7 +263,7 @@ function QaToolRow({ tool }: { tool: QaToolStatus }) {
 // 低端机 WebView OOM 崩溃的主因（几万字 × 每秒多次解析）。文本不变就不重渲。
 const QaMarkdownBlock = memo(function QaMarkdownBlock({ text }: { text: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]} components={QA_MARKDOWN_COMPONENTS}>
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks, remarkCjkFriendly]} components={QA_MARKDOWN_COMPONENTS}>
       {text}
     </ReactMarkdown>
   );
