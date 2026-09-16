@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.85";
+export const APP_VERSION = "1.7.86";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.86",
+    date: "2026-09-16",
+    title: "OpenAI 生图：照片描述加镜头语言（收尾 OAI 优化线）",
+    highlights: [
+      "内置预设「发照片」格式指引补强：要求 [照片:] 描述带上镜头语言（景别/机位角度/焦段虚化/光影色调），让 OAI 锁脸图不再只是平光正面照，构图更有张力",
+      "升 BUILTIN_PRESET_VERSION 264->265 触发内置预设基础段刷新；用户另加的自定义 prompt 由 preserveCustomAppPresetPrompts 保留，不会丢",
+      "与 1.7.81 电影感后缀、1.7.82 参考图氛围渗、1.7.83 竖图叠加：OAI 照片默认即电影感+氛围+镜头语言+竖图；栖所/NAI 不受影响",
+    ],
+  },
   {
     version: "1.7.85",
     date: "2026-09-16",
