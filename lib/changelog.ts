@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.80";
+export const APP_VERSION = "1.7.81";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.81",
+    date: "2026-09-16",
+    title: "OpenAI 生图画面张力（默认生效）",
+    highlights: [
+      "优化：OpenAI 兼容生图（gpt-image / 第三方中继）「自动增强」改为默认开启，不再需要手动进设置勾选——直接给所有 OAI 生图追加轻度电影感基线（光影对比、浅景深、动态构图），解决此前 OAI 出的图偏平光、缺张力的老问题",
+      "说明：此为对提示词追加英文后缀的轻量增强，非后台自动调用大模型，无额外 token 消耗；栖所等不传生图设置的调用方自动收「关闭」，行为不变",
+      "保留「关闭 / 电影张力 / 电影感 / 唯美写真 / 霓虹暗调」档位，可在生图设置里随时切换或关掉",
+    ],
+  },
   {
     version: "1.7.80",
     date: "2026-09-12",

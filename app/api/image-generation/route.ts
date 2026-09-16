@@ -722,6 +722,7 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
 
 // OpenAI 兼容风格预设后缀（自然语种，仅 provider=openai 且 openaiStylePreset≠none 时追加到提示词）
 const OAI_STYLE_PRESETS: Record<string, string> = {
+    auto: "Cinematic lighting, strong contrast, shallow depth of field, refined details, dynamic composition, photorealistic.",
     tension: "Cinematic composition with dramatic lighting, strong contrast, rim light, shallow depth of field, dynamic camera angle, intense expressive mood, film grain, photorealistic.",
     cinematic: "Cinematic film still, anamorphic lens flare, film grain, depth of field, moody atmospheric lighting, photorealistic.",
     portrait: "Elegant portrait photography, soft refined lighting, delicate details, magazine aesthetic, photorealistic.",
@@ -781,7 +782,7 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     // ── OAI 风格预设：给翻译后的英文提示词追加电影感后缀（仅 provider=openai 且非 none）──
     // OAI 没有 NAI 的 qualitySuffix/negativePrompt 体系，画面张力 100% 靠文本提示词；
     // 故用自然语种后缀补足「电影张力/电影感」等，弥补中文描述机翻后平淡、缺镜头语言的问题。
-    // 默认 none = 不改变现有行为。
+    // 默认 auto = 给所有 OAI 生图追加轻度电影感基线（栖所走统一管道且不传 settings -> 收 none，不受影响）。
     const oaiPreset = (input.openaiStylePreset || "none");
     if (oaiPreset !== "none" && OAI_STYLE_PRESETS[oaiPreset]) {
       finalPrompt = `${finalPrompt}, ${OAI_STYLE_PRESETS[oaiPreset]}`;

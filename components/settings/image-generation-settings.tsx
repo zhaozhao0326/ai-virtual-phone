@@ -115,7 +115,12 @@ const NAI_QUALITY_PRESETS = [
 /** OpenAI 兼容风格预设：仅 provider=openai 时生效，给翻译后的英文提示词追加电影感后缀。
  *  OAI 没有 NAI 的 qualitySuffix/negativePrompt 体系，画面张力全靠文本提示词，故用自然语种后缀补足。 */
 const OAI_STYLE_PRESETS = [
-    { id: "none", label: "默认（不动）", suffix: "" },
+    {
+        id: "auto",
+        label: "自动增强（推荐）",
+        suffix: "Cinematic lighting, strong contrast, shallow depth of field, refined details, dynamic composition, photorealistic.",
+    },
+    { id: "none", label: "关闭", suffix: "" },
     {
         id: "tension",
         label: "电影张力",
@@ -1425,7 +1430,7 @@ export function ImageGenerationSettings() {
                                 })}
                             </div>
                             <p className="menu-desc ml-1 opacity-50 text-[11px]">
-                                仅对 OpenAI 兼容生图生效（gpt-image / 第三方中继）。选中后给提示词追加电影感英文后缀，弥补 OpenAI 没有 NAI 那套质量词/负面词的短板；默认「默认（不动）」不改变现有行为。
+                                仅对 OpenAI 兼容生图生效（gpt-image / 第三方中继）。「自动增强」默认开启，给所有 OAI 生图追加轻度电影感基线，弥补 OpenAI 没有 NAI 那套质量词/负面词的短板；选「关闭」回到原样，其它档位为更强风格。
                             </p>
                         </div>
                 </div>
