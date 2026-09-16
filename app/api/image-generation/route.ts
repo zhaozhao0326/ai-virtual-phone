@@ -787,15 +787,22 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     if (oaiPreset !== "none" && OAI_STYLE_PRESETS[oaiPreset]) {
       finalPrompt = `${finalPrompt}, ${OAI_STYLE_PRESETS[oaiPreset]}`;
     }
+    // 锁脸时是否允许「参考图的光影/氛围渗进来」：仅当开了风格预设（非 none）才放开。
+    // 默认 auto 即放开——这是 OAI 锁脸图追平别人小手机张力的关键（别人小手机默认就让参考图氛围参与）。
+    // none（关闭）保持原严格语义：背景/姿势/衣服一律跟描述、不抄参考图。
+    const allowMoodBleed = oaiPreset !== "none";
 
     if (hasReference) {
       // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
       // 场景、动作、构图必须由下方文字描述主导，禁止照搬参考图原背景/姿势/衣服，也禁止左右拼贴。
       // v1.5.14：配合下方 form 里设的 input_fidelity=high（gpt-image-2/1.5+ 专属），
       // 让模型「保人脸 + 换场景」——官方文档明确 high 适合"换背景/微调衣着"场景，正好对应"你+C 新场景但锁脸"。
+      const bleed = allowMoodBleed
+        ? " You MAY also borrow the reference image's photographic mood, lighting, color grade, and lens feel to enrich the atmosphere, as long as the face stays locked to the reference."
+        : "";
       const refNote = refCount > 1
-        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.`
-        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.`;
+        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.${bleed}`
+        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.${bleed}`;
       finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
     console.log("[OAI-PROMPT] final:", {

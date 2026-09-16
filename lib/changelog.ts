@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.81";
+export const APP_VERSION = "1.7.82";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.82",
+    date: "2026-09-16",
+    title: "OpenAI 锁脸图氛围增强（默认生效）",
+    highlights: [
+      "优化：OpenAI 锁脸生图默认允许「参考图的光影/色调/镜头感」渗入成图，不再只跟文字描述——这是别人小手机锁脸图有张力的关键；脸锁措辞保持原样，背景/姿势/衣服仍由描述主导",
+      "默认随「自动增强」开启（auto）；生图设置选「关闭」即回到原严格语义；栖所等不传生图设置的调用方自动收「关闭」，行为不变",
+      "与 1.7.81 的电影感后缀叠加，OAI 锁脸图默认即带光影对比与参考图氛围，平光半身问题进一步缓解",
+    ],
+  },
   {
     version: "1.7.81",
     date: "2026-09-16",
