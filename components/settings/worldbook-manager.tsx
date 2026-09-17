@@ -6,12 +6,11 @@ import {
     loadWorldBooks,
     saveWorldBooks,
     createWorldBook,
-    parseWorldBookFromJson,
     loadBindingConfig,
-    UNSUPPORTED_IMPORT_FORMAT,
 } from "@/lib/settings-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { importWorldBooksFromDocs, extractTextFromWordFile } from "@/lib/worldbook-doc-import";
+import { importWorldBookFromJsonText } from "@/lib/worldbook-json-import";
 import { resplitWorldBookByCategory } from "@/lib/tavern-card-import";
 import type { WorldBookConfig, WorldBookEntry } from "@/lib/settings-types";
 import { SettingsContext } from "../phone-settings-app";
@@ -329,23 +328,20 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
 
         const reader = new FileReader();
         reader.onload = (event) => {
-            try {
-                const text = event.target?.result as string;
-                const parsed = parseWorldBookFromJson(text);
-                if (parsed) {
-                    persist([parsed, ...books]);
-                    setActiveBookId(parsed.id);
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
-            } catch (e) {
-                if (e instanceof Error && e.message === UNSUPPORTED_IMPORT_FORMAT) {
-                    setImportError("不支持该世界书格式");
-                } else {
-                    setImportError("无法解析世界书文件，格式不正确。");
-                }
+            const text = (event.target?.result as string) || "";
+            // 先按本应用格式认，认不出再按酒馆/角色卡内嵌世界书认（与角色卡导入同一个解析器）
+            const result = importWorldBookFromJsonText(text, file.name.replace(/\.[^.]+$/, ""));
+            if (result) {
+                persist([result.book, ...books]);
+                setActiveBookId(result.book.id);
+                setViewMode("detail");
+                return;
             }
+            setImportError(
+                "无法识别这个世界书文件。支持：本应用导出的世界书 JSON、酒馆等工具导出的世界书 JSON、角色卡 JSON（取其内嵌的世界书）。"
+            );
         };
+        reader.onerror = () => setImportError("读取文件失败，请重试。");
         reader.readAsText(file);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };

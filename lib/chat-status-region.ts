@@ -14,6 +14,7 @@
 // 与 {{RAW}} 注入）接管。原生时期的消息永远按原生渲染，切换可逆。
 
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { OFFLINE_SCENE_STARTER_CONTRACT, OFFLINE_SCENE_STARTER_RENDER, OFFLINE_SCENE_STARTER_PREVIEW } from "./offline-scene-template";
 
 export type StatusRegionMode = "native" | "off" | "custom";
 
@@ -30,6 +31,16 @@ export type StatusRegionConfig = {
      *  不参与提示词，也不影响渲染。小卷写入契约时一并给出，否则预览会拿默认样例
      *  去套新契约的字段，显示成空白或错乱。缺省为空表示用内置样例。 */
     previewRaw?: string;
+    /** 是否给【线下模式】的每个回合挂一个状态栏卡片（默认关）。
+     *  与 mode 相互独立：线上可以继续用原生状态栏，只在线下挂卡片。
+     *  打开即用——契约与渲染留空时走内置「线下场景手记」模板。 */
+    offline?: boolean;
+    /** 线下模式专用契约（留空 = 用内置「线下场景手记」模板） */
+    offlineContract?: string;
+    /** 线下模式专用渲染 HTML（留空 = 用内置模板） */
+    offlineRenderHtml?: string;
+    /** 线下模式预览示例数据（留空 = 用内置模板的样例） */
+    offlinePreviewRaw?: string;
 };
 
 const STORAGE_KEY = "ai_phone_chat_status_region_v1";
@@ -46,6 +57,10 @@ export const STATUS_REGION_SECTION_MACRO = "{{statusRegionSection}}";
 export const STATUS_REGION_EXAMPLE_MACRO = "{{statusRegionExampleLine}}";
 export const STATUS_REGION_COMPOSITION_MACRO = "{{statusRegionComposition}}";
 export const STATUS_REGION_FULL_EXAMPLE_MACRO = "{{statusRegionFullExample}}";
+
+/** 线下状态栏：线上那份契约与渲染直接复用到线下回合，线上配一次、线下一套。
+ *  不做成预设宏——改成引擎侧显式注入一条 system 消息，这样用户导入的预设同样生效，
+ *  也不必改动内置预设内容与版本号。 */
 
 /** 原「## 状态数值」+「## 内心想法」章节原文——native 挡解析值，必须与历史版本逐字一致。
  *  状态数值也归入状态区：关闭原生后 [好感度:X] 等标签一并从提示词移除（好感度等会话状态随之停更）。 */
@@ -99,6 +114,10 @@ export const DEFAULT_STATUS_REGION_CONFIG: StatusRegionConfig = {
     contract: "",
     renderHtml: "",
     previewRaw: "",
+    offline: false,
+    offlineContract: "",
+    offlineRenderHtml: "",
+    offlinePreviewRaw: "",
 };
 
 function loadAll(): Record<string, StatusRegionConfig> {
@@ -122,13 +141,17 @@ export function getStatusRegionConfig(sessionId: string): StatusRegionConfig {
         contract: typeof raw.contract === "string" ? raw.contract : "",
         renderHtml: typeof raw.renderHtml === "string" ? raw.renderHtml : "",
         previewRaw: typeof raw.previewRaw === "string" ? raw.previewRaw : "",
+        offline: raw.offline === true,
+        offlineContract: typeof raw.offlineContract === "string" ? raw.offlineContract : "",
+        offlineRenderHtml: typeof raw.offlineRenderHtml === "string" ? raw.offlineRenderHtml : "",
+        offlinePreviewRaw: typeof raw.offlinePreviewRaw === "string" ? raw.offlinePreviewRaw : "",
     };
 }
 
 export function saveStatusRegionConfig(sessionId: string, config: StatusRegionConfig): void {
     if (typeof window === "undefined") return;
     const all = loadAll();
-    if (config.mode === "native" && !config.contract.trim() && !config.renderHtml.trim()) {
+    if (config.mode === "native" && !config.contract.trim() && !config.renderHtml.trim() && config.offline !== true) {
         delete all[sessionId];
     } else {
         all[sessionId] = config;
@@ -139,6 +162,61 @@ export function saveStatusRegionConfig(sessionId: string, config: StatusRegionCo
 /** custom 是否真正生效（契约与渲染都要有内容，缺一回退 native 行为） */
 export function isCustomStatusRegionActive(config: StatusRegionConfig): boolean {
     return config.mode === "custom" && !!config.contract.trim() && !!config.renderHtml.trim();
+}
+
+/** 线下模式是否挂状态栏卡片：只看 offline 开关——契约与渲染都有内置兜底，打开就能用。 */
+export function isOfflineStatusRegionActive(config: StatusRegionConfig): boolean {
+    return config.offline === true;
+}
+
+/** 线下实际使用的输出契约：用户填了就用自己的，留空用内置「线下场景手记」模板。 */
+export function resolveOfflineContract(config: StatusRegionConfig): string {
+    return (config.offlineContract || "").trim() || OFFLINE_SCENE_STARTER_CONTRACT;
+}
+
+/** 线下实际使用的渲染 HTML（同上，留空走内置模板）。 */
+export function resolveOfflineRenderHtml(config: StatusRegionConfig): string {
+    return (config.offlineRenderHtml || "").trim() || OFFLINE_SCENE_STARTER_RENDER;
+}
+
+/** 线下预览用的示例数据（设置页实时预览）。 */
+export function resolveOfflinePreviewRaw(config: StatusRegionConfig): string {
+    return (config.offlinePreviewRaw || "").trim() || OFFLINE_SCENE_STARTER_PREVIEW;
+}
+
+/** 线下状态栏的提示词正文（契约取线下专用字段，留空用内置模板）。
+ *  未启用时返回空串——线下提示词与历史版本逐字一致（零改动）。 */
+export function resolveOfflineStatusRegionSection(
+    config: StatusRegionConfig,
+    variant: StatusRegionVariant = "single",
+): string {
+    if (!isOfflineStatusRegionActive(config)) return "";
+    const lines = [
+        "## 状态栏（线下模式的额外输出）",
+        "- 本节启用时，上方「只输出两个 XML 字段」的限制放宽为：两个 XML 字段 + 一个 [状态栏] 块。",
+        "- [状态栏] 块放在 <content> 之前，整块用 [状态栏]...[/状态栏] 包裹；块内只写下方契约要求的内容。",
+        "- 本节契约优先于「禁止输出 [表情包:...] 等方括号协议或状态标签」——线下模式里 [状态栏] 是唯一允许的方括号协议。",
+        "- 状态栏写的是本轮结束后的最新状态，不要复述正文，不要写解释、标题或多余空行。",
+    ];
+    if (variant === "group") {
+        lines.push("- 线下群聊只需输出一份状态栏（按本轮主要出场角色与群体视角），不要按角色分别输出多份。");
+    }
+    lines.push("", "## 状态栏契约", resolveOfflineContract(config));
+    return lines.join("\n");
+}
+
+/** 把线下状态栏契约追加成一条 system 消息。
+ *  做成显式注入而不是预设宏：导入的预设也能生效，且不必动内置预设与 BUILTIN_PRESET_VERSION。
+ *  未启用时直接返回，不追加任何内容——存量行为零变化。
+ *  必须在 token 刹车（enforceTotalTokenBudget）之后调用，避免这块被裁掉。 */
+export function appendOfflineStatusRegionInstruction<T extends { role: string; content: unknown }>(
+    messages: T[],
+    sessionId: string,
+    variant: StatusRegionVariant,
+): void {
+    const section = resolveOfflineStatusRegionSection(getStatusRegionConfig(sessionId), variant);
+    if (!section) return;
+    messages.push({ role: "system", content: section } as unknown as T);
 }
 
 /** {{statusRegionSection}} 的解析值。

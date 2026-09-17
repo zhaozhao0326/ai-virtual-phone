@@ -16,7 +16,7 @@ import { StickerSearchSuggest } from "./sticker-search-suggest";
 import { StateValuesPanel } from "./state-values-panel";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
 import { formatOfflineTurnXml as formatOfflineTurnXmlShared, buildOfflinePromptHistory as buildOfflinePromptHistoryShared } from "@/lib/offline-prompt-builder";
-import { getStatusRegionConfig, isCustomStatusRegionActive, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
+import { getStatusRegionConfig, isCustomStatusRegionActive, resolveOfflineRenderHtml, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
@@ -54,7 +54,7 @@ import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { addFriendRequest, getPendingFriendRequests, dispatchFriendRequestUpdated } from "@/lib/friend-request-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, Bookmark, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1196,6 +1196,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [offlineMode, setOfflineMode] = useState(false);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
+    // 线下状态栏：同一时刻只展开一条，且只在展开时才挂载沙盒 iframe（避免长历史里一堆 iframe 空跑）
+    // 线下状态栏浮层：存点击那一刻的快照（状态栏原文 / 渲染 HTML / 摘要），null = 关闭。
+    // 做成浮层而不是行内展开，聊天记录不再被撑长；沙盒 iframe 只在浮层打开时才挂载。
+    const [statusSheet, setStatusSheet] = useState<{ statusRaw: string; render: string; summary: string; summaryTag: string } | null>(null);
     const [offlineVisibleCount, setOfflineVisibleCount] = useState(OFFLINE_INITIAL_LOAD);
     const [pendingOfflineUserText, setPendingOfflineUserText] = useState("");
     const [isOfflineGenerating, setIsOfflineGenerating] = useState(false);
@@ -4366,6 +4370,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         [session.id, statusRegionRevision],
     );
     const customStatusActive = isCustomStatusRegionActive(statusRegionCfg);
+    // 线下状态栏用的渲染 HTML：用户没单独填线下渲染时，回落到内置「线下场景手记」模板
+    const offlineStatusRender = resolveOfflineRenderHtml(statusRegionCfg);
 
     const formatOfflineTurnXml = useCallback((turn: ChatOfflineTurn): string => formatOfflineTurnXmlShared(turn), []);
 
@@ -4528,6 +4534,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     summaryTag: result.summaryTag,
                     rawText: result.rawText,
                     reasoningText: result.reasoning,
+                    statusRaw: result.statusRaw,
                 });
                 setOfflineTurns(prev => [...prev, saved]);
             } catch (error: any) {
@@ -4580,6 +4587,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             summary: parsed.summary.trim(),
             summaryTag: parsed.summaryTag,
             rawText: parsed.rawText,
+            statusRaw: parsed.statusRaw,
         });
         if (updated) setOfflineTurns(prev => prev.map(item => item.id === updated.id ? updated : item));
         setEditingOfflineTarget(null);
@@ -4643,6 +4651,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 summaryTag: result.summaryTag,
                 rawText: result.rawText,
                 reasoningText: result.reasoning,
+                statusRaw: result.statusRaw,
             });
             setOfflineTurns([...baseTurns, saved]);
         } catch (error: any) {
@@ -6047,17 +6056,27 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                         />
                                     </div>
-                                    {turn.summary.trim() && (
-                                        <details className="chat-offline-summary-fold">
-                                            <summary>摘要（{turn.summaryTag || "summary"}）</summary>
-                                            <div className="chat-offline-summary-content">
-                                                <BilingualTextBlock
-                                                    text={offlineDisplay.summary}
-                                                    mode="markdown"
-                                                    defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
-                                                />
-                                            </div>
-                                        </details>
+                                    {/* 线下状态栏：一个小标签，点开是浮层（浮在聊天记录上方，看完关掉），不占版面。
+                                        摘要与状态栏合并在这一个浮层里：摘要照旧进短期记忆，只是不再单独渲染一行折叠块。
+                                        未启用状态栏时没有 [状态栏] 原文，标签退化成「摘要」。 */}
+                                    {(turn.statusRaw?.trim() || turn.summary.trim()) && (
+                                        <button
+                                            type="button"
+                                            className="chat-offline-status-trigger"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setStatusSheet({
+                                                    statusRaw: (turn.statusRaw || "").trim(),
+                                                    render: offlineStatusRender,
+                                                    summary: offlineDisplay.summary,
+                                                    summaryTag: turn.summaryTag || "summary",
+                                                });
+                                            }}
+                                            aria-label={turn.statusRaw?.trim() ? "查看状态栏" : "查看摘要"}
+                                        >
+                                            <Bookmark size={12} strokeWidth={2} />
+                                            <span>{turn.statusRaw?.trim() ? "状态栏" : "摘要"}</span>
+                                        </button>
                                     )}
                                 </div>
                             </div>
@@ -6981,6 +7000,47 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             )}
                             {(reasoningViewMode !== "zh" || !reasoningTranslation) && (
                                 <BilingualTextBlock text={reasoningSheetText} mode="markdown" defaultExpanded />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 线下状态栏浮层（Claude app 风格底部弹窗，与思维链同一套）：点小标签弹出，浮在聊天记录上方。
+                状态栏卡片用沙盒 iframe 渲染，只在打开时挂载；未启用状态栏时只显示摘要。 */}
+            {statusSheet && (
+                <div
+                    className="modal-overlay modal-overlay-bottom"
+                    data-ui="modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="状态栏"
+                    onClick={() => setStatusSheet(null)}
+                >
+                    <div className="modal-sheet chat-status-sheet" onClick={(e) => e.stopPropagation()}>
+                        <div className="chat-status-sheet-handle" />
+                        <div className="chat-status-sheet-header">
+                            <span className="chat-status-sheet-title">状态栏</span>
+                            <button
+                                type="button"
+                                className="chat-status-sheet-close"
+                                onClick={() => setStatusSheet(null)}
+                                aria-label="关闭"
+                            >
+                                <X size={18} strokeWidth={2} />
+                            </button>
+                        </div>
+                        <div className="chat-status-sheet-body">
+                            {statusSheet.statusRaw
+                                ? (statusSheet.render.trim()
+                                    ? <CustomStatusFrame html={statusSheet.render} raw={statusSheet.statusRaw} />
+                                    : <BilingualTextBlock text={statusSheet.statusRaw} mode="markdown" defaultExpanded />)
+                                : null}
+                            {statusSheet.summary.trim() && (
+                                <div className="chat-status-sheet-summary">
+                                    <div className="chat-status-sheet-summary-label">摘要（{statusSheet.summaryTag}）</div>
+                                    <BilingualTextBlock text={statusSheet.summary} mode="markdown" defaultExpanded />
+                                </div>
                             )}
                         </div>
                     </div>

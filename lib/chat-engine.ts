@@ -35,7 +35,7 @@ import {
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
 import { estimateMessagesTokens, estimateTokens } from "./token-counter";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
-import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample } from "./chat-status-region";
+import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample, appendOfflineStatusRegionInstruction } from "./chat-status-region";
 import {
     buildProviderDebugMessages,
     buildProviderRequest,
@@ -1999,6 +1999,12 @@ export async function buildChatPromptMessages(
             content: "本次自定义 APP AI 任务只输出严格 JSON。不要输出 Markdown 代码块、解释文字或聊天富媒体指令。",
         });
     }
+    // 线下状态栏：把用户配好的状态栏契约追加进去（未启用或非线下调用时不追加，存量行为零变化）
+    // 注意本函数线上/线下共用，必须用 isOfflineMode 卡住，否则线上聊天会被灌进线下契约。
+    if (isOfflineMode) {
+        appendOfflineStatusRegionInstruction(llmMessages, session.id, session.isGroup ? "group" : "single");
+    }
+
     appendEmptyGenerateGuardMessage(llmMessages, config, historyForPrompt);
 
     return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };

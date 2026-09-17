@@ -45,12 +45,12 @@ import {
 import { isAgentComputerConfigured } from "@/lib/agent-computer";
 import { CharacterComputerPage } from "./character-computer-page";
 import { resolveUserIdentity, loadBindingConfig, loadPresets, resolveBinding } from "@/lib/settings-storage";
-import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
+import { getStatusRegionConfig, saveStatusRegionConfig, presetSupportsStatusRegion, isCustomStatusRegionActive, resolveOfflineContract, resolveOfflineRenderHtml, resolveOfflinePreviewRaw, STATUS_REGION_SCHEME_TARGET, STATUS_REGION_UPDATED_EVENT, type StatusRegionConfig } from "@/lib/chat-status-region";
 import { downloadFile } from "@/lib/download-utils";
 import { getSchemes, saveScheme, deleteScheme, type CSSScheme } from "@/lib/css-scheme-storage";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
 import { KeyboardAutoSendDebounceItem } from "@/components/chat/keyboard-auto-send-debounce-item";
-import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Brain, type LucideIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, Video, Mic, UserMinus, UserPlus, Users, Pin, MessageSquare, Search, AlertCircle, Bookmark, Code, Laptop, Trash2, Smile, Sparkles, X, Play, Upload, Download, Save, FolderOpen, Brain, type LucideIcon } from "lucide-react";
 import { isMemoryCareEnabled, setMemoryCareEnabled, disableFollowUpForCharacter, enableFollowUpForCharacter } from "@/lib/follow-up-service";
 import { getFollowUpCharOverride, loadFollowUpConfig } from "@/lib/settings-storage";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
@@ -363,6 +363,8 @@ export function ChatSettingsPanel({
     // 自定义状态栏（状态区）
     const [statusRegion, setStatusRegion] = useState<StatusRegionConfig>(() => getStatusRegionConfig(session.id));
     const [showStatusRegionDialog, setShowStatusRegionDialog] = useState(false);
+    // 弹窗在编辑哪一份：线上自定义状态栏 / 线下场景手记
+    const [statusDialogTarget, setStatusDialogTarget] = useState<"online" | "offline">("online");
     const [draftContract, setDraftContract] = useState("");
     const [draftRender, setDraftRender] = useState("");
     const [statusPreviewRaw, setStatusPreviewRaw] = useState(STATUS_REGION_STARTER_PREVIEW);
@@ -442,11 +444,19 @@ export function ChatSettingsPanel({
         window.addEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
         return () => window.removeEventListener(STATUS_REGION_UPDATED_EVENT, onExternalWrite);
     }, [session.id, showStatusRegionDialog]);
-    const openStatusRegionDialog = () => {
-        setDraftContract(statusRegion.contract || STATUS_REGION_STARTER_CONTRACT);
-        setDraftRender(statusRegion.renderHtml || STATUS_REGION_STARTER_RENDER);
-        // 示例数据跟着契约走：小卷写入时会一并给出，否则内置样例的字段对不上新契约
-        setStatusPreviewRaw(statusRegion.previewRaw || STATUS_REGION_STARTER_PREVIEW);
+    const openStatusRegionDialog = (target: "online" | "offline" = "online") => {
+        setStatusDialogTarget(target);
+        if (target === "offline") {
+            // 线下：用户填过就用他的，留空拿内置「线下场景手记」模板预填，改完保存即生效
+            setDraftContract(resolveOfflineContract(statusRegion));
+            setDraftRender(resolveOfflineRenderHtml(statusRegion));
+            setStatusPreviewRaw(resolveOfflinePreviewRaw(statusRegion));
+        } else {
+            setDraftContract(statusRegion.contract || STATUS_REGION_STARTER_CONTRACT);
+            setDraftRender(statusRegion.renderHtml || STATUS_REGION_STARTER_RENDER);
+            // 示例数据跟着契约走：小卷写入时会一并给出，否则内置样例的字段对不上新契约
+            setStatusPreviewRaw(statusRegion.previewRaw || STATUS_REGION_STARTER_PREVIEW);
+        }
         setPreviewHtml("");
         setShowStatusRegionDialog(true);
     };
@@ -1125,7 +1135,7 @@ export function ChatSettingsPanel({
                             </div>
                         </div>
                         {statusPresetSupported && statusRegion.mode !== "native" && (
-                            <div className="menu-item cursor-pointer" onClick={openStatusRegionDialog}>
+                            <div className="menu-item cursor-pointer" onClick={() => openStatusRegionDialog("online")}>
                                 <ChatInfoIcon icon={Sparkles} color={BINDING_ACCENTS.preset} />
                                 <div className="menu-label-group">
                                     <span className="menu-label">自定义状态栏</span>
@@ -1150,6 +1160,23 @@ export function ChatSettingsPanel({
                                 </div>
                             </div>
                         )}
+                        {/* 线下模式状态栏：独立开关，不依赖线上那份配置。
+                            打开就用内置「相遇手记」模板，点这一行可改成自己的契约与渲染。 */}
+                        <div className="menu-item cursor-pointer" onClick={() => openStatusRegionDialog("offline")}>
+                            <ChatInfoIcon icon={Bookmark} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">线下模式状态栏</span>
+                                <span className="menu-desc">{statusRegion.offline === true
+                                    ? "已启用——每轮线下回复后多一个可折叠的「相遇手记」，点此编辑契约与渲染"
+                                    : "每轮线下回复后多一个可折叠的场景手记：天气/位置/对你的印象/正在做什么/情绪/心声/关系变化（点此可改）"}</span>
+                            </div>
+                            <div className="menu-right" onClick={e => e.stopPropagation()}>
+                                <Toggle
+                                    checked={statusRegion.offline === true}
+                                    onChange={c => saveStatusRegion({ ...statusRegion, offline: c })}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -1802,7 +1829,7 @@ export function ChatSettingsPanel({
                 <div className="fixed inset-0 z-[10030] flex items-end justify-center bg-black/45 sm:items-center" role="dialog" aria-modal="true" aria-label="自定义状态栏">
                     <div className="flex max-h-[86vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-[var(--c-page-body-bg)] text-[var(--c-text)] shadow-2xl sm:rounded-2xl">
                         <div className="flex items-center justify-between px-5 pb-2 pt-4">
-                            <div className="font-bold text-[var(--c-text-title)]">自定义状态栏</div>
+                            <div className="font-bold text-[var(--c-text-title)]">{statusDialogTarget === "offline" ? "线下模式状态栏（相遇手记）" : "自定义状态栏"}</div>
                             <div className="flex items-center gap-1.5">
                                 <button type="button" className="modal-header-btn modal-header-btn-muted" aria-label="状态栏方案" onClick={() => { setStatusSchemes(getSchemes(STATUS_SCHEME_TARGET)); setStatusSchemeDeleteId(null); setShowStatusSchemes(v => !v); }}><FolderOpen size={16} /></button>
                                 <button type="button" className="modal-header-btn modal-header-btn-muted" aria-label="导入状态栏" onClick={() => statusImportInputRef.current?.click()}><Upload size={16} /></button>
@@ -1900,7 +1927,13 @@ export function ChatSettingsPanel({
                                 onClick={() => {
                                     const contract = draftContract.trim();
                                     const renderHtml = draftRender.trim();
-                                    saveStatusRegion({ mode: contract && renderHtml ? "custom" : "off", contract, renderHtml, previewRaw: statusPreviewRaw });
+                                    if (statusDialogTarget === "offline") {
+                                        // 线下：只写线下专用字段，不动线上那份；保存即打开开关
+                                        saveStatusRegion({ ...statusRegion, offline: true, offlineContract: contract, offlineRenderHtml: renderHtml, offlinePreviewRaw: statusPreviewRaw });
+                                    } else {
+                                        // 展开 ...statusRegion：否则会把线下那份配置一起覆盖掉
+                                        saveStatusRegion({ ...statusRegion, mode: contract && renderHtml ? "custom" : "off", contract, renderHtml, previewRaw: statusPreviewRaw });
+                                    }
                                     setShowStatusRegionDialog(false);
                                 }}
                             >

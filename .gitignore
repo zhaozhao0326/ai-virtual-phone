@@ -38,3 +38,7 @@ docs/用户使用说明.md
 
 # 工作区残留的项目内存/自动化目录（非本仓库内容，防误提交）
 .workbuddy/
+
+# 状态栏预览页（scripts/preview-offline-status.mjs 本地生成，仅供肉眼验收）
+.preview-offline-status*
+.preview-status-*

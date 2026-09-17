@@ -14,6 +14,9 @@ export type ChatOfflineTurn = {
     summaryTag: string;
     rawText?: string;
     reasoningText?: string; // 模型思维链（reasoning/CoT）内容
+    /** 线下状态栏：[状态栏]...[/状态栏] 块的原文（未启用状态栏时为空）。
+     *  单独存，渲染时交给 CustomStatusFrame，正文里不出现。 */
+    statusRaw?: string;
     createdAt: string;
 };
 
@@ -30,6 +33,8 @@ export type ParsedOfflineResponse = {
     content: string;
     summary: string;
     summaryTag: string;
+    /** [状态栏]...[/状态栏] 块原文，已从 content 里剥离；未启用时为空串 */
+    statusRaw: string;
 };
 
 function storageKey(sessionId: string): string {
@@ -54,6 +59,7 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
         summary: typeof item.summary === "string" ? item.summary : "",
         summaryTag: typeof item.summaryTag === "string" && item.summaryTag.trim() ? item.summaryTag.trim() : "summary",
         rawText: typeof item.rawText === "string" ? item.rawText : undefined,
+        statusRaw: typeof item.statusRaw === "string" ? item.statusRaw : undefined,
         createdAt: item.createdAt,
     };
 }
@@ -92,6 +98,7 @@ export function appendChatOfflineTurn(input: {
     summaryTag: string;
     rawText?: string;
     reasoningText?: string;
+    statusRaw?: string;
 }): ChatOfflineTurn {
     const turn: ChatOfflineTurn = {
         id: createTurnId(),
@@ -102,6 +109,7 @@ export function appendChatOfflineTurn(input: {
         summaryTag: input.summaryTag.trim() || "summary",
         rawText: input.rawText,
         reasoningText: input.reasoningText,
+        statusRaw: input.statusRaw,
         createdAt: new Date().toISOString(),
     };
     saveChatOfflineTurns(input.sessionId, [...loadChatOfflineTurns(input.sessionId), turn]);
@@ -111,7 +119,7 @@ export function appendChatOfflineTurn(input: {
 export function updateChatOfflineTurn(
     sessionId: string,
     turnId: string,
-    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText">>,
+    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "statusRaw">>,
 ): ChatOfflineTurn | null {
     let updated: ChatOfflineTurn | null = null;
     const turns = loadChatOfflineTurns(sessionId).map((turn) => {
@@ -230,10 +238,20 @@ export function parseOfflineResponse(rawText: string, summaryTag: string): Parse
         extractXmlField(trimmed, ["content"])
         || stripXmlField(stripXmlField(trimmed, effectiveSummaryTag), "summary"),
     );
+    // 状态栏：契约要求模型用 [状态栏]...[/状态栏] 包一块结构化数据，
+    // 必须摘出来交给 CustomStatusFrame 渲染，不能留在正文里当文字显示。
+    // 兼容模型把它写在 <content> 内或 XML 外两种情况，所以正文匹配不到时回退到整段原文。
+    const statusMatch = content.match(/\[状态栏\]([\s\S]*?)\[\/状态栏\]/)
+        || trimmed.match(/\[状态栏\]([\s\S]*?)\[\/状态栏\]/);
+    const statusRaw = statusMatch?.[1]?.trim() || "";
+    const cleanedContent = statusRaw
+        ? content.replace(/\[状态栏\][\s\S]*?\[\/状态栏\]/g, "")
+        : content;
     return {
         rawText: trimmed,
-        content: content.trim(),
+        content: cleanedContent.trim(),
         summary: summary.trim(),
         summaryTag: effectiveSummaryTag,
+        statusRaw,
     };
 }

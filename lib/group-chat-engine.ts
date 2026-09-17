@@ -59,6 +59,7 @@ import {
     resolveStatusRegionExampleLine,
     resolveStatusRegionComposition,
     resolveStatusRegionFullExample,
+    appendOfflineStatusRegionInstruction,
 } from "./chat-status-region";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
@@ -489,6 +490,11 @@ export async function buildGroupChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    // 线下状态栏：把用户配好的状态栏契约追加进去（未启用或非线下调用时不追加，存量行为零变化）
+    // 本函数同样被线上群聊复用，必须用 isOfflineMode 卡住。
+    if (isOfflineMode) {
+        appendOfflineStatusRegionInstruction(llmMessages, session.id, "group");
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",
