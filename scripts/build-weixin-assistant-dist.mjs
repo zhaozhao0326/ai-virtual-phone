@@ -40,7 +40,10 @@ const banner = `// @ts-nocheck -- 本文件由核心 JS 模块拼接生成，不
 
 `;
 
-const cloudFunction = banner + core + "\n" + wrapper;
+// .gitattributes 约定工作区为 CRLF（仓库存 LF）：拼接出来的内容是 LF，
+// 直接落盘会让 git 认为产物被改（git diff 却为空），故统一成 CRLF 再写。
+const toCrlf = (s) => s.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+const cloudFunction = toCrlf(banner + core + "\n" + wrapper);
 
 mkdirSync(publicDir, { recursive: true });
 mkdirSync(edgeFunctionDir, { recursive: true });
