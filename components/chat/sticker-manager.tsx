@@ -12,6 +12,11 @@ import {
     type StickerSheetSplit,
 } from "@/lib/sticker-sheet-split";
 import {
+    decodeStickerPackPng,
+    isLikelyStickerPackPng,
+    type StickerPackDecode,
+} from "@/lib/sticker-pack-png";
+import {
     loadStickerPacks,
     createStickerPack,
     deleteStickerPack,
@@ -654,6 +659,8 @@ function AddStickerDialog({
     const selectedFile = useRef<File | null>(null);
     // 选中的图被认出是合集时，这里存识别结果，给用户一个「拆开导入」的入口
     const [sheet, setSheet] = useState<{ file: File; cols: number; rows: number; count: number } | null>(null);
+    // PNG 隐藏清单解码（酒馆式表情包）识别结果
+    const [packDetect, setPackDetect] = useState<{ file: File; count: number } | null>(null);
     const detectToken = useRef(0);
 
     const hasImage = !!previewSrc;
@@ -674,11 +681,32 @@ function AddStickerDialog({
         selectedFile.current = f;
         setUrl("");
         setSheet(null);
+        setPackDetect(null);
         const reader = new FileReader();
         reader.onload = () => setPreviewSrc(reader.result as string);
         reader.readAsDataURL(f);
-        // 顺手认一下是不是合集图（本地像素分析，不联网不花 token）
-        if (f.type !== "image/gif") {
+        // 顺手认一下是不是表情包合集（本地分析，不联网不花 token）
+        if (isPngFile(f)) {
+            // ① 先看 PNG 隐藏清单（酒馆式：表情清单写在元数据里）
+            const token = ++detectToken.current;
+            void (async () => {
+                let pack: StickerPackDecode | null = null;
+                try { pack = await decodeStickerPackPng(f); } catch { pack = null; }
+                if (token !== detectToken.current) return;
+                if (pack && pack.entries.length >= 2) {
+                    setPackDetect({ file: f, count: pack.entries.length });
+                    return;
+                }
+                // ② 再看像素网格（普通拼图）
+                let split: StickerSheetSplit | null = null;
+                try { split = await splitStickerSheet(f); } catch { split = null; }
+                if (token !== detectToken.current) return;
+                if (split && split.tiles.length >= 2) {
+                    setSheet({ file: f, cols: split.cols, rows: split.rows, count: split.tiles.length });
+                }
+            })();
+        } else if (f.type !== "image/gif") {
+            // 非 PNG：只做像素网格识别
             const token = ++detectToken.current;
             void (async () => {
                 let split: StickerSheetSplit | null = null;
@@ -792,6 +820,21 @@ function AddStickerDialog({
                                     >拆成 {sheet.count} 个表情</button>
                                 </div>
                             )}
+                            {packDetect && onSheetDetected && (
+                                <div
+                                    className="flex flex-col gap-2 rounded-[var(--ui-radius)] px-3 py-2.5 mt-1"
+                                    style={{ background: "color-mix(in srgb, var(--c-icon-active) 10%, transparent)" }}
+                                >
+                                    <span className="ts-12" style={{ color: "var(--c-text)" }}>
+                                        这张是表情包合集（PNG 里带了 {packDetect.count} 个表情的清单，含各自名字）。
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-primary ts-12 self-start"
+                                        onClick={() => onSheetDetected(packDetect.file)}
+                                    >解码成 {packDetect.count} 个表情</button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -815,9 +858,9 @@ function AddStickerDialog({
 
 type BatchRow = {
     id: string;
-    /** file / sheet 都带本地图片；url 走外链 */
-    source: "file" | "url" | "sheet";
-    /** 本地图片（整张上传，或从合集图里切出来的一块） */
+    /** file / sheet / pack 都带本地图片；url 走外链 */
+    source: "file" | "url" | "sheet" | "pack";
+    /** 本地图片（整张上传，或从合集图里切出来的一块，或从 PNG 清单解码出的一张） */
     blob?: Blob;
     /** 来源文件名（用于「用来源命名」） */
     fileName?: string;
@@ -825,12 +868,19 @@ type BatchRow = {
     name: string;
     /** 来自合集拆分时的出处（第几块 / 共几块） */
     sheet?: { index: number; total: number };
+    /** 来自 PNG 隐藏清单解码（酒馆式表情包）时的出处 */
+    pack?: { index: number; total: number };
 };
 
 const BATCH_STICKER_URL_RE = /https?:\/\/[^\s，。；;]+/i;
 
 function getStickerBaseName(filename: string): string {
     return filename.replace(/\.[^.]+$/, "").trim() || "表情";
+}
+
+/** PNG 判定：有些系统不给 file.type，靠扩展名兜底 */
+function isPngFile(file: File): boolean {
+    return file.type === "image/png" || /\.png$/i.test(file.name);
 }
 
 function normalizeBatchStickerUrl(rawUrl: string): string | null {
@@ -920,9 +970,37 @@ function BatchAddStickerDialog({
         const next: BatchRow[] = [];
         let sheetCount = 0;
         let pieceCount = 0;
+        let packCount = 0;
+        let packPieceCount = 0;
+        const packNames: string[] = [];
         for (let i = 0; i < imgs.length; i++) {
             const file = imgs[i];
             const base = getStickerBaseName(file.name);
+            // ① 优先：PNG 隐藏清单解码（酒馆式表情包，元数据里写好了每张的名字/图）
+            let pack: StickerPackDecode | null = null;
+            if (autoSplit && isPngFile(file)) {
+                try { pack = await decodeStickerPackPng(file); } catch { pack = null; }
+            }
+            if (pack && pack.entries.length >= 2) {
+                packCount++;
+                packPieceCount += pack.entries.length;
+                if (pack.packName) packNames.push(pack.packName);
+                pack.entries.forEach((entry, k) => {
+                    const url = URL.createObjectURL(entry.blob);
+                    urlsRef.current.push(url);
+                    next.push({
+                        id: `pack_${Date.now()}_${i}_${k}_${Math.random().toString(36).slice(2, 5)}`,
+                        source: "pack",
+                        blob: entry.blob,
+                        fileName: file.name,
+                        url,
+                        name: entry.name || `${base}${k + 1}`,
+                        pack: { index: k + 1, total: pack.entries.length },
+                    });
+                });
+                continue;
+            }
+            // ② 兜底：纯像素网格识别（普通拼图且没元数据的合集图）
             let split: StickerSheetSplit | null = null;
             if (autoSplit && file.type !== "image/gif") {
                 try { split = await splitStickerSheet(file); } catch { split = null; }
@@ -960,7 +1038,13 @@ function BatchAddStickerDialog({
             });
         }
         setRows(prev => [...prev, ...next]);
-        setSheetNotice(sheetCount > 0 ? `识别到 ${sheetCount} 张合集图，已拆成 ${pieceCount} 个表情（名称可逐个改）` : null);
+        const parts: string[] = [];
+        if (packCount > 0) {
+            const label = packNames.length ? `「${packNames.slice(0, 3).join("」「")}」` : "";
+            parts.push(`PNG 表情包${label} 解码出 ${packPieceCount} 张（名字取自图内清单）`);
+        }
+        if (sheetCount > 0) parts.push(`${sheetCount} 张合集图（拆成 ${pieceCount} 个表情）`);
+        setSheetNotice(parts.length ? `已识别并导入：${parts.join("；")}（名称可逐个改）` : null);
         setDetecting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
@@ -999,6 +1083,7 @@ function BatchAddStickerDialog({
         if (r.source === "url") return { ...r, name: getStickerNameFromUrl(r.url, i) };
         const base = getStickerBaseName(r.fileName || "");
         if (r.source === "sheet" && r.sheet) return { ...r, name: `${base}${r.sheet.index}` };
+        if (r.source === "pack" && r.pack) return r; // 清单里自带名字，原样保留
         return { ...r, name: base };
     }));
     const numberNames = () => setRows(prev => prev.map((r, i) => ({ ...r, name: `表情${i + 1}` })));
@@ -1087,7 +1172,7 @@ function BatchAddStickerDialog({
                                 className="ui-chip"
                                 {...(autoSplit ? { "data-selected": "" } : {})}
                                 onClick={() => setAutoSplit(v => !v)}
-                                title="一张图里排着好几个表情（合集图）时，自动识别并切成一个个独立表情"
+                                title="自动拆开合集：带清单的 PNG 表情包会按清单解码（保留各自名字），普通拼图会按位置切成一个个表情"
                             >合集自动拆分</button>
                             {detecting && <span className="ts-11 opacity-60">识别中…</span>}
                         </div>
@@ -1134,9 +1219,11 @@ function BatchAddStickerDialog({
                                                 <span className="ts-11 ml-1" style={{ color: err ? "var(--c-danger)" : "var(--c-text)" }}>
                                                     {err || (r.source === "url"
                                                         ? "URL图片"
-                                                        : r.source === "sheet" && r.sheet
-                                                            ? `合集拆分 · 第 ${r.sheet.index}/${r.sheet.total} 块`
-                                                            : "本地图片")}
+                                                        : r.source === "pack" && r.pack
+                                                            ? `PNG清单解码 · 第 ${r.pack.index}/${r.pack.total} 张`
+                                                            : r.source === "sheet" && r.sheet
+                                                                ? `合集拆分 · 第 ${r.sheet.index}/${r.sheet.total} 块`
+                                                                : "本地图片")}
                                                 </span>
                                             </div>
                                             <button

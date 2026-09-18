@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.90";
+export const APP_VERSION = "1.7.91";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.91",
+    date: "2026-09-18",
+    title: "表情包：带清单的 PNG 合集，一次导入整包",
+    highlights: [
+      "有些地方导出的表情包 PNG，会把整套表情和它们各自的名字一起打包在图里（看到的那张图只是预览，实际可能有十几二十个）。现在把这种 PNG 直接上传，就能一次把整套表情全部导入，每张自动带上它自己的名字",
+      "导入后每张都是独立表情，能单独改名、单独删除，用起来和手动添加的一样",
+      "整个识别在本地完成，不联网、不消耗任何额度",
+      "不带清单的普通拼图，仍然会自动按位置切分成一个个表情；认错了可以关掉「合集自动拆分」，按原来的整张图导入",
+    ],
+  },
   {
     version: "1.7.90",
     date: "2026-09-18",

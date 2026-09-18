@@ -12,6 +12,7 @@
     "check:status": "node scripts/check-offline-status-region.mjs",
     "check:worldbook": "node scripts/check-worldbook-json-import.mjs",
     "check:sticker": "node scripts/check-sticker-sheet.mjs",
+    "check:sticker-pack": "node scripts/check-sticker-pack.mjs",
     "check:weixin": "node scripts/check-weixin-prompt-equivalence.mjs",
     "check:push": "node scripts/check-personal-push-dist.mjs",
     "weixin:assistant": "node tools/weixin-local-assistant/assistant.mjs",
