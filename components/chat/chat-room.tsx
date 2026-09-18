@@ -18,6 +18,7 @@ import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletio
 import { formatOfflineTurnXml as formatOfflineTurnXmlShared, buildOfflinePromptHistory as buildOfflinePromptHistoryShared } from "@/lib/offline-prompt-builder";
 import { getStatusRegionConfig, isCustomStatusRegionActive, resolveOfflineRenderHtml, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
+import { OfflineSpeechControls } from "@/components/chat/offline-speech-button";
 import { sendBrowserNotification } from "@/lib/browser-notification";
 import { dispatchChatMessageNotice } from "@/lib/chat-notification-events";
 import { shouldSendChatInputOnEnter } from "@/lib/chat-input-keyboard";
@@ -4414,6 +4415,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         return map;
     }, [getOfflineDisplayText, visibleOfflineTurns]);
 
+    // 线下朗读用：把这条会话里会发言的角色列出来（单聊=对方一个；群聊=全体群成员），
+    // 朗读时按「谁说的」挂到对应角色自己的嗓音上，不串音。
+    const offlineSpeakers = useMemo<{ id: string; name: string }[]>(() => {
+        if (session.isGroup) {
+            const chars = loadCharacters();
+            return (session.participantIds || []).map((id) => {
+                const c = chars.find((ch) => ch.id === id);
+                return { id, name: c?.name || id };
+            });
+        }
+        return character ? [{ id: character.id, name: character.name }] : [];
+    }, [session.isGroup, session.participantIds, character]);
+
     const loadMoreOfflineTurns = useCallback(() => {
         if (!hasMoreOfflineTurns) return;
         const el = scrollRef.current;
@@ -5996,8 +6010,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         {character?.avatar ? <img src={character.avatar} alt="" /> : <ChatFallbackAvatar />}
                                     </div>
                                     <div className="chat-offline-label-row">
-                                        <div className="chat-offline-label">{session.isGroup ? (session.groupName || "群聊") : (character?.name || "对方")}</div>
-                                        {assistantHasHtmlPreview ? (
+                                    <div className="chat-offline-label">{session.isGroup ? (session.groupName || "群聊") : (character?.name || "对方")}</div>
+                                    <OfflineSpeechControls
+                                        turnId={turn.id}
+                                        text={offlineDisplay.assistantContent}
+                                        speakers={offlineSpeakers}
+                                        isGroup={Boolean(session.isGroup)}
+                                        appId={session.isGroup ? "group_chat" : "chat"}
+                                    />
+                                    {assistantHasHtmlPreview ? (
                                             <button
                                                 type="button"
                                                 className="chat-offline-menu-trigger"

@@ -997,6 +997,59 @@
   transform: scale(0.96);
 }
 
+/* 线下模式朗读控件：角色消息标题行里的小语音条按钮（群聊线下每个角色一个） */
+.chat-offline-tts-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.chat-offline-tts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-text-title) 8%, transparent);
+  color: color-mix(in srgb, var(--c-text-title) 80%, transparent);
+  cursor: pointer;
+  touch-action: manipulation;
+  font-size: calc(11px * var(--app-text-scale, 1));
+  line-height: 1;
+  flex-shrink: 0;
+}
+.chat-offline-tts:active {
+  transform: scale(0.96);
+}
+.chat-offline-tts[data-playing] {
+  background: color-mix(in srgb, var(--c-icon-active) 16%, transparent);
+  color: var(--c-icon-active);
+}
+.chat-offline-tts-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-offline-tts-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 11px;
+}
+.chat-offline-tts-bar {
+  width: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+  height: 11px;
+  transform-origin: center;
+}
+.chat-offline-tts[data-playing] .chat-offline-tts-bar {
+  animation: voice-bar-bounce 0.58s ease-in-out infinite alternate;
+  opacity: 0.95;
+}
+
 .chat-offline-paragraph + .chat-offline-paragraph {
   margin-top: 0.85em;
 }

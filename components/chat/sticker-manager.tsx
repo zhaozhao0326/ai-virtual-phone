@@ -6,6 +6,12 @@ import { Trash2, Plus, Smile, ImagePlus, Check, ChevronDown, ChevronRight, Info,
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import {
+    splitStickerSheet,
+    buildSheetStickerNames,
+    isGenericImageName,
+    type StickerSheetSplit,
+} from "@/lib/sticker-sheet-split";
+import {
     loadStickerPacks,
     createStickerPack,
     deleteStickerPack,
@@ -348,6 +354,8 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
     const [assignedCharIds, setAssignedCharIds] = useState<string[]>([]);
     const [showAddDialog, setShowAddDialog] = useState(false);
     const [showBatchDialog, setShowBatchDialog] = useState(false);
+    // 「添加」里认出合集后，把那张图转交给批量导入去拆（那边有逐个改名的列表）
+    const [batchSeedFiles, setBatchSeedFiles] = useState<File[] | null>(null);
     const [packNameDraft, setPackNameDraft] = useState(pack.name);
     const [packNoteDraft, setPackNoteDraft] = useState(pack.note ?? "");
     // 改名进标题栏、备注默认折叠：把两块常驻编辑区收起来，别挤表情格子。
@@ -547,7 +555,7 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
                         <div className="text-[calc(18px*var(--app-text-scale,1))] font-bold text-[var(--c-text-title)]">表情库 <span className="text-[var(--c-text)] opacity-50 font-medium ml-1 text-base">{currentPack.stickers.length}</span></div>
                         <button
                             type="button"
-                            onClick={() => setShowBatchDialog(true)}
+                            onClick={() => { setBatchSeedFiles(null); setShowBatchDialog(true); }}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full ts-12 font-semibold active:scale-95 transition-transform"
                             style={{ background: "color-mix(in srgb, var(--c-icon-active) 12%, transparent)", color: "var(--c-icon-active)" }}
                         >
@@ -588,6 +596,11 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
                     packId={pack.id}
                     onDone={handleStickerAdded}
                     onCancel={() => setShowAddDialog(false)}
+                    onSheetDetected={(file) => {
+                        setShowAddDialog(false);
+                        setBatchSeedFiles([file]);
+                        setShowBatchDialog(true);
+                    }}
                 />,
                 document.querySelector(".phone-shell") ?? document.body
             )}
@@ -595,8 +608,9 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
             {showBatchDialog && createPortal(
                 <BatchAddStickerDialog
                     packId={pack.id}
-                    onDone={() => { setShowBatchDialog(false); refreshPack(); }}
-                    onCancel={() => setShowBatchDialog(false)}
+                    seedFiles={batchSeedFiles}
+                    onDone={() => { setShowBatchDialog(false); setBatchSeedFiles(null); refreshPack(); }}
+                    onCancel={() => { setShowBatchDialog(false); setBatchSeedFiles(null); }}
                 />,
                 document.querySelector(".phone-shell") ?? document.body
             )}
@@ -623,10 +637,13 @@ function AddStickerDialog({
     packId,
     onDone,
     onCancel,
+    onSheetDetected,
 }: {
     packId: string;
     onDone: () => void;
     onCancel: () => void;
+    /** 认出这是「合集图」（一张图里好几个表情）时，交给批量导入去拆 */
+    onSheetDetected?: (file: File) => void;
 }) {
     const [name, setName] = useState("");
     const [url, setUrl] = useState("");
@@ -635,6 +652,9 @@ function AddStickerDialog({
     const [adding, setAdding] = useState(false);
     const [fileError, setFileError] = useState<string | null>(null);
     const selectedFile = useRef<File | null>(null);
+    // 选中的图被认出是合集时，这里存识别结果，给用户一个「拆开导入」的入口
+    const [sheet, setSheet] = useState<{ file: File; cols: number; rows: number; count: number } | null>(null);
+    const detectToken = useRef(0);
 
     const hasImage = !!previewSrc;
     const canSubmit = !!name.trim() && hasImage && !fileError;
@@ -647,14 +667,28 @@ function AddStickerDialog({
         if (err) {
             selectedFile.current = null;
             setPreviewSrc(null);
+            setSheet(null);
             if (fileInputRef.current) fileInputRef.current.value = "";
             return;
         }
         selectedFile.current = f;
         setUrl("");
+        setSheet(null);
         const reader = new FileReader();
         reader.onload = () => setPreviewSrc(reader.result as string);
         reader.readAsDataURL(f);
+        // 顺手认一下是不是合集图（本地像素分析，不联网不花 token）
+        if (f.type !== "image/gif") {
+            const token = ++detectToken.current;
+            void (async () => {
+                let split: StickerSheetSplit | null = null;
+                try { split = await splitStickerSheet(f); } catch { split = null; }
+                if (token !== detectToken.current) return;
+                if (split && split.tiles.length >= 2) {
+                    setSheet({ file: f, cols: split.cols, rows: split.rows, count: split.tiles.length });
+                }
+            })();
+        }
     };
 
     const handleUrlBlur = () => {
@@ -662,6 +696,8 @@ function AddStickerDialog({
         if (trimmed) {
             selectedFile.current = null;
             setFileError(null);
+            setSheet(null);
+            detectToken.current++;
             if (fileInputRef.current) fileInputRef.current.value = "";
             setPreviewSrc(trimmed);
         }
@@ -741,6 +777,21 @@ function AddStickerDialog({
                                 </button>
                             )}
                             {fileError && <span className="ts-11 ml-1" style={{ color: "var(--c-danger)" }}>{fileError}</span>}
+                            {sheet && onSheetDetected && (
+                                <div
+                                    className="flex flex-col gap-2 rounded-[var(--ui-radius)] px-3 py-2.5 mt-1"
+                                    style={{ background: "color-mix(in srgb, var(--c-icon-active) 10%, transparent)" }}
+                                >
+                                    <span className="ts-12" style={{ color: "var(--c-text)" }}>
+                                        这张是合集图（识别到 {sheet.rows} 行 × {sheet.cols} 列，共 {sheet.count} 个表情）。
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-primary ts-12 self-start"
+                                        onClick={() => onSheetDetected(sheet.file)}
+                                    >拆成 {sheet.count} 个表情</button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -764,10 +815,16 @@ function AddStickerDialog({
 
 type BatchRow = {
     id: string;
-    source: "file" | "url";
-    file?: File;
+    /** file / sheet 都带本地图片；url 走外链 */
+    source: "file" | "url" | "sheet";
+    /** 本地图片（整张上传，或从合集图里切出来的一块） */
+    blob?: Blob;
+    /** 来源文件名（用于「用来源命名」） */
+    fileName?: string;
     url: string;
     name: string;
+    /** 来自合集拆分时的出处（第几块 / 共几块） */
+    sheet?: { index: number; total: number };
 };
 
 const BATCH_STICKER_URL_RE = /https?:\/\/[^\s，。；;]+/i;
@@ -818,10 +875,13 @@ function parseBatchStickerUrlRows(text: string): Array<{ name: string; url: stri
 
 function BatchAddStickerDialog({
     packId,
+    seedFiles,
     onDone,
     onCancel,
 }: {
     packId: string;
+    /** 从「添加」入口认出合集后转过来的文件：打开时直接进列表 */
+    seedFiles?: File[] | null;
     onDone: () => void;
     onCancel: () => void;
 }) {
@@ -831,33 +891,88 @@ function BatchAddStickerDialog({
     const [urlError, setUrlError] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
     const [progress, setProgress] = useState(0);
+    // 合集图（一张图里排着好几个表情）自动拆开；认错了可以关掉
+    const [autoSplit, setAutoSplit] = useState(true);
+    const [detecting, setDetecting] = useState(false);
+    const [sheetNotice, setSheetNotice] = useState<string | null>(null);
 
-    // 该组已有的表情名（用于查重），与已创建的 objectURL（卸载时统一释放）
+    // 该组已有的表情名（用于查重）、该组名字（拆开的块按它起名）、
+    // 已创建的 objectURL（卸载时统一释放）
     const existingNames = useRef<Set<string>>(new Set());
+    const packNameRef = useRef("表情");
     const urlsRef = useRef<string[]>([]);
     useEffect(() => {
         const p = loadStickerPacks().find(x => x.id === packId);
         existingNames.current = new Set((p?.stickers ?? []).map(s => s.name.trim().toLowerCase()));
+        packNameRef.current = p?.name?.trim() || "表情";
     }, [packId]);
     useEffect(() => () => { urlsRef.current.forEach(u => URL.revokeObjectURL(u)); }, []);
 
-    const addFiles = (files: FileList | null) => {
+    /**
+     * 收图：逐张先试着当「合集图」认一次（本地像素分析，不联网不花 token）。
+     * 认出来就拆成 N 行（各自可单独改名字），认不出就按单张进列表。
+     */
+    const addFiles = async (files: FileList | File[] | null) => {
         if (!files) return;
-        const imgs = Array.from(files).filter(f => f.type.startsWith("image/"));
-        const next: BatchRow[] = imgs.map((file, i) => {
+        const imgs = Array.from(files).filter(f => f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name));
+        if (!imgs.length) return;
+        setDetecting(true);
+        const next: BatchRow[] = [];
+        let sheetCount = 0;
+        let pieceCount = 0;
+        for (let i = 0; i < imgs.length; i++) {
+            const file = imgs[i];
+            const base = getStickerBaseName(file.name);
+            let split: StickerSheetSplit | null = null;
+            if (autoSplit && file.type !== "image/gif") {
+                try { split = await splitStickerSheet(file); } catch { split = null; }
+            }
+            if (split && split.tiles.length >= 2) {
+                sheetCount++;
+                pieceCount += split.tiles.length;
+                // 文件名没信息量（剪贴板/截图那种）时改用图集名做前缀
+                const prefix = isGenericImageName(file.name) ? packNameRef.current : base;
+                const names = buildSheetStickerNames(prefix, split.tiles.length);
+                split.tiles.forEach((blob, k) => {
+                    const url = URL.createObjectURL(blob);
+                    urlsRef.current.push(url);
+                    next.push({
+                        id: `sheet_${Date.now()}_${i}_${k}_${Math.random().toString(36).slice(2, 5)}`,
+                        source: "sheet",
+                        blob,
+                        fileName: file.name,
+                        url,
+                        name: names[k],
+                        sheet: { index: k + 1, total: split.tiles.length },
+                    });
+                });
+                continue;
+            }
             const url = URL.createObjectURL(file);
             urlsRef.current.push(url);
-            return {
+            next.push({
                 id: `row_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 5)}`,
-                source: "file" as const,
-                file,
+                source: "file",
+                blob: file,
+                fileName: file.name,
                 url,
-                name: getStickerBaseName(file.name),
-            };
-        });
+                name: base,
+            });
+        }
         setRows(prev => [...prev, ...next]);
+        setSheetNotice(sheetCount > 0 ? `识别到 ${sheetCount} 张合集图，已拆成 ${pieceCount} 个表情（名称可逐个改）` : null);
+        setDetecting(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
+
+    // 「添加」入口认出合集后转过来的文件：打开时灌进来（只灌一次）
+    const seededRef = useRef(false);
+    useEffect(() => {
+        if (seededRef.current) return;
+        seededRef.current = true;
+        if (seedFiles?.length) void addFiles(seedFiles);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [seedFiles]);
 
     const addUrls = () => {
         const parsed = parseBatchStickerUrlRows(urlText);
@@ -880,10 +995,12 @@ function BatchAddStickerDialog({
 
     const setRowName = (id: string, name: string) => setRows(prev => prev.map(r => r.id === id ? { ...r, name } : r));
     const removeRow = (id: string) => setRows(prev => prev.filter(r => r.id !== id));
-    const resetToFilenames = () => setRows(prev => prev.map((r, i) => ({
-        ...r,
-        name: r.source === "file" && r.file ? getStickerBaseName(r.file.name) : getStickerNameFromUrl(r.url, i),
-    })));
+    const resetToFilenames = () => setRows(prev => prev.map((r, i) => {
+        if (r.source === "url") return { ...r, name: getStickerNameFromUrl(r.url, i) };
+        const base = getStickerBaseName(r.fileName || "");
+        if (r.source === "sheet" && r.sheet) return { ...r, name: `${base}${r.sheet.index}` };
+        return { ...r, name: base };
+    }));
     const numberNames = () => setRows(prev => prev.map((r, i) => ({ ...r, name: `表情${i + 1}` })));
 
     // 名称查重：本批内 + 与已有表情
@@ -899,7 +1016,7 @@ function BatchAddStickerDialog({
         const k = t.toLowerCase();
         if (existingNames.current.has(k)) return "与已有表情重名";
         if ((nameCounts.get(k) ?? 0) > 1) return "本批重名";
-        if (r.file) return checkStickerBlob(r.file);
+        if (r.blob) return checkStickerBlob(r.blob);
         return null;
     };
 
@@ -910,19 +1027,19 @@ function BatchAddStickerDialog({
         if (!allValid || adding) return;
         setAdding(true);
         setProgress(0);
-        const fileRows = rows.filter((r): r is BatchRow & { file: File } => r.source === "file" && Boolean(r.file));
+        const blobRows = rows.filter((r): r is BatchRow & { blob: Blob } => r.source !== "url" && Boolean(r.blob));
         const urlRows = rows.filter(r => r.source === "url");
         const total = rows.length;
-        if (fileRows.length > 0) {
+        if (blobRows.length > 0) {
             await addStickersToPack(
                 packId,
-                fileRows.map(r => ({ name: r.name.trim(), blob: r.file })),
+                blobRows.map(r => ({ name: r.name.trim(), blob: r.blob })),
                 (done) => setProgress(Math.round((done / total) * 100)),
             );
         }
         urlRows.forEach((row, i) => {
             addStickerByUrlToPack(packId, row.name.trim(), row.url);
-            setProgress(Math.round(((fileRows.length + i + 1) / total) * 100));
+            setProgress(Math.round(((blobRows.length + i + 1) / total) * 100));
         });
         setAdding(false);
         onDone();
@@ -946,21 +1063,36 @@ function BatchAddStickerDialog({
                     />
 
                     <div className="flex flex-col gap-3 text-left w-full">
-                        {rows.length === 0 ? (
+                        {rows.length === 0 && (
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 className="w-full h-[118px] rounded-[var(--ui-radius)] border border-dashed border-[var(--c-input-border)] bg-[var(--c-input)] flex flex-col items-center justify-center gap-2 text-[var(--c-icon)] cursor-pointer"
                             >
                                 <ImagePlus size={30} />
                                 <span className="ts-13 font-medium">选择多张图片</span>
-                                <span className="ts-11 opacity-60">或在下方粘贴URL列表</span>
+                                <span className="ts-11 opacity-60">合集图会自动拆成一个个表情</span>
                             </button>
-                        ) : (
-                            <div className="flex items-center flex-wrap gap-2">
-                                <button className="ui-chip" onClick={() => fileInputRef.current?.click()}>+ 继续选择</button>
-                                <button className="ui-chip" onClick={resetToFilenames}>用来源命名</button>
-                                <button className="ui-chip" onClick={numberNames}>按序号</button>
-                            </div>
+                        )}
+
+                        <div className="flex items-center flex-wrap gap-2">
+                            {rows.length > 0 && (
+                                <>
+                                    <button className="ui-chip" onClick={() => fileInputRef.current?.click()} disabled={detecting}>+ 继续选择</button>
+                                    <button className="ui-chip" onClick={resetToFilenames}>用来源命名</button>
+                                    <button className="ui-chip" onClick={numberNames}>按序号</button>
+                                </>
+                            )}
+                            <button
+                                type="button"
+                                className="ui-chip"
+                                {...(autoSplit ? { "data-selected": "" } : {})}
+                                onClick={() => setAutoSplit(v => !v)}
+                                title="一张图里排着好几个表情（合集图）时，自动识别并切成一个个独立表情"
+                            >合集自动拆分</button>
+                            {detecting && <span className="ts-11 opacity-60">识别中…</span>}
+                        </div>
+                        {sheetNotice && (
+                            <span className="ts-11 ml-1" style={{ color: "var(--c-icon-active)" }}>{sheetNotice}</span>
                         )}
 
                         <div className="flex flex-col gap-1.5">
@@ -1000,7 +1132,11 @@ function BatchAddStickerDialog({
                                                     autoComplete="off"
                                                 />
                                                 <span className="ts-11 ml-1" style={{ color: err ? "var(--c-danger)" : "var(--c-text)" }}>
-                                                    {err || (r.source === "url" ? "URL图片" : "本地图片")}
+                                                    {err || (r.source === "url"
+                                                        ? "URL图片"
+                                                        : r.source === "sheet" && r.sheet
+                                                            ? `合集拆分 · 第 ${r.sheet.index}/${r.sheet.total} 块`
+                                                            : "本地图片")}
                                                 </span>
                                             </div>
                                             <button
