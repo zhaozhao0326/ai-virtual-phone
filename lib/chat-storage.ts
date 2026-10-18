@@ -9,6 +9,7 @@ import {
 } from "./chat-db";
 import { resolveUserIdentity } from "./settings-storage";
 import { loadCharacters } from "./character-storage";
+import { findUserAvatarChangeIntent } from "./chat-avatar-intent";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { emitChatPluginEvent, runChatPluginTransformSync } from "./chat-plugin-hooks";
 import { parseAIResponse } from "./rich-message-parser";
@@ -249,6 +250,8 @@ export type ChatMessage = {
         appTags?: string[];
         appHistoryText?: string;
         appHistoryRole?: ChatMessageRole;
+        avatarRecommendationForCharacterId?: string; // 头像意图：推荐把该图设为哪个角色的头像
+        avatarRecommendationStatus?: "pending" | "accepted" | "declined"; // 头像意图推荐状态
     };
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags
@@ -1172,6 +1175,12 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     _messagesCache.push(newMsg);
     dbPutMessage(newMsg);
 
+    // 头像意图识别：用户发消息后，若本角色开启了意图识别，扫描是否"用这张当头像"，
+    // 命中则在该用户图片消息上挂一条 pending 推荐（零 token，纯正则）。UI 再弹接受/拒绝。
+    if (msg.role === "user") {
+        resolvePendingAvatarRecommendation(_messagesCache, msg.sessionId);
+    }
+
     // Auto update session last message only for records that can produce a list preview.
     const preview = getChatMessagePreview(newMsg);
     const sessions = loadChatSessions();
@@ -1191,6 +1200,31 @@ export function pushChatMessage(msg: Omit<ChatMessage, "id" | "createdAt" | "sta
     emitChatPluginEvent("message.persisted", { message: newMsg });
 
     return newMsg;
+}
+
+/**
+ * 头像意图：用户发图并说"用这张当你的头像"时，在最近的该用户图片消息上挂一条 pending 推荐。
+ * 仅在角色开启了 avatarIntentEnabled 时生效（每角色开关，默认关）。不自动改头像，需用户确认。
+ * 纯正则、零 token；失败静默，绝不影响正常聊天。
+ */
+export function resolvePendingAvatarRecommendation(history: ChatMessage[], sessionId: string): void {
+    try {
+        const sessions = loadChatSessions();
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session || session.isGroup) return; // 仅 1 对 1 私聊支持换头像意图
+        const characterId = session.contactId;
+        const character = loadCharacters().find(c => c.id === characterId);
+        if (!character || character.avatarIntentEnabled !== true) return; // 每角色开关，默认关
+        const found = findUserAvatarChangeIntent(history, sessionId, characterId);
+        if (!found) return;
+        updateMessageMediaData(found.image.id, {
+            ...found.image.mediaData,
+            avatarRecommendationForCharacterId: characterId,
+            avatarRecommendationStatus: "pending",
+        });
+    } catch {
+        // 静默失败：头像意图识别失败时不影响正常聊天
+    }
 }
 
 export function upsertImportedChatMessage(msg: ChatMessage): { message: ChatMessage; inserted: boolean } {

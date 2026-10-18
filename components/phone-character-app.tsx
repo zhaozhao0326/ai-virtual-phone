@@ -1886,6 +1886,8 @@ function CharArchiveView({
   const [initialStage, setInitialStage] = useState<RelationshipStage | undefined>(char.initialRelationshipStage);
   // Auto Memory 认知档案（每角色独立：角色对用户的长期认知）
   const [autoMemEnabled, setAutoMemEnabled] = useState(char.autoMemoryEnabled !== false);
+  // 头像意图识别（每角色开关，默认关）
+  const [avatarIntentEnabled, setAvatarIntentEnabled] = useState(char.avatarIntentEnabled === true);
   const [autoMemEntries, setAutoMemEntries] = useState<AutoMemoryEntry[]>([]);
   const [autoMemEditing, setAutoMemEditing] = useState(false);
   const [autoMemDraft, setAutoMemDraft] = useState<{ id?: string; category: AutoMemoryCategory; priority: AutoMemoryPriority; content: string }>({
@@ -1956,6 +1958,7 @@ function CharArchiveView({
     if (tags.length !== origTags.length || tags.some((t, i) => t !== origTags[i])) return true;
     if (growthEnabled !== (char.relationshipGrowthEnabled !== false)) return true;
     if (autoMemEnabled !== (char.autoMemoryEnabled !== false)) return true;
+    if (avatarIntentEnabled !== (char.avatarIntentEnabled === true)) return true;
     if ((initialStage || undefined) !== (char.initialRelationshipStage || undefined)) return true;
     return false;
   }
@@ -1985,6 +1988,7 @@ function CharArchiveView({
       setGrowthEnabled(char.relationshipGrowthEnabled !== false);
       setInitialStage(char.initialRelationshipStage);
       setAutoMemEnabled(char.autoMemoryEnabled !== false);
+      setAvatarIntentEnabled(char.avatarIntentEnabled === true);
     }
   }, [isEditing, char]);
 
@@ -2114,6 +2118,7 @@ function CharArchiveView({
         relationshipGrowthEnabled: growthEnabled !== false ? undefined : false,
         initialRelationshipStage: initialStage || undefined,
         autoMemoryEnabled: autoMemEnabled !== false ? undefined : false,
+        avatarIntentEnabled: avatarIntentEnabled ? true : undefined,
       }, createVersion);
     }
   }
@@ -2719,6 +2724,36 @@ function CharArchiveView({
             {autoMemEnabled && (
               <div className="mt-2 ts-10 opacity-50">
                 认知档案是角色「对你的了解」：工作、个人、心头事、历史、背景、指令。核心条目每轮对话都会注入，是角色越来越懂你的依据；聊天中角色会在你确认后自主更新。
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 头像意图识别：聊天中识别"用这张当你的头像"并提议换头像（零 token，需本角色开启） */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>头像意图识别</span>
+              {isEditing && (
+                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                  <input
+                    type="checkbox"
+                    checked={avatarIntentEnabled}
+                    onChange={e => setAvatarIntentEnabled(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  启用
+                </label>
+              )}
+            </div>
+            {!avatarIntentEnabled ? (
+              <div className="mt-2 ts-11 opacity-60">
+                已关闭：聊天中不会识别换头像意图。开启后，你发图并说"用这张当头像"时，TA 会提议换上这张图（需你确认）。
+                {isEditing && "（勾选上方「启用」可开启）"}
+              </div>
+            ) : (
+              <div className="mt-2 ts-11 opacity-60">
+                已开启：发图并说"用这张当你的头像"，TA 会弹出换头像提议，由你确认是否采纳（不会自动改头像）。
               </div>
             )}
           </div>

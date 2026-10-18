@@ -43,6 +43,10 @@ export type Character = {
   // 内部生活（梦呓 + 日记）：深夜/久未联系时角色会做梦、记日记（进信箱）
   // 缺省 = 开启；false = 该角色不生成梦呓/日记
   dreamEnabled?: boolean;
+
+  // 头像意图识别：聊天中识别"用这张当你的头像"并提议换头像（纯正则、零 token，需本角色开启）
+  // 缺省 = 关闭；true = 该角色开启意图识别
+  avatarIntentEnabled?: boolean;
 };
 
 export type CanvasBgItem = {

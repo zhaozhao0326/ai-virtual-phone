@@ -1,6 +1,7 @@
 import type { Character, CanvasBgItem } from "./character-types";
 import { normalizeTimeZone } from "./character-time";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
+import { getChatImageFromIndexedDB } from "./chat-asset-storage";
 
 /** Thrown when a character card contains fields unsupported by the current schema */
 export const CHAR_BLOCKED_FIELDS = "CHAR_BLOCKED_FIELDS";
@@ -81,6 +82,27 @@ export function saveCharacters(chars: Character[]): void {
   if (typeof window === "undefined") return;
   kvSet(STORAGE_KEY, JSON.stringify(chars));
   _charsCache = null;
+}
+
+/**
+ * 头像意图接受：把一张图设为某角色头像。mediaUrl 可能是 data URL，也可能是媒体库引用/资源 id，
+ * 非 data: 时尝试从 IndexedDB 解析为 data URL，保证头像可持久化。
+ */
+export async function applyAvatarRecommendation(characterId: string, mediaUrl: string): Promise<void> {
+  const chars = loadCharacters();
+  const idx = chars.findIndex(c => c.id === characterId);
+  if (idx < 0) return;
+  let avatarUrl = mediaUrl;
+  if (!avatarUrl.startsWith("data:image/")) {
+    try {
+      const data = await getChatImageFromIndexedDB(mediaUrl);
+      if (data) avatarUrl = data;
+    } catch {
+      // 解析失败则保留原 mediaUrl（部分情况下可能已是可用 URL）
+    }
+  }
+  chars[idx] = { ...chars[idx], avatar: avatarUrl };
+  saveCharacters(chars);
 }
 
 export function loadBackgroundItems(): CanvasBgItem[] {

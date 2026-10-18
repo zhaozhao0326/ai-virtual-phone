@@ -6,7 +6,7 @@ import { isMediaStoreRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { ChatMessage, createOrGetSession, updateMessageMediaStatus, updateMessageMediaData } from "@/lib/chat-storage";
 import { resolveContactCard } from "@/lib/contact-card";
-import { loadCharacters } from "@/lib/character-storage";
+import { loadCharacters, applyAvatarRecommendation } from "@/lib/character-storage";
 import { CHAT_OPEN_SESSION_EVENT, dispatchOpenAddContact } from "@/lib/chat-notification-events";
 import { ContactCardGenerateFlow } from "@/components/chat/contact-card-generate-flow";
 import { MediaPreviewOverlay } from "@/components/chat/media-preview-overlay";
@@ -2077,6 +2077,35 @@ function MediaFileBubble({
                         onClose={() => setImageFailureNotice("")}
                     />
                 )}
+                {msg.role === "user" && msg.mediaData?.avatarRecommendationStatus === "pending" && (() => {
+                    const charId = msg.mediaData?.avatarRecommendationForCharacterId;
+                    const charName = charId ? (loadCharacters().find(c => c.id === charId)?.name || "TA") : "TA";
+                    const accept = () => {
+                        if (!charId) return;
+                        applyAvatarRecommendation(charId, msg.mediaUrl || resolvedUrl).catch(() => {});
+                        const next = { ...msg.mediaData, avatarRecommendationStatus: "accepted" as const };
+                        updateMessageMediaData(msg.id, next);
+                        onUpdate?.({ ...msg, mediaData: next });
+                    };
+                    const decline = () => {
+                        const next = { ...msg.mediaData, avatarRecommendationStatus: "declined" as const };
+                        updateMessageMediaData(msg.id, next);
+                        onUpdate?.({ ...msg, mediaData: next });
+                    };
+                    return (
+                        <div className="flex items-center gap-2 mt-2 px-2 py-1.5 rounded-lg bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_12%,transparent)]">
+                            <span className="ts-11 opacity-80">把这张设为 {charName} 的头像？</span>
+                            <button
+                                className="ts-11 px-2 py-0.5 rounded-md bg-[color-mix(in_srgb,var(--c-accent,var(--c-primary,#4a3f2f))_24%,transparent)] font-semibold"
+                                onClick={accept}
+                            >接受</button>
+                            <button
+                                className="ts-11 px-2 py-0.5 rounded-md border border-[color-mix(in_srgb,var(--c-card-border)_60%,transparent)] opacity-70"
+                                onClick={decline}
+                            >拒绝</button>
+                        </div>
+                    );
+                })()}
             </div>
         );
     }
