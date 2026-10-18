@@ -76,7 +76,7 @@ import {
     generateAndApplyChatGeneratedImage,
     isPendingChatGeneratedImageMessage,
 } from "@/lib/generated-image-retry";
-import { generateImageFromConfiguredApi } from "@/lib/image-generation-service";
+import { generateImageFromConfiguredApi, normalizeReferenceImageForEdit } from "@/lib/image-generation-service";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { TextPhotoModal, type TextPhotoParticipant } from "./rich-input-modals";
@@ -3750,7 +3750,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 }
             }
             if (!raw) continue;
-            const compressed = await compressImageDataUrlForChat(raw, 768);
+            // 用户锁脸对称裁脸：与角色参考图裁脸一致，仅裁出脸部区域作为参考，减少张冠李戴。
+            // 仅对「你」(user) 应用，且只有当用户在身份设置里设过 faceCrop 时才裁。
+            const cropped = (s.id === "user" && u?.faceCrop)
+                ? await normalizeReferenceImageForEdit(raw, u.faceCrop)
+                : raw;
+            const compressed = await compressImageDataUrlForChat(cropped, 768);
             if (compressed) refImages.push(compressed);
         }
 

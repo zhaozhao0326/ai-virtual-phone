@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useContext } from "react";
+import { useState, useEffect, useCallback, useContext, useRef, type PointerEvent as ReactPointerEvent } from "react";
 import { Plus, User, Trash2, FileEdit, AlertCircle, Camera, Link, X, Check } from "lucide-react";
 import { SettingsContext } from "../phone-settings-app";
 import { loadUserIdentities, saveUserIdentities, loadBindingConfig, saveBindingConfig } from "@/lib/settings-storage";
 import { Input } from "@/components/ui/form";
-import { ConfirmDialog } from "@/components/ui/modal";
+import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 
 export type UserIdentity = {
     id: string;
@@ -18,6 +18,7 @@ export type UserIdentity = {
     customSettings: string;
     appearance?: string; // 生图形象：用于 AI 生图时描述"你"长什么样（性别/发型/衣着等）
     faceLockUrl?: string; // 锁脸参考图：用于 AI 生图时锁定「你」的脸（NAI character_reference / OAI edits 参考图），建议清晰正面单人照
+    faceCrop?: { x: number; y: number; size: number }; // 归一化正方形脸部选区：仅裁出该区域作为锁脸参考，减少张冠李戴
 };
 
 const DEFAULT_IDENTITIES: UserIdentity[] = [
@@ -160,6 +161,55 @@ export function UserIdentitySettings() {
             setEditingId(null);
             setIsNewIdentity(false);
         }
+    };
+
+    // ── 用户锁脸对称裁脸：与角色参考图裁脸一致，仅裁出脸部区域作为锁脸参考 ──
+    const [cropDraft, setCropDraft] = useState<{ x: number; y: number; size: number }>({ x: 0.27, y: 0.12, size: 0.46 });
+    const [cropViewport, setCropViewport] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    const [cropIdentityId, setCropIdentityId] = useState<string | null>(null);
+    const cropContainerRef = useRef<HTMLDivElement | null>(null);
+    const cropDragRef = useRef<{ pointerId: number; startX: number; startY: number; cropX: number; cropY: number } | null>(null);
+
+    const openFaceCrop = (identityId: string) => {
+        const target = identities.find(i => i.id === identityId);
+        const crop = target?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        setCropDraft(crop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropIdentityId(identityId);
+    };
+
+    const updateCropViewport = () => {
+        const rect = cropContainerRef.current?.getBoundingClientRect();
+        if (rect) setCropViewport({ width: rect.width, height: rect.height });
+    };
+
+    const handleCropPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        cropDragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            cropX: cropDraft.x,
+            cropY: cropDraft.y,
+        };
+    };
+
+    const handleCropPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = cropDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !cropViewport.width || !cropViewport.height) return;
+        const side = cropDraft.size * Math.min(cropViewport.width, cropViewport.height);
+        const maxX = Math.max(0, 1 - side / cropViewport.width);
+        const maxY = Math.max(0, 1 - side / cropViewport.height);
+        setCropDraft(current => ({
+            ...current,
+            x: Math.max(0, Math.min(maxX, drag.cropX + (event.clientX - drag.startX) / cropViewport.width)),
+            y: Math.max(0, Math.min(maxY, drag.cropY + (event.clientY - drag.startY) / cropViewport.height)),
+        }));
+    };
+
+    const handleCropPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (cropDragRef.current?.pointerId === event.pointerId) cropDragRef.current = null;
     };
 
     return (
@@ -437,15 +487,27 @@ export function UserIdentitySettings() {
                                                     <span className="menu-desc leading-snug">
                                                         与角色合影时，会用这张图锁定「你」的脸（NovelAI 参考图 / OpenAI 编辑参考图）。建议上传<b>清晰正面单人照</b>；留空则用上方头像。
                                                     </span>
-                                                    {identity.faceLockUrl && (
+                                                {identity.faceLockUrl && (
+                                                    <div className="flex items-center gap-3 flex-wrap">
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateIdentity(identity.id, { faceLockUrl: undefined })}
+                                                            onClick={() => openFaceCrop(identity.id)}
+                                                            className="ui-link-btn self-start"
+                                                        >
+                                                            裁脸选区
+                                                        </button>
+                                                        {identity.faceCrop && (
+                                                            <span className="ts-11 text-[var(--c-icon)] opacity-60">已设裁脸选区</span>
+                                                        )}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => updateIdentity(identity.id, { faceLockUrl: undefined, faceCrop: undefined })}
                                                             className="ui-link-btn self-start"
                                                         >
                                                             移除锁脸图
                                                         </button>
-                                                    )}
+                                                    </div>
+                                                )}
                                                 </div>
                                             </div>
                                         </div>
@@ -483,6 +545,68 @@ export function UserIdentitySettings() {
                     onCancel={() => setConfirmDeleteId(null)}
                 />
             )}
+
+            {/* ═══ 用户锁脸对称裁脸：脸部选区裁切弹窗（与角色参考图裁脸一致）═══ */}
+            {cropIdentityId && (() => {
+                const cropIdentity = identities.find(i => i.id === cropIdentityId);
+                const previewSrc = cropIdentity?.faceLockUrl;
+                if (!previewSrc) return null;
+                return (
+                    <ContentDialog
+                        title="选取脸部锁定区域"
+                        confirmLabel="保存选区"
+                        cancelLabel="取消"
+                        onCancel={() => setCropIdentityId(null)}
+                        onConfirm={() => {
+                            if (cropIdentityId) updateIdentity(cropIdentityId, { faceCrop: cropDraft });
+                            setCropIdentityId(null);
+                        }}
+                    >
+                        <div className="flex flex-col gap-3">
+                            <p className="menu-desc">拖动方框覆盖你的脸部；发送参考图时只会截取这个区域，减少服装和背景干扰。</p>
+                            <div ref={cropContainerRef} className="relative mx-auto w-fit max-h-[52vh] max-w-full overflow-hidden rounded-xl bg-black/80">
+                                <img
+                                    src={previewSrc}
+                                    alt="锁脸参考图脸部选取"
+                                    draggable={false}
+                                    className="block max-h-[52vh] max-w-full select-none object-contain"
+                                    onLoad={updateCropViewport}
+                                />
+                                {cropViewport.width > 0 && cropViewport.height > 0 && (
+                                    <button
+                                        type="button"
+                                        aria-label="拖动脸部选区"
+                                        className="absolute cursor-move touch-none border-2 border-white bg-white/10 shadow-[0_0_0_999px_rgba(0,0,0,0.42)]"
+                                        style={{
+                                            left: cropDraft.x * cropViewport.width,
+                                            top: cropDraft.y * cropViewport.height,
+                                            width: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                            height: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                        }}
+                                        onPointerDown={handleCropPointerDown}
+                                        onPointerMove={handleCropPointerMove}
+                                        onPointerUp={handleCropPointerUp}
+                                        onPointerCancel={handleCropPointerUp}
+                                    >
+                                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-2 py-1 text-xs text-white">拖到脸部</span>
+                                    </button>
+                                )}
+                            </div>
+                            <label className="flex items-center gap-3 menu-desc">
+                                选区大小
+                                <input
+                                    type="range"
+                                    min="18"
+                                    max="80"
+                                    value={Math.round(cropDraft.size * 100)}
+                                    onChange={(event) => setCropDraft(current => ({ ...current, size: Number(event.target.value) / 100 }))}
+                                    className="flex-1"
+                                />
+                            </label>
+                        </div>
+                    </ContentDialog>
+                );
+            })()}
         </div>
     );
 }

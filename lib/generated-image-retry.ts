@@ -1,7 +1,7 @@
 import { saveChatImageToIndexedDB } from "./chat-asset-storage";
 import { syncChatGeneratedImagePromptText, updateChatMessage, type ChatMessage } from "./chat-storage";
 import { loadCharacters } from "./character-storage";
-import { generatedImageFilename, generateImageFromConfiguredApi } from "./image-generation-service";
+import { generatedImageFilename, generateImageFromConfiguredApi, normalizeReferenceImageForEdit } from "./image-generation-service";
 import { loadImageGenerationSettings, resolveUserIdentity } from "./settings-storage";
 import { updateMomentPost } from "./moments-storage";
 import type { MomentPost } from "./moments-types";
@@ -77,6 +77,8 @@ export type ParticipantSpec = {
     name: string;
     anchor?: string;
     avatar?: string | null;
+    /** 用户锁脸对称裁脸选区（仅「你」有）；生图前裁出脸部区域，对齐角色参考图裁脸 */
+    faceCrop?: { x: number; y: number; size: number };
 };
 
 // 收集参与合影的「你」和各个角色的外观 + 头像，返回结构化规格与兼容用的中文描述串。
@@ -94,7 +96,7 @@ export function buildParticipantSpecs(characterIds: string[], includeUser = true
             userBits.push(identity.gender === "女" ? "女生" : identity.gender === "男" ? "男生" : identity.gender);
         }
         if (identity?.appearance?.trim()) userBits.push(identity.appearance.trim());
-        specs.push({ name: identity?.name?.trim() || "你", anchor: userBits.join("，") || undefined, avatar: (identity?.faceLockUrl || identity?.avatarUrl) || null });
+        specs.push({ name: identity?.name?.trim() || "你", anchor: userBits.join("，") || undefined, avatar: (identity?.faceLockUrl || identity?.avatarUrl) || null, faceCrop: identity?.faceCrop });
         if (userBits.length) parts.push(`你（${userBits.join("，")}）`);
     }
 
@@ -214,8 +216,15 @@ export async function generateAndApplyChatGeneratedImage(
     const { specs, appearanceText } = buildParticipantSpecs(participantIds, includeUser);
     const participantAppearance = appearanceText || undefined;
     // 收集头像参考图（浏览器内压缩），用于 NAI character_reference 锁脸
+    // 用户(「你」)若设了锁脸裁脸选区，先裁出脸部再压缩，与角色参考图裁脸对称。
     const referenceImages = (await Promise.all(
-        specs.map((s) => (s.avatar ? resizeImageDataUrl(s.avatar, 512) : Promise.resolve(null))),
+        specs.map((s) => {
+            if (!s.avatar) return Promise.resolve(null);
+            const cropped = s.faceCrop
+                ? normalizeReferenceImageForEdit(s.avatar, s.faceCrop)
+                : Promise.resolve(s.avatar);
+            return cropped.then((c) => resizeImageDataUrl(c, 512));
+        }),
     )).filter(Boolean) as string[];
 
     // 实时阶段回调：把生图进行中的状态写回消息 mediaData，让气泡显示「正在生成 / 并发锁等待中」
