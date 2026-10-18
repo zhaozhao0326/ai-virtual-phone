@@ -309,6 +309,20 @@ export type ImageGenerationSettings = {
     characterReferences: Record<string, {
         assetId: string;
         updatedAt: number;
+        /** 暂时关闭参考图但保留图片与选脸区域，默认开启 */
+        enabled?: boolean;
+        /** 归一化正方形脸部选区：仅裁出该区域作为锁脸参考，减少张冠李戴 */
+        faceCrop?: { x: number; y: number; size: number };
+        /** 该角色的服装/配饰/稳定特征锚点（多张带标签参考图，拼板+注入提示词） */
+        anchors?: Array<{
+            id: string;
+            name: string;
+            category: "accessory" | "clothing" | "feature" | "other";
+            description: string;
+            assetId?: string;
+            enabled: boolean;
+            updatedAt: number;
+        }>;
     }>;
     imageHosting: ImageHostingSettings;
     // --- 纯净生图模式 ---

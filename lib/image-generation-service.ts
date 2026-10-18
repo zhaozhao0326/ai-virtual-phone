@@ -89,8 +89,11 @@ function loadDataUrlImage(dataUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> {
-  if (dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
+export async function normalizeReferenceImageForEdit(
+  dataUrl: string,
+  crop?: { x: number; y: number; size: number },
+): Promise<string> {
+  if (!crop && dataUrlMimeType(dataUrl) === "image/png") return dataUrl;
   if (typeof document === "undefined") return dataUrl;
 
   try {
@@ -100,11 +103,24 @@ async function normalizeReferenceImageForEdit(dataUrl: string): Promise<string> 
     if (!width || !height) return dataUrl;
 
     const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
+    // 有裁脸选区时，仅裁出该正方形区域作为锁脸参考，减少张冠李戴
+    const normalizedSize = crop ? Math.max(0.18, Math.min(1, crop.size)) : 1;
+    const sourceSize = Math.max(1, Math.round(Math.min(width, height) * normalizedSize));
+    const sourceX = crop
+      ? Math.round(Math.max(0, Math.min(width - sourceSize, crop.x * width)))
+      : 0;
+    const sourceY = crop
+      ? Math.round(Math.max(0, Math.min(height - sourceSize, crop.y * height)))
+      : 0;
+    canvas.width = crop ? sourceSize : width;
+    canvas.height = crop ? sourceSize : height;
     const context = canvas.getContext("2d");
     if (!context) return dataUrl;
-    context.drawImage(image, 0, 0, width, height);
+    if (crop) {
+      context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, sourceSize, sourceSize);
+    } else {
+      context.drawImage(image, 0, 0, width, height);
+    }
     return canvas.toDataURL("image/png");
   } catch {
     return dataUrl;
@@ -1025,13 +1041,13 @@ export async function generateImageFromConfiguredApi(params: {
   const description = params.description.trim();
 
   // ── 提取角色锁脸图（提前到公共部分，NAI 和 OAI 都能用）──
-  const reference = params.characterId ? settings.characterReferences[params.characterId] : undefined;
-  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.assetId
+  const reference = params.characterId ? settings.characterReferences?.[params.characterId] : undefined;
+  const rawReferenceImageDataUrl = params.useReferenceImage && reference?.enabled !== false && reference?.assetId
     ? await getChatImageFromIndexedDB(reference.assetId)
     : null;
   throwIfAborted(params.signal);
   const referenceImageDataUrl = rawReferenceImageDataUrl
-    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl)
+    ? await normalizeReferenceImageForEdit(rawReferenceImageDataUrl, reference?.faceCrop)
     : null;
   throwIfAborted(params.signal);
   // 同步压缩：OAI server 模式下这张也作为 base64 发到 Vercel 中转，
@@ -1057,7 +1073,13 @@ export async function generateImageFromConfiguredApi(params: {
     };
     await push(referenceImageDataUrl);                    // ① 角色自己的锁脸图优先
     for (const r of params.referenceImages ?? []) {
-      await push(r);                                      // ② 再加用户等参与者
+      await push(r);                                      // ② 再加用户等参与者（人脸优先）
+    }
+    // ③ 角色稳定特征锚点图补位（cap 内剩余名额）；人脸优先，锚点图只填空位，不与参与者抢位置
+    for (const anchor of (reference?.anchors ?? []).filter(a => a.enabled !== false && a.assetId)) {
+      if (!anchor.assetId) continue;
+      const raw = await getChatImageFromIndexedDB(anchor.assetId);
+      if (raw) await push(raw);
     }
     return out.slice(0, 4);
   })();
@@ -1071,6 +1093,19 @@ export async function generateImageFromConfiguredApi(params: {
     firstRefBytes: mergedReferenceImages[0]?.length ?? 0,
   });
   /* ============================================================== */
+
+  // ── 角色稳定锚点：注入提示词，强化锁脸一致性（NAI/OAI/Google 通用）──
+  const characterPromptParts: string[] = [];
+  const activeAnchorDescs = (reference?.anchors ?? []).filter(a => a.enabled !== false && a.description.trim());
+  if (activeAnchorDescs.length) {
+    const anchorsText = activeAnchorDescs
+      .map(a => `${a.name || "特征"}：${a.description.trim()}`)
+      .join("；");
+    characterPromptParts.push(`【角色特定锚点】${anchorsText}`);
+  }
+  const enrichedDescription = characterPromptParts.length
+    ? `${description}\n\n${characterPromptParts.join("\n\n")}`
+    : description;
 
   // ── Provider 路由：NAI vs OpenAI 兼容 ──
   if (settings.provider === "novelai") {
@@ -1088,7 +1123,7 @@ export async function generateImageFromConfiguredApi(params: {
     // 解决浏览器 CORS + 境外网络双重拦截。
     const data = await serializeProvider("novelai", () => generateImageViaServerWithRetry({
       settings,
-      prompt: description,
+      prompt: enrichedDescription,
       participantAppearance: params.participantAppearance,
       referenceImages: mergedReferenceImages,
       participants: params.participants,
@@ -1165,7 +1200,7 @@ export async function generateImageFromConfiguredApi(params: {
   // ── OpenAI 兼容（原有逻辑）──
   if (!description || !settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
 
-  const prompt = mergePrompt(description, settings.extraPrompt);
+  const prompt = mergePrompt(enrichedDescription, settings.extraPrompt);
 
   // 统一走 Vercel 服务器中转（与 NAI 分支一致）：浏览器只连国内 Vercel，
   // 由海外服务器调 api.openai.com，避免国内网络直连被墙（"不能跨境"）。

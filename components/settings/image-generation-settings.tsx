@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, Camera, ChevronDown, Download, HelpCircle, Image, RefreshCw, Sparkles, Trash2, Upload, X, BookOpen, Plus, Save } from "lucide-react";
 import type { ImageGenerationSettings as ImageGenerationSettingsType, NaiPreset, NaiPresetGroup } from "@/lib/settings-types";
 import {
@@ -18,6 +18,7 @@ import {
     generateImageFromConfiguredApi,
 } from "@/lib/image-generation-service";
 import { Alert } from "@/components/ui/feedback";
+import { ContentDialog } from "@/components/ui/modal";
 import { Input, Select, Textarea, Toggle } from "@/components/ui/form";
 
 const SIZE_OPTIONS = ["auto", "1024x1024", "1024x1536", "1536x1024"];
@@ -397,6 +398,13 @@ export function ImageGenerationSettings() {
     const [testPreviewUrl, setTestPreviewUrl] = useState<string | null>(null);
     const [testMime, setTestMime] = useState<string>("image/png");
 
+    // ---- 锁脸增强：脸部选区裁切 ----
+    const [cropDraft, setCropDraft] = useState<{ x: number; y: number; size: number }>({ x: 0.27, y: 0.12, size: 0.46 });
+    const [cropViewport, setCropViewport] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+    const [cropCharacterId, setCropCharacterId] = useState<string | null>(null);
+    const cropContainerRef = useRef<HTMLDivElement | null>(null);
+    const cropDragRef = useRef<{ pointerId: number; startX: number; startY: number; cropX: number; cropY: number } | null>(null);
+
     // ---- NAI 弹窗状态 ----
     const [showNaiModal, setShowNaiModal] = useState(false);
     const [naiRefPreview, setNaiRefPreview] = useState<string | null>(null);
@@ -690,6 +698,101 @@ export function ImageGenerationSettings() {
             delete next[characterId];
             return next;
         });
+    };
+
+    // ── 锁脸增强：参考图字段合并（faceCrop / enabled / anchors 等）──
+    type CharacterReference = NonNullable<ImageGenerationSettingsType["characterReferences"][string]>;
+    type CharacterAnchor = NonNullable<CharacterReference["anchors"]>[number];
+
+    const updateCharacterReference = (characterId: string, patch: Partial<CharacterReference>) => {
+        const current = settings.characterReferences?.[characterId];
+        persist({
+            ...settings,
+            characterReferences: {
+                ...(settings.characterReferences || {}),
+                [characterId]: { ...(current || { assetId: "", updatedAt: Date.now() }), ...patch } as CharacterReference,
+            },
+        });
+    };
+
+    const updateCharacterAnchors = (characterId: string, anchors: CharacterAnchor[]) => {
+        updateCharacterReference(characterId, { anchors });
+    };
+
+    const updateCharacterAnchor = (characterId: string, anchorId: string, patch: Partial<CharacterAnchor>) => {
+        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
+        updateCharacterAnchors(characterId, anchors.map(a => a.id === anchorId ? { ...a, ...patch, updatedAt: Date.now() } : a));
+    };
+
+    const addCharacterAnchor = (characterId: string) => {
+        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
+        updateCharacterAnchors(characterId, [...anchors, {
+            id: `anchor_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            name: "新锚点",
+            category: "feature",
+            description: "",
+            enabled: true,
+            updatedAt: Date.now(),
+        }]);
+    };
+
+    const deleteCharacterAnchor = (characterId: string, anchorId: string) => {
+        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
+        updateCharacterAnchors(characterId, anchors.filter(a => a.id !== anchorId));
+    };
+
+    const uploadCharacterAnchor = async (characterId: string, anchorId: string) => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            const assetId = await saveChatImageToIndexedDB(file);
+            updateCharacterAnchor(characterId, anchorId, { assetId, enabled: true });
+        };
+        input.click();
+    };
+
+    const openFaceCrop = (characterId: string) => {
+        const crop = settings.characterReferences?.[characterId]?.faceCrop || { x: 0.27, y: 0.12, size: 0.46 };
+        setCropDraft(crop);
+        setCropViewport({ width: 0, height: 0 });
+        setCropCharacterId(characterId);
+    };
+
+    const updateCropViewport = () => {
+        const rect = cropContainerRef.current?.getBoundingClientRect();
+        if (rect) setCropViewport({ width: rect.width, height: rect.height });
+    };
+
+    const handleCropPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        cropDragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            cropX: cropDraft.x,
+            cropY: cropDraft.y,
+        };
+    };
+
+    const handleCropPointerMove = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        const drag = cropDragRef.current;
+        if (!drag || drag.pointerId !== event.pointerId || !cropViewport.width || !cropViewport.height) return;
+        const side = cropDraft.size * Math.min(cropViewport.width, cropViewport.height);
+        const maxX = Math.max(0, 1 - side / cropViewport.width);
+        const maxY = Math.max(0, 1 - side / cropViewport.height);
+        setCropDraft(current => ({
+            ...current,
+            x: Math.max(0, Math.min(maxX, drag.cropX + (event.clientX - drag.startX) / cropViewport.width)),
+            y: Math.max(0, Math.min(maxY, drag.cropY + (event.clientY - drag.startY) / cropViewport.height)),
+        }));
+    };
+
+    const handleCropPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (cropDragRef.current?.pointerId === event.pointerId) cropDragRef.current = null;
     };
 
     // 更新角色的生图提示词（appearance），同步持久化
@@ -1608,8 +1711,9 @@ export function ImageGenerationSettings() {
                                         <div className="flex flex-col gap-2 pl-[calc(1.125rem+0.5rem)]">
                                             {worldChars.length === 0 ? (
                                                 <div className="menu-desc py-2 opacity-60">该世界暂无角色。</div>
-                                            ) : worldChars.map(character => {
+                                            ) :                                             worldChars.map(character => {
                                                 const preview = referencePreviews[character.id];
+                                                const reference = settings.characterReferences?.[character.id];
                                                 return (
                                                     <div key={character.id} className="menu-item flex-col items-stretch gap-2">
                                                         <div className="flex w-full items-center">
@@ -1684,6 +1788,94 @@ export function ImageGenerationSettings() {
                                                                 />
                                                             </div>
                                                         )}
+
+                                                        {/* ── 锁脸增强：参考图开关 + 脸部裁切 + 稳定特征锚点 ── */}
+                                                        {preview && (
+                                                            <div className="flex flex-col gap-2 pl-[calc(2.75rem+0.5rem)]">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Toggle
+                                                                        checked={reference?.enabled !== false}
+                                                                        onChange={(enabled) => updateCharacterReference(character.id, { enabled })}
+                                                                        className="settings-toggle-control"
+                                                                    />
+                                                                    <span className="ts-11 text-[var(--c-icon)] opacity-70">启用此参考图（关闭则保留图片但本次不参与生图）</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        className="ui-btn ui-btn-soft-action"
+                                                                        onClick={() => openFaceCrop(character.id)}
+                                                                    >
+                                                                        选取脸部锁定区域
+                                                                    </button>
+                                                                    {reference?.faceCrop && (
+                                                                        <span className="ts-11 text-[var(--c-icon)] opacity-60">已设裁脸选区</span>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* 稳定特征锚点（多张带标签参考图） */}
+                                                                <div className="flex flex-col gap-1">
+                                                                    <span className="ts-11 text-[var(--c-icon)] opacity-70">稳定特征锚点（服装 / 配饰 / 特征，多张带标签参考图拼板 + 注入提示词）</span>
+                                                                    {(reference?.anchors || []).map(anchor => (
+                                                                        <div key={anchor.id} className="flex flex-col gap-1 rounded-lg border border-[var(--c-border)] p-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <input
+                                                                                    className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-2 py-1 ts-12 text-[var(--c-text)]"
+                                                                                    placeholder="锚点名（如：红丝带）"
+                                                                                    value={anchor.name}
+                                                                                    onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { name: e.target.value })}
+                                                                                />
+                                                                                <select
+                                                                                    className="rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-1 py-1 ts-12 text-[var(--c-text)]"
+                                                                                    value={anchor.category}
+                                                                                    onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { category: e.target.value as "accessory" | "clothing" | "feature" | "other" })}
+                                                                                >
+                                                                                    <option value="accessory">配饰</option>
+                                                                                    <option value="clothing">服装</option>
+                                                                                    <option value="feature">特征</option>
+                                                                                    <option value="other">其他</option>
+                                                                                </select>
+                                                                                <Toggle
+                                                                                    checked={anchor.enabled}
+                                                                                    onChange={(enabled) => updateCharacterAnchor(character.id, anchor.id, { enabled })}
+                                                                                    className="settings-toggle-control"
+                                                                                />
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="ui-link-btn"
+                                                                                    data-variant="danger"
+                                                                                    aria-label="删除锚点"
+                                                                                    onClick={() => deleteCharacterAnchor(character.id, anchor.id)}
+                                                                                >
+                                                                                    <Trash2 size={16} />
+                                                                                </button>
+                                                                            </div>
+                                                                            <textarea
+                                                                                className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-2 py-1 ts-12 text-[var(--c-text)] resize-none"
+                                                                                rows={1}
+                                                                                placeholder="描述（如：左耳红丝带、黑色 choker）"
+                                                                                value={anchor.description}
+                                                                                onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { description: e.target.value })}
+                                                                            />
+                                                                            <button
+                                                                                type="button"
+                                                                                className="ui-btn ui-btn-soft-action self-start"
+                                                                                onClick={() => uploadCharacterAnchor(character.id, anchor.id)}
+                                                                            >
+                                                                                上传锚点图
+                                                                            </button>
+                                                                        </div>
+                                                                    ))}
+                                                                    <button
+                                                                        type="button"
+                                                                        className="ui-btn ui-btn-soft-action self-start"
+                                                                        onClick={() => addCharacterAnchor(character.id)}
+                                                                    >
+                                                                        + 新增锚点
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })}
@@ -1699,6 +1891,63 @@ export function ImageGenerationSettings() {
             {/* ═══ NAI 详细设置弹窗已移除（所有字段已内联到上方） ═══ */}
 
             {/* ═══ NAI 弹窗已移除，角色参考图保留在下方独立区域 ═══ */}
+
+            {/* ════════════ 锁脸：脸部选区裁切弹窗 ════════════ */}
+            {cropCharacterId && referencePreviews[cropCharacterId] && (
+                <ContentDialog
+                    title="选取脸部锁定区域"
+                    confirmLabel="保存选区"
+                    cancelLabel="取消"
+                    onCancel={() => setCropCharacterId(null)}
+                    onConfirm={() => {
+                        if (cropCharacterId) updateCharacterReference(cropCharacterId, { faceCrop: cropDraft, enabled: true });
+                        setCropCharacterId(null);
+                    }}
+                >
+                    <div className="flex flex-col gap-3">
+                        <p className="menu-desc">拖动方框覆盖角色脸部；发送参考图时只会截取这个区域，减少服装和背景干扰。</p>
+                        <div ref={cropContainerRef} className="relative mx-auto w-fit max-h-[52vh] max-w-full overflow-hidden rounded-xl bg-black/80">
+                            <img
+                                src={referencePreviews[cropCharacterId]}
+                                alt="参考图脸部选取"
+                                draggable={false}
+                                className="block max-h-[52vh] max-w-full select-none object-contain"
+                                onLoad={updateCropViewport}
+                            />
+                            {cropViewport.width > 0 && cropViewport.height > 0 && (
+                                <button
+                                    type="button"
+                                    aria-label="拖动脸部选区"
+                                    className="absolute cursor-move touch-none border-2 border-white bg-white/10 shadow-[0_0_0_999px_rgba(0,0,0,0.42)]"
+                                    style={{
+                                        left: cropDraft.x * cropViewport.width,
+                                        top: cropDraft.y * cropViewport.height,
+                                        width: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                        height: cropDraft.size * Math.min(cropViewport.width, cropViewport.height),
+                                    }}
+                                    onPointerDown={handleCropPointerDown}
+                                    onPointerMove={handleCropPointerMove}
+                                    onPointerUp={handleCropPointerUp}
+                                    onPointerCancel={handleCropPointerUp}
+                                >
+                                    <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-black/60 px-2 py-1 text-xs text-white">拖到脸部</span>
+                                </button>
+                            )}
+                        </div>
+                        <label className="flex items-center gap-3 menu-desc">
+                            选区大小
+                            <input
+                                type="range"
+                                min="18"
+                                max="80"
+                                value={Math.round(cropDraft.size * 100)}
+                                onChange={(event) => setCropDraft(current => ({ ...current, size: Number(event.target.value) / 100 }))}
+                                className="flex-1"
+                            />
+                        </label>
+                    </div>
+                </ContentDialog>
+            )}
 
             {/* ════════════ CORS 跨域代理 ════════════ */}
             <div className="flex flex-col gap-3">
