@@ -45,13 +45,6 @@ function isApiRoute(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-function rewriteToHome(request: NextRequest): NextResponse {
-  const url = request.nextUrl.clone();
-  url.pathname = "/";
-  url.search = "";
-  return NextResponse.rewrite(url);
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -80,7 +73,10 @@ export async function middleware(request: NextRequest) {
   // cookie until /api/auth/me refreshes the signed gate cookie.
   if (sessionToken || pathname === "/") return NextResponse.next();
 
-  return rewriteToHome(request);
+  // 页面路由（非 API）未登录时直接放行，交给客户端 AccountGate 显示登录/校验闸门。
+  // 不要再 rewrite 回首页：否则用 window.open 弹出的子窗口（如筑境 /world-builder）
+  // 一进门就会被塞进首页内容，表现成「闪退回小手机主页」。API 已在上方返回 401。
+  return NextResponse.next();
 }
 
 export const config = {
