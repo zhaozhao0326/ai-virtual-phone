@@ -7679,3 +7679,51 @@
   font-size: 13px;
   color: var(--c-text, #1f2329);
 }
+
+/* ── 见面邀请卡 ── */
+.meeting-invite-bubble {
+  border: 1px solid var(--c-accent, #b89870);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--c-accent, #b89870) 10%, var(--c-surface, #fff));
+  max-width: 260px;
+}
+.meeting-invite-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text, #1f2329);
+  margin-bottom: 4px;
+}
+.meeting-invite-desc {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-sub, #6b7280);
+  margin-bottom: 10px;
+}
+.meeting-invite-actions {
+  display: flex;
+  gap: 8px;
+}
+.meeting-invite-actions button {
+  flex: 1;
+  border-radius: 9px;
+  padding: 7px 0;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.meeting-invite-actions .ui-btn-primary {
+  background: var(--c-accent, #b89870);
+  color: #fff;
+}
+.meeting-invite-actions .ui-btn-ghost {
+  background: transparent;
+  border-color: var(--c-line, #e2e8f0);
+  color: var(--c-text, #1f2329);
+}
+.meeting-invite-result {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--c-sub, #6b7280);
+  font-style: italic;
+}

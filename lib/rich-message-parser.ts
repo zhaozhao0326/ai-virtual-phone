@@ -51,6 +51,38 @@ export const SCHEDULE_UPDATE_TAG_RE = /\[日程更新[|｜：:]\s*([^\]]+?)\]/;
 export const ADD_FRIEND_TAG_RE =
     /\[(?:(?:申请)?加好友|添加好友)(?:\s*[|｜]\s*(?:备注|理由)[:：]\s*([^\]]+?))?\]/;
 
+// ── 见面邀请卡：模型输出 [邀请见面]...[/邀请见面] 包裹块，内部为 key=value 字段 ──
+export const MEETING_INVITE_TAG_RE =
+    /\[邀请见面\]([\s\S]*?)\[\/邀请见面\]/;
+
+export type ParsedMeetingInvite = {
+    inviter: string;
+    title: string;
+    description: string;
+    accept: string;
+    decline: string;
+};
+
+/**
+ * 从 [邀请见面] 块内部文本解析字段；缺字段回退到空串，便于 UI 给合理默认。
+ * 完全抽不到有效字段时返回 null（不当作邀请卡，避免把普通文字误判成卡片）。
+ */
+export function parseMeetingInvite(block: string): ParsedMeetingInvite | null {
+    const lines = (block || "").split(/\r?\n/);
+    const map: Record<string, string> = {};
+    for (const line of lines) {
+        const m = line.match(/^\s*([^=<]+?)\s*[=＝]\s*(.+?)\s*$/);
+        if (m) map[m[1].trim()] = m[2].trim();
+    }
+    const inviter = map["邀请人"] || "";
+    const title = map["标题"] || "";
+    const description = map["说明"] || "";
+    const accept = map["同意反应"] || "";
+    const decline = map["拒绝反应"] || "";
+    if (!title.trim() && !description.trim()) return null; // 没抽到任何有效字段
+    return { inviter, title, description, accept, decline };
+}
+
 // ── Rich-media patterns (non-global, for single match with index) ──
 
 // 零宽空格/BOM 等不可见字符不属于 \s，trim() 删不掉；模型输出在媒体标记后夹带

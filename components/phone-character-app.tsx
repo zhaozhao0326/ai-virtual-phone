@@ -1888,6 +1888,8 @@ function CharArchiveView({
   const [autoMemEnabled, setAutoMemEnabled] = useState(char.autoMemoryEnabled !== false);
   // 头像意图识别（每角色开关，默认关）
   const [avatarIntentEnabled, setAvatarIntentEnabled] = useState(char.avatarIntentEnabled === true);
+  // 见面邀请卡（每角色开关，默认关）
+  const [meetingInviteEnabled, setMeetingInviteEnabled] = useState(char.meetingInviteEnabled === true);
   const [autoMemEntries, setAutoMemEntries] = useState<AutoMemoryEntry[]>([]);
   const [autoMemEditing, setAutoMemEditing] = useState(false);
   const [autoMemDraft, setAutoMemDraft] = useState<{ id?: string; category: AutoMemoryCategory; priority: AutoMemoryPriority; content: string }>({
@@ -1959,6 +1961,7 @@ function CharArchiveView({
     if (growthEnabled !== (char.relationshipGrowthEnabled !== false)) return true;
     if (autoMemEnabled !== (char.autoMemoryEnabled !== false)) return true;
     if (avatarIntentEnabled !== (char.avatarIntentEnabled === true)) return true;
+    if (meetingInviteEnabled !== (char.meetingInviteEnabled === true)) return true;
     if ((initialStage || undefined) !== (char.initialRelationshipStage || undefined)) return true;
     return false;
   }
@@ -1989,6 +1992,7 @@ function CharArchiveView({
       setInitialStage(char.initialRelationshipStage);
       setAutoMemEnabled(char.autoMemoryEnabled !== false);
       setAvatarIntentEnabled(char.avatarIntentEnabled === true);
+      setMeetingInviteEnabled(char.meetingInviteEnabled === true);
     }
   }, [isEditing, char]);
 
@@ -2119,6 +2123,7 @@ function CharArchiveView({
         initialRelationshipStage: initialStage || undefined,
         autoMemoryEnabled: autoMemEnabled !== false ? undefined : false,
         avatarIntentEnabled: avatarIntentEnabled ? true : undefined,
+        meetingInviteEnabled: meetingInviteEnabled ? true : undefined,
       }, createVersion);
     }
   }
@@ -2754,6 +2759,36 @@ function CharArchiveView({
             ) : (
               <div className="mt-2 ts-11 opacity-60">
                 已开启：发图并说"用这张当你的头像"，TA 会弹出换头像提议，由你确认是否采纳（不会自动改头像）。
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 见面邀请卡：私聊中角色可主动发线下见面邀请，同意跳剧情（默认关，开启会多约 100 token/轮） */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>见面邀请卡</span>
+              {isEditing && (
+                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                  <input
+                    type="checkbox"
+                    checked={meetingInviteEnabled}
+                    onChange={e => setMeetingInviteEnabled(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  启用
+                </label>
+              )}
+            </div>
+            {!meetingInviteEnabled ? (
+              <div className="mt-2 ts-11 opacity-60">
+                已关闭：TA 不会在私聊里主动发见面邀请。开启后，TA 可能在合适时机发一张"线下见面"邀请卡，你点接受即跳进剧情。
+                {isEditing && "（勾选上方「启用」可开启）"}
+              </div>
+            ) : (
+              <div className="mt-2 ts-11 opacity-60">
+                已开启：TA 会在私聊合适时机主动发见面邀请卡，你接受即跳进剧情、从此处开始一段见面剧情（拒绝则只记状态，不影响聊天）。
               </div>
             )}
           </div>

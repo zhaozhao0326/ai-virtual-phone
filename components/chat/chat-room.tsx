@@ -4,7 +4,7 @@ import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
-import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, type ParsedMessagePart } from "@/lib/rich-message-parser";
+import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, MEETING_INVITE_TAG_RE, parseMeetingInvite, type ParsedMeetingInvite, type ParsedMessagePart } from "@/lib/rich-message-parser";
 import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
@@ -3034,6 +3034,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     };
 
+    // 见面邀请卡：接受 → 跳转到剧情 app（从剧情抽屉选角色开启见面剧情）；拒绝 → 仅改状态（气泡本地已更新）
+    const handleMeetingInviteAction = useCallback((msg: ChatMessage, action: "accept" | "decline") => {
+        if (action === "accept") {
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "story" } }));
+        }
+    }, []);
+
     // Helper: Split AI response by \n\n into multiple messages (online chat mode)
     // Uses shared parseAIResponse for rich-media support.
     // Returns { hasVisible, stateValues, hasDecline } — hasVisible is false if the AI chose [静默].
@@ -4137,6 +4144,40 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     showChatToast(applied.error || "日程更新失败");
                                 }
                                 text = text.replace(SCHEDULE_UPDATE_TAG_RE, "");
+                            }
+                            // 见面邀请卡拦截（1:1 场景）：解析 [邀请见面] 块 → 剥离文本 + 单独建一张邀请卡片消息
+                            const mi = MEETING_INVITE_TAG_RE.exec(text);
+                            if (mi) {
+                                const parsed = parseMeetingInvite(mi[1] || "");
+                                const stripped = text.replace(MEETING_INVITE_TAG_RE, "").trim();
+                                if (parsed) {
+                                    // 先存剥离后的叙述文本（若有），保证叙述在前、卡片在后
+                                    if (stripped) {
+                                        lastSendResult = await splitAndSaveAIMessages(stripped, { ...options, ...generationGuard, reasoningText: pendingReasoning });
+                                        pendingReasoning = undefined;
+                                    }
+                                    const invMsg = pushChatMessage({
+                                        sessionId: session.id,
+                                        role: "assistant",
+                                        content: "",
+                                        mediaType: "meeting_invite",
+                                        mediaData: {
+                                            meetingInviteStatus: "pending",
+                                            meetingInviteCharacterId: session.contactId,
+                                            meetingInviteCharacterName: character?.name || "",
+                                            meetingInviteRaw: (mi[1] || "").trim(),
+                                            meetingInviteTitle: parsed.title,
+                                            meetingInviteDescription: parsed.description,
+                                            meetingInviteAcceptResponse: parsed.accept,
+                                            meetingInviteDeclineResponse: parsed.decline,
+                                        },
+                                    });
+                                    setMessages(prev => [...prev, invMsg]);
+                                    text = "";
+                                } else {
+                                    // 有包裹块但没抽到字段：仅剥离，不建卡
+                                    text = stripped;
+                                }
                             }
                             const reasoningText = pendingReasoning;
                             pendingReasoning = undefined;
@@ -6530,6 +6571,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                 }}
                                                 onMusicPlay={handleMusicCardPlay}
                                                 onActionSelect={(text) => chatTextInputRef.current?.appendText(text)}
+                                                onMeetingInviteAction={handleMeetingInviteAction}
                                                 defaultTranslationExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                             />
                                         </div>

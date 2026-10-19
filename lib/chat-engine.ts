@@ -2005,6 +2005,24 @@ export async function buildChatPromptMessages(
         appendOfflineStatusRegionInstruction(llmMessages, session.id, session.isGroup ? "group" : "single");
     }
 
+    // 见面邀请卡：仅当该角色开启、且为线上私聊时注入契约（默认关闭，避免无谓 token 消耗）
+    if (!isOfflineMode && !session.isGroup && character.meetingInviteEnabled === true) {
+        llmMessages.push({
+            role: "system",
+            content: [
+                "当你确实希望与用户线下见面时，才输出一张邀请卡片；不要机械邀请，不要频繁邀请，每轮最多一次。",
+                "卡片内容必须结合当前语境与人设填写，按下面格式逐行输出：",
+                "邀请人=<你的名字>",
+                "标题=<你给用户的邀请标题>",
+                "说明=<本次见面的具体说明>",
+                "同意反应=<用户同意后你会说的话>",
+                "拒绝反应=<用户拒绝后你会说的话>",
+                "只有当你确实想见面时，才把以上字段完整输出，并用 [邀请见面] 与 [/邀请见面] 包住整个字段区块。",
+                "包裹标签和字段不会显示成普通聊天文字；不要解释标签，也不要把它写进代码块。",
+            ].join("\n"),
+        });
+    }
+
     appendEmptyGenerateGuardMessage(llmMessages, config, historyForPrompt);
 
     return { llmMessages, character, config, preset, regexes, userIdentity, toolsEnabled };

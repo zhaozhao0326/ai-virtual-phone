@@ -129,6 +129,7 @@ export type ChatMessage = {
         | "system_instruction"
         | "group_admin_notice"
         | "ask_user"          // 角色主动询问用户并等待确认（选项卡片）
+        | "meeting_invite"    // 角色主动发起的线下见面邀请卡片（同意跳剧情/拒绝回话）
         | "media_file"
         | `plugin:${string}`; // 聊天插件自定义消息类型（由注册该 kind 的插件渲染气泡）
     origin?: "chat" | "reading_discuss" | "custom_app" | "custom_app_background";
@@ -252,6 +253,16 @@ export type ChatMessage = {
         appHistoryRole?: ChatMessageRole;
         avatarRecommendationForCharacterId?: string; // 头像意图：推荐把该图设为哪个角色的头像
         avatarRecommendationStatus?: "pending" | "accepted" | "declined"; // 头像意图推荐状态
+        // 见面邀请卡：角色在私聊主动发起的线下见面邀请
+        meetingInviteStatus?: "pending" | "accepted" | "declined"; // 用户是否已回应
+        meetingInviteCharacterId?: string;
+        meetingInviteCharacterName?: string;
+        meetingInviteRaw?: string;        // 角色本轮输出的邀请卡片原始字段（key=value 行）
+        meetingInviteTitle?: string;      // 标题
+        meetingInviteDescription?: string; // 说明
+        meetingInviteAcceptResponse?: string; // 用户同意后的回应文案
+        meetingInviteDeclineResponse?: string; // 用户拒绝后的回应文案
+        meetingInviteResolvedAt?: string; // 用户回应时间
     };
     isTyping?: boolean; // temporary flag for UI rendering
     statusPanel?: string; // AI display-only status content from [状态栏] tags

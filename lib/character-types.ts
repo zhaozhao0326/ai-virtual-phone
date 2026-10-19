@@ -47,6 +47,10 @@ export type Character = {
   // 头像意图识别：聊天中识别"用这张当你的头像"并提议换头像（纯正则、零 token，需本角色开启）
   // 缺省 = 关闭；true = 该角色开启意图识别
   avatarIntentEnabled?: boolean;
+
+  // 见面邀请卡：私聊中角色可主动发"线下见面邀请"卡片，同意则跳转剧情（消耗少量 prompt token，需本角色开启）
+  // 缺省 = 关闭；true = 该角色开启邀请卡
+  meetingInviteEnabled?: boolean;
 };
 
 export type CanvasBgItem = {

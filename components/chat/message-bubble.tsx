@@ -41,6 +41,7 @@ interface MessageBubbleProps {
     characterId?: string;
     onMusicPlay?: (title: string, artist?: string) => void;
     onActionSelect?: (text: string) => void;
+    onMeetingInviteAction?: (msg: ChatMessage, action: "accept" | "decline") => void;
     displayContent?: string;
     defaultTranslationExpanded?: boolean;
 }
@@ -82,11 +83,51 @@ function PluginKindBubble({ msg, kind }: { msg: ChatMessage; kind: string }) {
     return <div ref={containerRef} data-chat-plugin-kind={kind} />;
 }
 
+/** 见面邀请卡：角色在私聊主动发起的线下见面邀请；接受跳剧情、拒绝仅记状态。 */
+function MeetingInviteBubble({ msg, charName, onAction, onUpdate }: {
+    msg: ChatMessage;
+    charName?: string;
+    onAction?: (msg: ChatMessage, action: "accept" | "decline") => void;
+    onUpdate?: (updated: ChatMessage) => void;
+}) {
+    const status = msg.mediaData?.meetingInviteStatus || "pending";
+    const inviter = msg.mediaData?.meetingInviteCharacterName || charName || "TA";
+    const title = msg.mediaData?.meetingInviteTitle || `${inviter}想邀请你见面，是否同意？`;
+    const description = msg.mediaData?.meetingInviteDescription || "同意后会进入剧情，从这次见面开始。";
+    const acceptResponse = msg.mediaData?.meetingInviteAcceptResponse || "好呀，这就来。";
+    const declineResponse = msg.mediaData?.meetingInviteDeclineResponse || "现在不太方便呢。";
+
+    const resolve = (nextStatus: "accepted" | "declined") => {
+        if (!msg.mediaData) return;
+        const next: typeof msg.mediaData = { ...msg.mediaData, meetingInviteStatus: nextStatus };
+        try { updateMessageMediaData(msg.id, next); } catch { /* 静默失败，不影响聊天 */ }
+        onUpdate?.({ ...msg, mediaData: next });
+        onAction?.(msg, nextStatus === "accepted" ? "accept" : "decline");
+    };
+
+    return (
+        <div className="bubble meeting-invite-bubble" data-status={status}>
+            <div className="meeting-invite-title">{title}</div>
+            {description ? <div className="meeting-invite-desc">{description}</div> : null}
+            {status === "pending" ? (
+                <div className="meeting-invite-actions">
+                    <button type="button" className="ui-btn-primary" onClick={() => resolve("accepted")}>接受邀请</button>
+                    <button type="button" className="ui-btn-ghost" onClick={() => resolve("declined")}>拒绝</button>
+                </div>
+            ) : (
+                <div className="meeting-invite-result">
+                    {status === "accepted" ? (acceptResponse || "已同意，正在进入剧情…") : (declineResponse || "已拒绝")}
+                </div>
+            )}
+        </div>
+    );
+}
+
 /**
  * Renders a message bubble based on its mediaType.
  * Falls back to ReactMarkdown for plain text messages.
  */
-export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charName, userName, onSystemMessage, groupSize, onShowDetail, characterId, onMusicPlay, onActionSelect, displayContent, defaultTranslationExpanded = false }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charName, userName, onSystemMessage, groupSize, onShowDetail, characterId, onMusicPlay, onActionSelect, onMeetingInviteAction, displayContent, defaultTranslationExpanded = false }: MessageBubbleProps) {
     switch (msg.mediaType) {
         case "red_packet":
             return <RedPacketBubble msg={msg} charName={charName} userName={userName} groupSize={groupSize} onShowDetail={onShowDetail} />;
@@ -120,6 +161,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <XiaohongshuShareBubble msg={msg} />;
         case "audio":
             return <VoiceMessageBubble msg={msg} characterId={characterId} onUpdate={onUpdate} defaultTranslationExpanded={defaultTranslationExpanded} />;
+        case "meeting_invite":
+            return <MeetingInviteBubble msg={msg} charName={charName} onAction={onMeetingInviteAction} onUpdate={onUpdate} />;
         default: {
             // 聊天插件自定义消息类型：mediaType = "plugin:<kind>"，由注册插件渲染
             if (msg.mediaType?.startsWith("plugin:")) {
