@@ -19,6 +19,8 @@ export type StorySession = {
   uiPrefs?: StoryUiPrefs;
   lastMessageId?: string;
   lastMessagePreview?: string;
+  storylineId?: string;  // 剧情线标识：同一角色可有多条剧情线，主线为空
+  participantIds?: string[]; // 多人剧情：本剧情会话的参与者角色 id（含主线角色）；为空时退化为 [characterId]
 };
 
 export type StoryMessageRole = "user" | "assistant" | "system";
@@ -32,6 +34,7 @@ export type StoryMessage = {
   storySummary?: string;
   regexSignature?: string;
   parserVersion?: number;
+  speakerId?: string; // 多人剧情：本条 assistant 消息由哪个角色说出（缺省=会话主线角色）
   createdAt: string;
 };
 
@@ -89,7 +92,7 @@ function isPreferredStorySession(candidate: StorySession, current: StorySession)
 
 function normalizeStorySessions(sessions: StorySession[]): { items: StorySession[]; changed: boolean } {
   const normalized: StorySession[] = [];
-  const indexByCharacter = new Map<string, number>();
+  const indexByKey = new Map<string, number>();
   let changed = false;
 
   for (const session of sessions) {
@@ -99,12 +102,14 @@ function normalizeStorySessions(sessions: StorySession[]): { items: StorySession
       changed = true;
       continue;
     }
-    const item = id === session.id && characterId === session.characterId
+    const cleanStorylineId = session.storylineId?.trim() || "";
+    const item = id === session.id && characterId === session.characterId && cleanStorylineId === (session.storylineId?.trim() || "")
       ? session
-      : { ...session, id, characterId };
-    const existingIndex = indexByCharacter.get(characterId);
+      : { ...session, id, characterId, storylineId: cleanStorylineId || undefined };
+    const key = `${characterId}::${cleanStorylineId}`;
+    const existingIndex = indexByKey.get(key);
     if (existingIndex === undefined) {
-      indexByCharacter.set(characterId, normalized.length);
+      indexByKey.set(key, normalized.length);
       normalized.push(item);
       if (item !== session) changed = true;
       continue;
@@ -152,18 +157,41 @@ export function loadStoryMessages(sessionId: string): StoryMessage[] {
     .sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
 }
 
-export function createOrGetStorySession(characterId: string): StorySession {
+export function createOrGetStorySession(characterId: string, storylineId?: string): StorySession {
+  const lineId = storylineId?.trim() || "";
   const normalized = normalizeStorySessions(_sessionsCache);
   if (normalized.changed) {
     _sessionsCache = normalized.items;
     persistStorySessionsSnapshot(normalized.items);
   }
-  const existing = _sessionsCache.find((session) => session.characterId === characterId);
+  const existing = _sessionsCache.find(
+    (session) => session.characterId === characterId && (session.storylineId?.trim() || "") === lineId
+  );
   if (existing) return existing;
 
   const session: StorySession = {
     id: generateId("story_sess"),
     characterId,
+    storylineId: lineId || undefined,
+    updatedAt: new Date().toISOString(),
+    uiPrefs: {},
+  };
+  _sessionsCache.unshift(session);
+  storyDb.sessions.put(session).catch(() => undefined);
+  return session;
+}
+
+// 始终新建一条剧情线（与 createOrGetStorySession 的「存在则复用」不同），用于「＋ 新剧情线」
+export function createStorySession(
+  characterId: string,
+  opts?: { title?: string; storylineId?: string },
+): StorySession {
+  const lineId = opts?.storylineId?.trim() || `line_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const session: StorySession = {
+    id: generateId("story_sess"),
+    characterId,
+    storylineId: lineId,
+    title: opts?.title?.trim() || undefined,
     updatedAt: new Date().toISOString(),
     uiPrefs: {},
   };
@@ -262,7 +290,10 @@ export function loadStoryProjectionEntries(
   characterId: string,
   options?: { afterTimestamp?: string; userName?: string; charName?: string }
 ): StoryProjectionEntry[] {
-  const session = _sessionsCache.find((item) => item.characterId === characterId);
+  // 投影（喂给记忆/短期记忆）只取主线剧情，避免多剧情线把记忆来源拆碎
+  const session =
+    _sessionsCache.find((item) => item.characterId === characterId && !(item.storylineId?.trim()))
+    || _sessionsCache.find((item) => item.characterId === characterId);
   if (!session) return [];
   const messages = loadStoryMessages(session.id);
   const projections: StoryProjectionEntry[] = [];

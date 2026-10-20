@@ -215,6 +215,125 @@
           font-size: calc(13px*var(--app-text-scale,1));
           cursor: pointer;
         }
+        /* 剧情线：选中列表 */
+        .story-line-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 10px;
+        }
+        .story-line-chip {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+          padding: 10px 12px;
+          border: none;
+          border-radius: 0;
+          background: var(--c-story-panel, rgba(255, 255, 255, 0.5));
+          box-shadow: var(--story-paper-shadow-soft);
+          cursor: pointer;
+          text-align: left;
+        }
+        .story-line-chip[data-active="true"] {
+          box-shadow: 0 0 0 2px var(--c-story-heading, #1e293b);
+        }
+        .story-line-name {
+          font-size: calc(13px*var(--app-text-scale,1));
+          color: var(--c-story-heading, #1e293b);
+          font-weight: 600;
+        }
+        .story-line-preview {
+          font-size: calc(11px*var(--app-text-scale,1));
+          color: var(--c-story-sub, rgba(148, 163, 184, 0.9));
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 100%;
+        }
+        .story-line-add {
+          margin-top: 8px;
+        }
+        /* 参与者（多人剧情） */
+        .story-participant-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        .story-participant-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 8px;
+          background: var(--c-story-panel, rgba(255, 255, 255, 0.5));
+          box-shadow: var(--story-paper-shadow-soft);
+        }
+        .story-participant-name {
+          flex: 1;
+          font-size: calc(12px*var(--app-text-scale,1));
+          color: var(--c-story-text, #3a3b3c);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .story-participant-remove {
+          border: none;
+          background: transparent;
+          color: var(--c-story-sub, rgba(148, 163, 184, 0.9));
+          font-size: calc(18px*var(--app-text-scale,1));
+          line-height: 1;
+          cursor: pointer;
+          padding: 0 4px;
+        }
+        .story-participant-remove:hover {
+          color: #e0556b;
+        }
+        /* 发声角色选择条 */
+        .story-speaker-bar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          border-top: 1px solid var(--c-story-drawer-border, rgba(124, 104, 68, 0.08));
+          background: var(--c-story-panel, rgba(255, 255, 255, 0.4));
+        }
+        .story-speaker-label {
+          font-size: calc(12px*var(--app-text-scale,1));
+          color: var(--c-story-sub, rgba(95, 82, 61, 0.72));
+          white-space: nowrap;
+        }
+        .story-speaker-list {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+        }
+        .story-speaker-chip {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 3px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          padding: 2px 4px;
+          border-radius: 8px;
+        }
+        .story-speaker-chip[data-active="true"] {
+          background: var(--c-story-heading, #1e293b);
+          color: #fff;
+        }
+        .story-speaker-chip span {
+          font-size: calc(10px*var(--app-text-scale,1));
+          color: var(--c-story-sub, #94a3b8);
+          max-width: 56px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .story-speaker-chip[data-active="true"] span {
+          color: #fff;
+        }
         .story-pref-row {
           display: flex;
           justify-content: space-between;

@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
+  ArrowDownTrayIcon,
   BookOpenIcon,
   PaintBrushIcon,
   PaperAirplaneIcon,
@@ -49,6 +50,7 @@ import {
 } from "@/lib/story-engine";
 import {
   createOrGetStorySession,
+  createStorySession,
   hydrateStoryStorage,
   loadStoryMessages,
   loadStorySessions,
@@ -67,6 +69,7 @@ import { MacroEngine } from "@/lib/macro-engine";
 
 type StoryAppProps = {
   onClose: () => void;
+  characterId?: string;
 };
 
 type StoryGenerationRun = {
@@ -136,6 +139,48 @@ function getStoryPreview(messages: StoryMessage[]): string {
   // Strip HTML tags and collapse whitespace for preview text
   const text = source.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   return text.slice(0, 60) || "继续上次的场景。";
+}
+
+// 把剧情消息渲染为纯文本（导出 txt 用）：剥离 HTML、折叠空白、标注说话人与时间
+function buildStoryPlainText(
+  messages: StoryMessage[],
+  characterName: string,
+  userName: string,
+): string {
+  const lines: string[] = [];
+  lines.push(`《 ${characterName} 》剧情导出`);
+  lines.push(`角色：${characterName}  x  ${userName}`);
+  lines.push("");
+  for (const message of messages) {
+    const speaker = message.role === "user"
+      ? userName
+      : message.role === "assistant"
+        ? characterName
+        : "系统";
+    const raw = message.renderedContent || message.rawContent || "";
+    const text = raw
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!text) continue;
+    lines.push(`[${formatStoryTime(message.createdAt)}] ${speaker}：`);
+    lines.push(text);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function downloadStoryTextFile(content: string, filename: string): void {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function resizeStoryComposerTextarea(el: HTMLTextAreaElement) {
@@ -270,7 +315,7 @@ const StoryComposer = memo(function StoryComposer({
   );
 });
 
-export function StoryApp({ onClose }: StoryAppProps) {
+export function StoryApp({ onClose, characterId }: StoryAppProps) {
   const [ready, setReady] = useState(false);
   const [, setStorageVersion] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -294,6 +339,8 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [cssModalOpen, setCssModalOpen] = useState(false);
+  const [showAllLines, setShowAllLines] = useState(false);
+  const [speakerId, setSpeakerId] = useState<string>(""); // 多人剧情：下一轮由谁发声，缺省=主线角色
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shellInnerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
@@ -319,6 +366,44 @@ export function StoryApp({ onClose }: StoryAppProps) {
     () => sessions.find((session) => session.id === activeSessionId) || null,
     [sessions, activeSessionId]
   );
+  // 当前角色下的全部剧情线：主线在前，支线按最近更新排序
+  const characterSessions = useMemo(
+    () =>
+      sessions
+        .filter((session) => session.characterId === activeCharacterId)
+        .sort((a, b) => {
+          const aMain = a.storylineId ? 0 : 1;
+          const bMain = b.storylineId ? 0 : 1;
+          if (aMain !== bMain) return bMain - aMain;
+          return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+        }),
+    [sessions, activeCharacterId]
+  );
+  // 当前会话的参与者（多人剧情）：有 participantIds 用列表，否则退化为 [主线角色]
+  const participants = useMemo(
+    () => (currentSession?.participantIds?.length ? currentSession.participantIds : currentSession ? [currentSession.characterId] : []),
+    [currentSession]
+  );
+
+  const addParticipant = useCallback(
+    (id: string) => {
+      if (!currentSession || participants.includes(id)) return;
+      const next = [...new Set([...participants, id])];
+      applySessionUpdates({ participantIds: next });
+    },
+    [currentSession, participants, applySessionUpdates]
+  );
+
+  const removeParticipant = useCallback(
+    (id: string) => {
+      if (!currentSession || id === currentSession.characterId) return; // 主线角色不可移除
+      const next = participants.filter((pid) => pid !== id);
+      applySessionUpdates({ participantIds: next });
+      // 若移除的是当前发声者，回退到主线角色
+      if (speakerId === id) setSpeakerId(currentSession.characterId);
+    },
+    [currentSession, participants, speakerId, applySessionUpdates]
+  );
   const uiPrefs = currentSession?.uiPrefs || {};
   const isGenerating = Boolean(activeSessionId) && generatingSessionIds.has(activeSessionId);
 
@@ -330,6 +415,27 @@ export function StoryApp({ onClose }: StoryAppProps) {
       return next;
     });
   }, []);
+
+  // 切换到指定会话（剧情线/支线），统一加载消息与草稿
+  const loadSession = useCallback((session: StorySession) => {
+    setActiveSessionId(session.id);
+    activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
+    setSpeakerId(session.characterId); // 进入会话默认由主线角色发声
+    setVisibleMessageCount(STORY_INITIAL_LOAD);
+    setMessages(loadStoryMessages(session.id));
+    setCustomCssDraft(session.customCSS || "");
+    setFoldTagsDraft(session.foldTags ?? "think,thinking");
+    setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking");
+    setStorageVersion((value) => value + 1);
+  }, []);
+
+  // 为当前角色新建一条剧情线（自动生成 storylineId）
+  const createNewStoryline = useCallback(() => {
+    if (!activeCharacterId) return;
+    const session = createStorySession(activeCharacterId);
+    loadSession(session);
+    setDrawerOpen(false);
+  }, [activeCharacterId, loadSession]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -343,35 +449,21 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   useEffect(() => {
     hydrateStoryStorage().then(() => {
-      const initialChar = loadCharacters()[0]?.id || "";
+      const initialChar = characterId || loadCharacters()[0]?.id || "";
       if (initialChar) {
         const session = createOrGetStorySession(initialChar);
         setActiveCharacterId(initialChar);
-        setActiveSessionId(session.id);
-        activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
-        setVisibleMessageCount(STORY_INITIAL_LOAD);
-        setMessages(loadStoryMessages(session.id));
-        setCustomCssDraft(session.customCSS || "");
-        setFoldTagsDraft(session.foldTags ?? "think,thinking");
-        setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking");
-        setStorageVersion((value) => value + 1);
+        loadSession(session);
       }
       setReady(true);
     });
-  }, []);
+  }, [loadSession, characterId]);
 
   useEffect(() => {
     if (!activeCharacterId) return;
     const session = createOrGetStorySession(activeCharacterId);
-    setActiveSessionId(session.id);
-    activeSessionIdRef.current = session.id; // 同步更新，堵住生成完成回调的守卫空窗
-    setVisibleMessageCount(STORY_INITIAL_LOAD);
-    setMessages(loadStoryMessages(session.id));
-    setCustomCssDraft(session.customCSS || "");
-    setFoldTagsDraft(session.foldTags ?? "think,thinking");
-    setContextExcludedTagsDraft(session.contextExcludedTags ?? "think,thinking");
-    setStorageVersion((value) => value + 1);
-  }, [activeCharacterId]);
+    loadSession(session);
+  }, [activeCharacterId, loadSession]);
 
   // Listen for live CSS updates from 小卷
   useEffect(() => {
@@ -633,6 +725,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
         signal: generationRun.controller.signal,
+        speakerId: speakerId !== characterId ? speakerId : undefined,
       });
       if (!isCurrentGeneration()) return;
       const assistantMessage = pushStoryMessage({
@@ -643,6 +736,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
         storySummary: result.storySummary,
         regexSignature: result.regexSignature,
         parserVersion: result.parserVersion,
+        speakerId: speakerId !== characterId ? speakerId : undefined,
       });
       if (activeSessionIdRef.current === sessionId) {
         setMessages(loadStoryMessages(sessionId)); // 按会话从存储重读，杜绝跨会话串消息
@@ -810,6 +904,14 @@ export function StoryApp({ onClose }: StoryAppProps) {
     else { fallbackCopy(); }
     setActiveMessageId(null);
   }
+  const handleExportTxt = useCallback(() => {
+    if (!currentSession || !currentCharacter) return;
+    const all = loadStoryMessages(currentSession.id);
+    const userName = userIdentity?.name?.trim() || "我";
+    const content = buildStoryPlainText(all, currentCharacter.name, userName);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadStoryTextFile(content, `剧情_${currentCharacter.name}_${stamp}.txt`);
+  }, [currentSession, currentCharacter, userIdentity]);
   async function handleStoryRetry(msgId: string) {
     const msgIndex = messages.findIndex(m => m.id === msgId);
     if (msgIndex === -1) return;
@@ -946,6 +1048,71 @@ export function StoryApp({ onClose }: StoryAppProps) {
         </div>
 
         <div className="story-drawer-section">
+          <div className="story-drawer-eyebrow">剧情线</div>
+          <div className="story-line-list">
+            {(showAllLines ? characterSessions : characterSessions.slice(0, 5)).map((session, idx) => {
+              const isMain = !session.storylineId;
+              const label = isMain ? "主线" : session.title?.trim() || `支线 ${idx}`;
+              return (
+                <button
+                  key={session.id}
+                  className="story-line-chip"
+                  data-active={session.id === activeSessionId ? "true" : undefined}
+                  onClick={() => {
+                    loadSession(session);
+                    setDrawerOpen(false);
+                  }}
+                >
+                  <span className="story-line-name">{label}</span>
+                  {session.lastMessagePreview ? (
+                    <span className="story-line-preview">{session.lastMessagePreview}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {characterSessions.length > 5 ? (
+            <button className="story-tool-btn" onClick={() => setShowAllLines((value) => !value)}>
+              {showAllLines ? "收起" : `显示全部 ${characterSessions.length} 条`}
+            </button>
+          ) : null}
+          <button className="story-tool-btn story-line-add" onClick={createNewStoryline}>
+            + 新剧情线
+          </button>
+        </div>
+
+        <div className="story-drawer-section">
+          <div className="story-drawer-eyebrow">参与者（多人剧情）</div>
+          <div className="story-participant-list">
+            {participants.map((pid) => {
+              const c = characters.find((x) => x.id === pid);
+              if (!c) return null;
+              const isPrimary = pid === currentSession?.characterId;
+              return (
+                <div key={pid} className="story-participant-chip">
+                  <Avatar src={c.avatar || undefined} name={c.name} size="sm" />
+                  <span className="story-participant-name">{c.name}{isPrimary ? "（主线）" : ""}</span>
+                  {!isPrimary ? (
+                    <button className="story-participant-remove" onClick={() => removeParticipant(pid)} aria-label={`移除${c.name}`}>×</button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <select
+            className="story-tool-btn"
+            value=""
+            onChange={(e) => { if (e.target.value) addParticipant(e.target.value); }}
+            style={{ marginTop: 8 }}
+          >
+            <option value="">+ 添加参与者</option>
+            {characters.filter((c) => !participants.includes(c.id)).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="story-drawer-section">
           <div className="story-drawer-eyebrow">显示选项</div>
           <div style={{ padding: "10px 0", borderBottom: "1px solid var(--c-story-drawer-border, rgba(124, 104, 68, 0.08))" }}>
             <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-story-sub, rgba(95, 82, 61, 0.72))", display: "block", marginBottom: 6 }}>
@@ -1028,6 +1195,9 @@ export function StoryApp({ onClose }: StoryAppProps) {
             </div>
             <div className="story-header-center">Story</div>
             <div className="story-header-right" style={{ gap: 8 }}>
+              <button className="story-top-btn" onClick={handleExportTxt} aria-label="导出剧情为 txt" title="导出剧情为 txt">
+                <ArrowDownTrayIcon width={16} height={16} />
+              </button>
               <button className="story-top-btn" onClick={() => setCssModalOpen(true)} aria-label="页面样式">
                 <PaintBrushIcon width={16} height={16} />
               </button>
@@ -1055,7 +1225,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
               <div className="story-meta-layout">
                 <div className="story-meta-cover">
                   {currentCharacter.avatar ? (
-                    <img src={currentCharacter.avatar} alt="cover" />
+                    <img src={currentCharacter.avatar || undefined} alt="cover" />
                   ) : (
                     <div className="story-meta-cover-fallback" aria-hidden="true">
                       <span className="story-meta-cover-char">{currentCharacter.name.trim().charAt(0) || "书"}</span>
@@ -1100,15 +1270,18 @@ export function StoryApp({ onClose }: StoryAppProps) {
                   </button>
                 ) : null}
                 {visibleMessages.map((message) => {
+                  const speakerCharacter = message.role === "assistant" && message.speakerId
+                    ? characters.find((c) => c.id === message.speakerId)
+                    : undefined;
                   const speakerName = message.role === "user"
                     ? (userIdentity?.name?.trim() || "我")
                     : message.role === "assistant"
-                      ? currentCharacter.name
+                      ? (speakerCharacter?.name || currentCharacter.name)
                       : "系统";
                   const avatarUrl = message.role === "user"
                     ? (userIdentity?.avatarUrl || undefined)
                     : message.role === "assistant"
-                      ? (currentCharacter.avatar || undefined)
+                      ? (speakerCharacter?.avatar || currentCharacter.avatar || undefined)
                       : undefined;
                   return (
                     <article
@@ -1201,13 +1374,37 @@ export function StoryApp({ onClose }: StoryAppProps) {
             )}
             {isGenerating ? (
               <StoryGeneratingIndicator
-                characterName={currentCharacter.name}
-                avatar={currentCharacter.avatar || undefined}
+                characterName={(speakerId && speakerId !== activeCharacterId ? characters.find((c) => c.id === speakerId)?.name : undefined) || currentCharacter.name}
+                avatar={(speakerId && speakerId !== activeCharacterId ? characters.find((c) => c.id === speakerId)?.avatar : undefined) || currentCharacter.avatar || undefined}
               />
             ) : null}
           </div>
         </div>
       </div>
+
+      {participants.length >= 2 ? (
+        <div className="story-speaker-bar">
+          <span className="story-speaker-label">谁来说</span>
+          <div className="story-speaker-list">
+            {participants.map((pid) => {
+              const c = characters.find((x) => x.id === pid);
+              if (!c) return null;
+              return (
+                <button
+                  key={pid}
+                  type="button"
+                  className="story-speaker-chip"
+                  data-active={pid === (speakerId || currentSession?.characterId) ? "true" : undefined}
+                  onClick={() => setSpeakerId(pid)}
+                >
+                  <Avatar src={c.avatar || undefined} name={c.name} size="sm" />
+                  <span>{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <StoryComposer
         characterName={currentCharacter.name}

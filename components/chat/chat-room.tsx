@@ -3034,10 +3034,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     };
 
-    // 见面邀请卡：接受 → 跳转到剧情 app（从剧情抽屉选角色开启见面剧情）；拒绝 → 仅改状态（气泡本地已更新）
+    // 见面邀请卡：接受 → 跳转到该角色的剧情 app；拒绝 → 仅改状态（气泡本地已更新）
     const handleMeetingInviteAction = useCallback((msg: ChatMessage, action: "accept" | "decline") => {
         if (action === "accept") {
-            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "story" } }));
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "story", characterId: session.contactId } }));
         }
     }, []);
 

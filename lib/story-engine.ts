@@ -183,19 +183,22 @@ ${plainText}`;
 export async function generateStoryCompletion(
   characterId: string,
   history: StoryMessage[],
-  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; signal?: AbortSignal },
+  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; signal?: AbortSignal; speakerId?: string },
 ): Promise<StoryGenerationResult> {
-  const character = loadCharacters().find((item) => item.id === characterId);
+  // 多人剧情：本回合实际由哪个角色发声；缺省=会话主线角色（向后兼容单角色）
+  const effectiveCharacterId =
+    options?.speakerId && options.speakerId !== characterId ? options.speakerId : characterId;
+  const character = loadCharacters().find((item) => item.id === effectiveCharacterId);
   if (!character) {
-    throw new ChatEngineError(`Character not found: ${characterId}`);
+    throw new ChatEngineError(`Character not found: ${effectiveCharacterId}`);
   }
 
-  const { apiConfig, preset, regexes, worldBooks, regexSignature, summaryTag } = resolveStoryConfigs(characterId);
+  const { apiConfig, preset, regexes, worldBooks, regexSignature, summaryTag } = resolveStoryConfigs(effectiveCharacterId);
   const effectiveFoldTags = options?.sessionFoldTags?.trim() || DEFAULT_STORY_FOLD_TAGS;
   const effectiveContextExcludedTags = options?.sessionContextExcludedTags?.trim() || DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS;
-  const llmMessages = await buildStoryPromptMessages(characterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags);
+  const llmMessages = await buildStoryPromptMessages(effectiveCharacterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags);
 
-  const userIdentity = resolveUserIdentity(characterId, "story");
+  const userIdentity = resolveUserIdentity(effectiveCharacterId, "story");
   const macroEngine = new MacroEngine(character.name, userIdentity?.name ?? "用户");
 
   const rawOutput = await sendLLMRequest(apiConfig, preset, llmMessages, regexes, {
@@ -212,7 +215,7 @@ export async function generateStoryCompletion(
   // Fallback: if LLM didn't output <summary>, auto-generate one for cross-module memory
   let summaryText = parsed.summaryText;
   if (!summaryText && parsed.renderedText) {
-    summaryText = await summarizeStoryContent(characterId, parsed.renderedText, options?.signal);
+    summaryText = await summarizeStoryContent(effectiveCharacterId, parsed.renderedText, options?.signal);
   }
 
   return {

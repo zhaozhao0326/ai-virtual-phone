@@ -2358,6 +2358,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // Allow other components to switch apps via custom event
   const [chatInitSessionId, setChatInitSessionId] = useState<string | null>(null);
   const [activeChatSession, setActiveChatSession] = useState<ChatSession | null>(null);
+  const [storyLaunchCharacterId, setStoryLaunchCharacterId] = useState<string | null>(null);
   const [customAppLaunchContext, setCustomAppLaunchContext] = useState<CustomAppLaunchState | null>(null);
   const [appMarketLaunchContext, setAppMarketLaunchContext] = useState<Record<string, unknown> | null>(null);
   useEffect(() => {
@@ -2388,6 +2389,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           setResourcesInitialPage(detail.resourcePage === "vn_assets" || detail.resourcePage === "memory" ? detail.resourcePage : "main");
         }
         setActiveApp(nextAppId as DesktopIconId);
+        if (detail.characterId) setStoryLaunchCharacterId(String(detail.characterId));
+        else setStoryLaunchCharacterId(null);
         if (detail.sessionId) setChatInitSessionId(detail.sessionId);
         else setChatInitSessionId(null);
       }
@@ -4057,7 +4060,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     }
 
     if (activeApp === "story") {
-      return <StoryApp onClose={() => setActiveApp(null)} />;
+      return <StoryApp characterId={storyLaunchCharacterId ?? undefined} onClose={() => setActiveApp(null)} />;
     }
 
     if (activeApp === "vnmode") {
