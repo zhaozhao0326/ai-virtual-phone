@@ -1985,6 +1985,30 @@ export function ImageGenerationSettings() {
                             />
                         </span>
                     </div>
+                    <div className="menu-item story-nsfw-suffix-row">
+                        <span className="settings-tools-menu-copy">
+                            <span className="menu-label appearance-menu-item-label">NSFW 提示词后缀</span>
+                            <span className="menu-desc settings-tools-menu-desc">仅在上方「NSFW 模式」开启时生效，追加到提示词末尾，用于引导成人内容。需自行填写具体标签（如英文 nudity / uncensored 等），留空则不追加。NAI 是基于标签的模型，仅靠中文软描述（如「亲密中」）不会出裸体。</span>
+                        </span>
+                        <span className="menu-right story-nsfw-suffix-input">
+                            <input
+                                type="text"
+                                placeholder="开启 NSFW 后追加的标签"
+                                value={settings.novelai.nsfwSuffix || ""}
+                                onChange={(e) => updateNai({ nsfwSuffix: e.target.value })}
+                                style={{
+                                    width: "100%",
+                                    boxSizing: "border-box",
+                                    padding: "9px 12px",
+                                    borderRadius: 10,
+                                    border: "1px solid var(--c-border, rgba(0,0,0,0.12))",
+                                    background: "var(--c-input-bg, rgba(255,255,255,0.9))",
+                                    color: "var(--c-text, #333)",
+                                    fontSize: "calc(13px*var(--app-text-scale,1))",
+                                }}
+                            />
+                        </span>
+                    </div>
                 </div>
             </div>
 

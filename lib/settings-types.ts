@@ -220,6 +220,8 @@ export type NovelAIConfig = {
     corsProxy: boolean;
     /** NSFW 模式：开启后向 NAI 发送 nsfw:true，允许生成成人内容（仅限成年人自愿内容；涉及未成年人的 prompt 由 NAI 自身硬性拦截，无法绕过） */
     nsfw?: boolean;
+    /** NSFW 提示词后缀：仅在 nsfw 开启时追加到 NAI 提示词末尾，用于引导成人内容（需自行填写具体标签，默认空） */
+    nsfwSuffix?: string;
 };
 
 /** Pollinations 专属配置（免费、免 Key 即可用） */

@@ -677,6 +677,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
         endpointMode: "stream",
         corsProxy: false,
         nsfw: false,
+        nsfwSuffix: "",
     },
     // --- Pollinations ---
     pollinations: {

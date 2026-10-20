@@ -39,6 +39,8 @@ export type ImageGenerationRequest = {
   novelaiEndpointMode?: "stream" | "normal";
   /** NovelAI NSFW 模式：true 时向 NAI 发送 nsfw:true，允许生成成人内容 */
   novelaiNsfw?: boolean;
+  /** NSFW 提示词后缀：仅在 nsfw 开启时追加到 NAI 提示词末尾（用户自行填写标签） */
+  novelaiNsfwSuffix?: string;
   /** 参与者外观描述（中文），翻译后拼入 prompt，让 NAI 区分「谁是谁」 */
   participantAppearance?: string;
   /** 结构化参与者（中文）：人物名 + 锚点形容 + 动作，用于拼装「人物名(锚点) 动作」格式 */
@@ -366,6 +368,11 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
     const sizeStr = input.novelaiSize || "832x1216";
     const [width, height] = NAI_SIZE_MAP[sizeStr] || ([832, 1216] as [number, number]);
     let finalPrompt = buildNaiPrompt(finalUserPrompt, input);
+
+    // NSFW 后缀：仅当开启 nsfw 且用户填写了后缀时，追加到提示词末尾，引导成人内容
+    if (input.novelaiNsfw && input.novelaiNsfwSuffix?.trim()) {
+      finalPrompt = `${finalPrompt} ${input.novelaiNsfwSuffix.trim()}`;
+    }
 
     // ── 参考图锁脸预处理（NAI V4.5 character_reference + 锚点注入）──
     // NAI 锁脸靠锚点 token {charN}，不是人物名字。必须注入锚点，否则写名字锁不住脸。
