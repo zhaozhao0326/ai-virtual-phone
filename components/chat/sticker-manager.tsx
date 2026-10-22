@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useState, useEffect, useRef, useMemo } from "react";
+import { memo, useCallback, useState, useEffect, useRef, useMemo, type DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { Trash2, Plus, Smile, ImagePlus, Check, ChevronDown, ChevronRight, Info, Pencil, Sticker, Layers } from "lucide-react";
 import { loadCharacters } from "@/lib/character-storage";
@@ -33,12 +33,71 @@ import {
     togglePackAssignment,
     resolvePackStickerMap,
     getCharacterPackIds,
+    ingestImagesToPack,
+    getOrCreateDropInPack,
     type StickerItem,
     type StickerPack,
 } from "@/lib/custom-sticker-storage";
 import { loadChatContacts } from "@/lib/chat-storage";
 import { PageShell } from "@/components/ui/page-shell";
 import { ConfirmDialog } from "@/components/ui/modal";
+
+// ── 拖入 / 粘贴 共享 hook ──
+// 让表情面板能直接接收跨应用拖拽（如微信表情）与桌面端 Ctrl+V 粘贴的图片，
+// 复用现有存储 API 吸入指定包。纯本地处理，不联网、不花 token（不影响 token 预算）。
+// 用法：把 dragHandlers 铺到目标容器，dragOver 为高亮态，notice 为操作反馈文案。
+
+function useIngestDrop(getPackId: () => string, onDone: () => void) {
+    const [dragOver, setDragOver] = useState(false);
+    const [notice, setNotice] = useState<string | null>(null);
+    const dragDepth = useRef(0);
+    const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const showNotice = useCallback((msg: string | null) => {
+        setNotice(msg);
+        if (noticeTimer.current) clearTimeout(noticeTimer.current);
+        if (msg) noticeTimer.current = setTimeout(() => setNotice(null), 2600);
+    }, []);
+
+    const ingest = useCallback(async (files: FileList | File[] | null) => {
+        const packId = getPackId();
+        if (!packId) return;
+        const res = await ingestImagesToPack(packId, files);
+        if (res.added > 0) onDone();
+        showNotice(res.added > 0 ? res.message : (res.message || "没有可用图片"));
+    }, [getPackId, onDone, showNotice]);
+
+    const dragHandlers = {
+        onDragEnter: (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); dragDepth.current++; setDragOver(true); },
+        onDragOver: (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; },
+        onDragLeave: (e: DragEvent<HTMLDivElement>) => { e.preventDefault(); dragDepth.current--; if (dragDepth.current <= 0) { dragDepth.current = 0; setDragOver(false); } },
+        onDrop: (e: DragEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            dragDepth.current = 0;
+            setDragOver(false);
+            void ingest(e.dataTransfer.files);
+        },
+    };
+
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const ae = document.activeElement as HTMLElement | null;
+            // 正在输入框改名字/备注时粘贴，交给原生，不拦截
+            if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+            const files = e.clipboardData?.files;
+            if (!files || files.length === 0) return;
+            if (!Array.from(files).some(f => f.type.startsWith("image/"))) return;
+            e.preventDefault();
+            void ingest(files);
+        };
+        window.addEventListener("paste", onPaste);
+        return () => window.removeEventListener("paste", onPaste);
+    }, [ingest]);
+
+    useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
+
+    return { dragOver, notice, dragHandlers };
+}
 
 export function StickerManager({ onBack }: { onBack: () => void }) {
     const contactIds = new Set(loadChatContacts().map(c => c.characterId));
@@ -48,8 +107,10 @@ export function StickerManager({ onBack }: { onBack: () => void }) {
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [deletingPackId, setDeletingPackId] = useState<string | null>(null);
 
-    const refresh = () => setPacks(loadStickerPacks());
-    useEffect(() => { refresh(); }, []);
+    const refresh = useCallback(() => setPacks(loadStickerPacks()), []);
+    useEffect(() => { refresh(); }, [refresh]);
+    // 总管理页没停留具体包时，拖入 / 粘贴进「拖入收藏」兜底包
+    const ingest = useIngestDrop(() => getOrCreateDropInPack().id, refresh);
 
     const handleConfirmDeletePack = async () => {
         if (!deletingPackId) return;
@@ -69,7 +130,12 @@ export function StickerManager({ onBack }: { onBack: () => void }) {
 
     return (
         <PageShell title="表情包管理" onBack={onBack} className="absolute inset-0 z-[100]">
-            <div className="px-5 pt-4 pb-8 h-full overflow-y-auto">
+            <div className="px-5 pt-4 pb-8 h-full overflow-y-auto relative" {...ingest.dragHandlers}>
+                {ingest.notice && (
+                    <div className="px-1 pb-2">
+                        <div className="rounded-xl px-3 py-2 ts-12" style={{ background: "color-mix(in srgb, var(--c-icon-active) 12%, transparent)", color: "var(--c-icon-active)" }}>{ingest.notice}</div>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                     {packs.map((pack, i) => {
                         const assignedIds = getPackAssignments(pack.id);
@@ -136,6 +202,11 @@ export function StickerManager({ onBack }: { onBack: () => void }) {
                         <span className="ts-14 font-medium text-[var(--c-text)]">新建图集</span>
                     </button>
                 </div>
+                {ingest.dragOver && (
+                    <div className="absolute inset-0 z-[200] flex items-center justify-center pointer-events-none" style={{ background: "color-mix(in srgb, var(--c-icon-active) 14%, transparent)" }}>
+                        <div className="rounded-2xl px-5 py-3 ts-14 font-bold" style={{ background: "var(--c-card)", color: "var(--c-icon-active)", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}>松手即可存入「拖入收藏」</div>
+                    </div>
+                )}
             </div>
 
             {showCreateDialog && createPortal(
@@ -398,6 +469,9 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
         refreshPack();
     };
 
+    // 正在看这个包时，跨应用拖入 / 粘贴图片直接进当前包
+    const ingest = useIngestDrop(() => pack.id, refreshPack);
+
     const [editingNameId, setEditingNameId] = useState<string | null>(null);
     const [editingNameValue, setEditingNameValue] = useState("");
 
@@ -489,7 +563,12 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
             }
             className="absolute inset-0 z-[100]"
         >
-            <div className="flex flex-col h-full bg-[var(--c-page-body-bg)]">
+            <div className="flex flex-col h-full bg-[var(--c-page-body-bg)] relative" {...ingest.dragHandlers}>
+                {ingest.notice && (
+                    <div className="px-6 pt-3 shrink-0">
+                        <div className="rounded-xl px-3 py-2 ts-12" style={{ background: "color-mix(in srgb, var(--c-icon-active) 12%, transparent)", color: "var(--c-icon-active)" }}>{ingest.notice}</div>
+                    </div>
+                )}
                 {/* 备注：默认折叠成一行，点开才出编辑区（改名挪去了标题栏的铅笔按钮） */}
                 <div className="px-6 pt-4 pb-1 shrink-0">
                     <button
@@ -594,6 +673,11 @@ function PackEditor({ pack, onBack }: { pack: StickerPack; onBack: () => void })
                         </div>
                     </div>
                 </div>
+                {ingest.dragOver && (
+                    <div className="absolute inset-0 z-[200] flex items-center justify-center pointer-events-none" style={{ background: "color-mix(in srgb, var(--c-icon-active) 14%, transparent)" }}>
+                        <div className="rounded-2xl px-5 py-3 ts-14 font-bold" style={{ background: "var(--c-card)", color: "var(--c-icon-active)", boxShadow: "0 8px 24px rgba(0,0,0,0.1)" }}>松手即可存入「{currentPack.name}」</div>
+                    </div>
+                )}
             </div>
 
             {showAddDialog && createPortal(

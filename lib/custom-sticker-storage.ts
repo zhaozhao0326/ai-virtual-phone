@@ -370,3 +370,62 @@ async function compressStickerImage(blob: Blob): Promise<Blob> {
         return blob;
     }
 }
+
+// ── 拖入收藏（跨应用拖拽 / 粘贴的兜底包）──
+
+/**
+ * 固定 id 的全局兜底包，用于「从微信等跨应用拖入表情」但当前没停留在某个具体包时。
+ * 固定 id 保证每次都落到同一个包，不会每次拖入都新建一个。纯本地，无 token 消耗。
+ */
+const DROPIN_PACK_ID = "pack_dropin_default";
+const DROPIN_PACK_NAME = "拖入收藏";
+
+export function getOrCreateDropInPack(): StickerPack {
+    const packs = readPacks();
+    let pack = packs.find(p => p.id === DROPIN_PACK_ID);
+    if (!pack) {
+        pack = {
+            id: DROPIN_PACK_ID,
+            name: DROPIN_PACK_NAME,
+            stickers: [],
+            createdAt: new Date().toISOString(),
+        };
+        packs.push(pack);
+        writePacks(packs);
+    }
+    return pack;
+}
+
+/**
+ * 把一批图片文件（拖拽 / 粘贴来的）吸入指定包。
+ * 过滤非图片、跳过不符合条件的（如超大动图），其余按来源文件名命名后批量写入。
+ * 纯本地 Blob 处理，不联网、不花 token；GIF 由 addStickersToPack 原样保留动图。
+ */
+export async function ingestImagesToPack(
+    packId: string,
+    files: FileList | File[] | null,
+): Promise<{ added: number; skipped: number; message: string }> {
+    if (!files) return { added: 0, skipped: 0, message: "" };
+    const imgs = Array.from(files).filter(f =>
+        f.type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name),
+    );
+    if (!imgs.length) return { added: 0, skipped: 0, message: "没有识别到图片文件" };
+    const items: { name: string; blob: Blob }[] = [];
+    let skipped = 0;
+    for (const f of imgs) {
+        const err = checkStickerBlob(f);
+        if (err) { skipped++; continue; }
+        const base = f.name.replace(/\.[^.]+$/, "").trim();
+        items.push({ name: base || `拖入${items.length + 1}`, blob: f });
+    }
+    if (!items.length) {
+        return { added: 0, skipped, message: skipped ? "图片不符合条件，已跳过" : "" };
+    }
+    const res = await addStickersToPack(packId, items);
+    const failMsg = res.failed ? `，${res.failed} 张失败` : "";
+    return {
+        added: res.added,
+        skipped: res.failed + skipped,
+        message: `已添加 ${res.added} 张${failMsg}`,
+    };
+}
