@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.92";
+export const APP_VERSION = "1.7.93";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.93",
+    date: "2026-10-23",
+    title: "修复：多人同场叙事 + 见面邀请卡触发",
+    highlights: [
+      "修复「多人剧情」：之前加了参与者仍只有单人独白，现把在场角色注入剧情系统提示，AI 会自然写出多角色同场（第三人称多角色叙事），不再各自单线",
+      "修复「见面邀请卡」卡片不出现：旧正则只认半角 [邀请见面]，模型常用全角【邀请见面】导致匹配失败、卡片永不生成；现兼容全角括号",
+      "见面邀请卡契约改为更主动：用户流露出想见/约你等契机时即主动发邀请（仍每轮最多一张、不刷屏），并明确必须用半角方括号",
+    ],
+  },
   {
     version: "1.7.92",
     date: "2026-10-23",

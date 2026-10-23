@@ -183,7 +183,7 @@ ${plainText}`;
 export async function generateStoryCompletion(
   characterId: string,
   history: StoryMessage[],
-  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; signal?: AbortSignal; speakerId?: string },
+  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; signal?: AbortSignal; speakerId?: string; participantIds?: string[] },
 ): Promise<StoryGenerationResult> {
   // 多人剧情：本回合实际由哪个角色发声；缺省=会话主线角色（向后兼容单角色）
   const effectiveCharacterId =
@@ -196,7 +196,7 @@ export async function generateStoryCompletion(
   const { apiConfig, preset, regexes, worldBooks, regexSignature, summaryTag } = resolveStoryConfigs(effectiveCharacterId);
   const effectiveFoldTags = options?.sessionFoldTags?.trim() || DEFAULT_STORY_FOLD_TAGS;
   const effectiveContextExcludedTags = options?.sessionContextExcludedTags?.trim() || DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS;
-  const llmMessages = await buildStoryPromptMessages(effectiveCharacterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags);
+  const llmMessages = await buildStoryPromptMessages(effectiveCharacterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags, options?.participantIds);
 
   const userIdentity = resolveUserIdentity(effectiveCharacterId, "story");
   const macroEngine = new MacroEngine(character.name, userIdentity?.name ?? "用户");
@@ -230,6 +230,34 @@ export async function generateStoryCompletion(
   };
 }
 
+/**
+ * 多人同场：把参与者作为「在场角色」注入系统区，使剧情真正多人对戏。
+ * 焦点角色（当前发声者）已由主系统提示深度定义，这里只补充其余在场角色简介，
+ * 并指示 AI 采用第三人称多角色叙事。仅在参与者 >= 2 时生效，几乎不增 token。
+ */
+function injectStoryCast(messages: LLMMessage[], focusCharacterId: string, participantIds?: string[]): LLMMessage[] {
+  if (!participantIds || participantIds.length < 2) return messages;
+  const allChars = loadCharacters();
+  const focusChar = allChars.find((c) => c.id === focusCharacterId);
+  const castLines: string[] = [];
+  for (const pid of participantIds) {
+    if (pid === focusCharacterId) continue; // 焦点角色已在主提示深度定义
+    const c = allChars.find((x) => x.id === pid);
+    if (!c) continue;
+    const brief = (c.briefPersona && c.briefPersona.trim()) || (c.persona || "").trim().slice(0, 160);
+    if (brief) castLines.push(`- ${c.name}：${brief}`);
+  }
+  if (castLines.length === 0) return messages;
+  const focusName = focusChar?.name ?? "焦点角色";
+  const castText =
+    `【多人同场剧情】本剧情为多人同场，采用第三人称叙事。除你（${focusName}）之外，当前在场的角色还有：\n` +
+    castLines.join("\n") +
+    `\n请在叙事中自然呈现各角色的语言、神态、动作与心理活动，可按场景需要让不同角色开口对话或行动；${focusName}为当前段落的焦点角色，但其余在场角色也应有真实的存在感与互动。`;
+  const sysIdx = messages.findIndex((m) => m.role !== "system");
+  const insertAt = sysIdx === -1 ? messages.length : sysIdx; // 插在系统区末尾、历史之前
+  return [...messages.slice(0, insertAt), { role: "system", content: castText }, ...messages.slice(insertAt)];
+}
+
 async function buildStoryPromptMessages(
   characterId: string,
   history: StoryMessage[],
@@ -237,6 +265,7 @@ async function buildStoryPromptMessages(
   regexes: RegexConfig[],
   worldBooks: WorldBookConfig[],
   contextExcludedTags: string = DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS,
+  participantIds?: string[],
 ): Promise<LLMMessage[]> {
   const character = loadCharacters().find((item) => item.id === characterId);
   if (!character) {
@@ -258,7 +287,7 @@ async function buildStoryPromptMessages(
 
   const now = new Date();
 
-  return assemblePromptPayload({
+  const messages = assemblePromptPayload({
     character,
     history: truncatedHistory,
     preset,
@@ -274,12 +303,13 @@ async function buildStoryPromptMessages(
     recentBlocks,
     unifiedRecentItems,
   });
+  return injectStoryCast(messages, characterId, participantIds);
 }
 
 export async function previewStoryPromptPayload(
   characterId: string,
   history: StoryMessage[],
-  options?: { sessionContextExcludedTags?: string },
+  options?: { sessionContextExcludedTags?: string; participantIds?: string[] },
 ): Promise<StoryPreviewResult> {
   const character = loadCharacters().find((item) => item.id === characterId);
   if (!character) {
@@ -287,7 +317,7 @@ export async function previewStoryPromptPayload(
   }
   const { apiConfig, preset, regexes, worldBooks } = resolveStoryConfigs(characterId);
   const effectiveContextExcludedTags = options?.sessionContextExcludedTags?.trim() || DEFAULT_STORY_CONTEXT_EXCLUDED_TAGS;
-  const llmMessages = await buildStoryPromptMessages(characterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags);
+  const llmMessages = await buildStoryPromptMessages(characterId, history, preset, regexes, worldBooks, effectiveContextExcludedTags, options?.participantIds);
   return {
     messages: previewMessagesForApi(apiConfig, preset, llmMessages),
     characterName: character.name,

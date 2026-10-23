@@ -726,6 +726,7 @@ export function StoryApp({ onClose, characterId }: StoryAppProps) {
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
         signal: generationRun.controller.signal,
         speakerId: speakerId !== characterId ? speakerId : undefined,
+        participantIds: participants,
       });
       if (!isCurrentGeneration()) return;
       const assistantMessage = pushStoryMessage({
@@ -942,6 +943,8 @@ export function StoryApp({ onClose, characterId }: StoryAppProps) {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
         signal: generationRun.controller.signal,
+        speakerId: speakerId !== characterId ? speakerId : undefined,
+        participantIds: participants,
       });
       if (!isCurrentGeneration()) return;
       const assistantMessage = pushStoryMessage({

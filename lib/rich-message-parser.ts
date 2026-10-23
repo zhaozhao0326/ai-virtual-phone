@@ -51,9 +51,10 @@ export const SCHEDULE_UPDATE_TAG_RE = /\[日程更新[|｜：:]\s*([^\]]+?)\]/;
 export const ADD_FRIEND_TAG_RE =
     /\[(?:(?:申请)?加好友|添加好友)(?:\s*[|｜]\s*(?:备注|理由)[:：]\s*([^\]]+?))?\]/;
 
-// ── 见面邀请卡：模型输出 [邀请见面]...[/邀请见面] 包裹块，内部为 key=value 字段 ──
+// ── 见面邀请卡：模型输出包裹块，内部为 key=value 字段 ──
+// 兼容半角 [ ] 与全角 【 】（中文模型常误用全角括号导致正则匹配不上、卡片永不生成）
 export const MEETING_INVITE_TAG_RE =
-    /\[邀请见面\]([\s\S]*?)\[\/邀请见面\]/;
+    /[\[【]邀请见面[\]】]([\s\S]*?)[\[【]\/邀请见面[\]】]/;
 
 export type ParsedMeetingInvite = {
     inviter: string;
