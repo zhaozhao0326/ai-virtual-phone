@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, Camera, ChevronDown, Download, HelpCircle, Image, RefreshCw, Sparkles, Trash2, Upload, X, BookOpen, Plus, Save } from "lucide-react";
-import type { ImageGenerationSettings as ImageGenerationSettingsType, NaiPreset, NaiPresetGroup } from "@/lib/settings-types";
+import type { ImageGenerationSettings as ImageGenerationSettingsType, NaiPreset, NaiPresetGroup, OpenAiImagePreset } from "@/lib/settings-types";
 import {
     DEFAULT_IMAGE_GENERATION_SETTINGS,
     loadImageGenerationSettings,
@@ -413,6 +413,10 @@ export function ImageGenerationSettings() {
     // 折叠式使用说明（一次只展开一个 Provider）
     const [openHelp, setOpenHelp] = useState<string | null>(null);
 
+    // ---- OpenAI 兼容地址预设（宕机后快速切回）----
+    const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+    const [newPresetName, setNewPresetName] = useState<string>("");
+
     useEffect(() => {
         const loaded = loadImageGenerationSettings();
         const syncedExtra = withRatioHint(loaded.extraPrompt, loaded.size);
@@ -462,6 +466,55 @@ export function ImageGenerationSettings() {
     const updateSettings = useCallback((patch: Partial<ImageGenerationSettingsType>) => {
         persist({ ...settings, ...patch });
     }, [persist, settings]);
+
+    // ---- OpenAI 兼容地址预设：保存 / 应用 / 删除 ----
+    const openaiPresets = settings.openaiPresets || [];
+    const saveOpenAiPreset = useCallback(() => {
+        const name = newPresetName.trim();
+        if (!name) {
+            setStatus({ success: false, message: "请先给预设起个名字。" });
+            return;
+        }
+        const preset: OpenAiImagePreset = {
+            id: `oai-${Date.now()}`,
+            name,
+            apiKey: settings.apiKey,
+            baseUrl: settings.baseUrl,
+            model: settings.model,
+            size: settings.size,
+            quality: settings.quality,
+            extraPrompt: settings.extraPrompt,
+            openaiStylePreset: settings.openaiStylePreset,
+        };
+        const next = [...openaiPresets, preset];
+        persist({ ...settings, openaiPresets: next });
+        setNewPresetName("");
+        setSelectedPresetId(preset.id);
+        setStatus({ success: true, message: `已保存预设「${name}」` });
+    }, [persist, settings, newPresetName, openaiPresets]);
+
+    const applyOpenAiPreset = useCallback(() => {
+        const p = openaiPresets.find((x) => x.id === selectedPresetId);
+        if (!p) return;
+        persist({
+            ...settings,
+            apiKey: p.apiKey,
+            baseUrl: p.baseUrl,
+            model: p.model,
+            size: p.size,
+            quality: p.quality,
+            extraPrompt: p.extraPrompt,
+            openaiStylePreset: p.openaiStylePreset,
+        });
+        setStatus({ success: true, message: `已应用预设「${p.name}」` });
+    }, [persist, settings, openaiPresets, selectedPresetId]);
+
+    const deleteOpenAiPreset = useCallback(() => {
+        const next = openaiPresets.filter((x) => x.id !== selectedPresetId);
+        persist({ ...settings, openaiPresets: next });
+        setSelectedPresetId("");
+        setStatus({ success: true, message: "已删除该预设" });
+    }, [persist, settings, openaiPresets, selectedPresetId]);
 
     const applySize = useCallback((size: string) => {
         persist({ ...settings, size, extraPrompt: withRatioHint(settings.extraPrompt, size) });
@@ -1437,6 +1490,58 @@ export function ImageGenerationSettings() {
                         />
                     </div>
 
+                    {/* ── OpenAI 兼容地址预设：宕机后快速切回 ── */}
+                    <div className="flex flex-col gap-2 p-3 rounded-lg border border-white/10 bg-white/5">
+                        <label className="menu-desc ml-1 font-medium">地址预设（中继宕机后快速切回）</label>
+                        <div className="flex gap-2 flex-wrap">
+                            <Select
+                                value={selectedPresetId}
+                                onChange={(event) => setSelectedPresetId(event.target.value)}
+                            >
+                                <option value="">— 选择已存预设 —</option>
+                                {openaiPresets.map((p) => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </Select>
+                            {selectedPresetId && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={applyOpenAiPreset}
+                                        className="ui-btn ui-btn-soft-action shrink-0"
+                                    >
+                                        应用此预设
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={deleteOpenAiPreset}
+                                        className="ui-btn ui-btn-soft-action shrink-0"
+                                    >
+                                        删除
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex gap-2">
+                            <Input
+                                type="text"
+                                value={newPresetName}
+                                onChange={(event) => setNewPresetName(event.target.value)}
+                                placeholder="给当前配置起个名，如：备用中继A"
+                            />
+                            <button
+                                type="button"
+                                onClick={saveOpenAiPreset}
+                                className="ui-btn ui-btn-soft-action shrink-0"
+                            >
+                                存为预设
+                            </button>
+                        </div>
+                        <p className="menu-desc ml-1 opacity-50 text-[11px]">
+                            保存当前 Base URL / 密钥 / 模型等整组配置；某地址宕机时切到新地址测试，不好用再一键「应用此预设」切回。仅存本地。
+                        </p>
+                    </div>
+
                     <div className="flex flex-col gap-1">
                         <label className="menu-desc ml-1">API Key</label>
                         <Input
@@ -1988,12 +2093,13 @@ export function ImageGenerationSettings() {
                     <div className="menu-item story-nsfw-suffix-row">
                         <span className="settings-tools-menu-copy">
                             <span className="menu-label appearance-menu-item-label">NSFW 提示词后缀</span>
-                            <span className="menu-desc settings-tools-menu-desc">仅在上方「NSFW 模式」开启时生效，追加到提示词末尾，用于引导成人内容。需自行填写具体标签（如英文 nudity / uncensored 等），留空则不追加。NAI 是基于标签的模型，仅靠中文软描述（如「亲密中」）不会出裸体。</span>
+                            <span className="menu-desc settings-tools-menu-desc">仅在上方「NSFW 模式」开启时生效，追加到提示词末尾，用于引导成人内容。NAI 是基于标签的模型，仅靠中文软描述（如「亲密中」）不会出裸体——需填英文标签。点下方标签可一键追加，或自己输入（逗号分隔，输入框也能联想）。</span>
                         </span>
                         <span className="menu-right story-nsfw-suffix-input">
                             <input
                                 type="text"
-                                placeholder="开启 NSFW 后追加的标签"
+                                list="nsfw-suffix-tags"
+                                placeholder="如：nudity, uncensored, explicit content"
                                 value={settings.novelai.nsfwSuffix || ""}
                                 onChange={(e) => updateNai({ nsfwSuffix: e.target.value })}
                                 style={{
@@ -2007,6 +2113,49 @@ export function ImageGenerationSettings() {
                                     fontSize: "calc(13px*var(--app-text-scale,1))",
                                 }}
                             />
+                            <datalist id="nsfw-suffix-tags">
+                                <option value="nudity" />
+                                <option value="uncensored" />
+                                <option value="explicit content" />
+                                <option value="nsfw" />
+                                <option value="nude" />
+                                <option value="breasts" />
+                                <option value="penis" />
+                                <option value="vagina" />
+                                <option value="sex" />
+                                <option value="cum" />
+                                <option value="anal" />
+                                <option value="blowjob" />
+                                <option value="masturbation" />
+                                <option value="cumshot" />
+                            </datalist>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                                {["nudity", "uncensored", "explicit content", "nsfw", "nude", "breasts", "penis", "vagina", "sex", "anal", "blowjob", "masturbation", "cumshot"].map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => {
+                                            const cur = (settings.novelai.nsfwSuffix || "")
+                                                .split(",")
+                                                .map((s) => s.trim())
+                                                .filter(Boolean);
+                                            if (!cur.includes(t)) cur.push(t);
+                                            updateNai({ nsfwSuffix: cur.join(", ") });
+                                        }}
+                                        style={{
+                                            padding: "3px 9px",
+                                            borderRadius: 999,
+                                            border: "1px solid var(--c-border, rgba(0,0,0,0.18))",
+                                            background: "var(--c-chip-bg, rgba(0,0,0,0.04))",
+                                            color: "var(--c-text, #444)",
+                                            fontSize: "calc(12px*var(--app-text-scale,1))",
+                                            cursor: "pointer",
+                                        }}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
                         </span>
                     </div>
                 </div>

@@ -19,6 +19,21 @@ function isReferenceImageRejection(message: string): boolean {
 
 type ImageGenResult = NonNullable<Awaited<ReturnType<typeof generateImageFromConfiguredApi>>>;
 
+// 明确排除人物/空场景：「空无一人」「无人」「没有人物」等。
+// 这类 prompt 即使含「人」字，语义也是不要人，必须优先排除，防止误判。
+// 导出给朋友圈生图等调用方：把"不要人"从正提示词剥离、改投负面提示词。
+export const EXPLICIT_NO_PERSON_RE = /无人|空无一人|没有人|没[有]?人|无人物|不含人|不要[出现画有]?人|别[画有]?人|空无一物|空镜|空景|空场|无人的/i;
+
+export function hasExplicitNoPerson(description: string): boolean {
+    return EXPLICIT_NO_PERSON_RE.test((description || "").toLowerCase());
+}
+
+/** 把 prompt 里的「无人物/无人/空景」等中文否定片段剥离，避免被生图模型当正标签触发画人。 */
+export function stripExplicitNoPerson(description: string): string {
+    if (!description) return description;
+    return description.replace(EXPLICIT_NO_PERSON_RE, " ").replace(/\s{2,}/g, " ").trim();
+}
+
 // 判断朋友圈/聊天配图的 prompt 是否意图让角色/人物入镜。
 // 仅当 prompt 明确点名该角色，或出现人称/人物相关词时，才视为人物场景；
 // 否则按「纯物品/风景/场景」处理，避免把作者角色硬塞进马力机、菜品等配图里。
@@ -29,10 +44,8 @@ export function momentDescriptionImpliesCharacter(description: string, authorNam
     // 明确点名作者角色 → 人物场景
     if (authorName && d.includes(authorName.toLowerCase())) return true;
 
-    // 明确排除人物/空场景：「空无一人」「无人」「没有人物」等。
-    // 这类 prompt 里即使有「人」字，语义也是不要人，必须优先排除，防止误判。
-    const explicitNoPerson = /无人|空无一人|没有人|没[有]?人|无人物|不含人|不要[出现画有]?人|别[画有]?人|空无一物|空镜|空景|空场|无人的/i;
-    if (explicitNoPerson.test(d)) return false;
+    // 明确排除人物/空场景：优先排除，防止误判（详见 hasExplicitNoPerson）
+    if (hasExplicitNoPerson(description)) return false;
 
     // 人称代词、明确的人物名词或人物关系动作 → 人物场景
     const personMarker = /我|你|他|她|我们|你们|他们|她们|人物|角色|头像|自拍|合影|合照|一起|搂着|抱着|牵着|对视|男生|女生|男孩|女孩|男子|女子|男人|女人|男性|女性|少男|少女|帅哥|美女|主角|人们|众人|人群/i;
@@ -66,7 +79,7 @@ async function generateImageWithReferenceFallback(
 }
 
 // 从角色人设弱提取性别（仅当未填写「生图形象」时的回退，命中即加入描述）
-function guessGenderFromPersona(persona: string): string | null {
+export function guessGenderFromPersona(persona: string): string | null {
     if (/女|她|姐|妹|妻|母|公主|女王|lady|girl|woman|female/i.test(persona)) return "女生";
     if (/男|他|哥|弟|夫|父|王子|少爷|lord|boy|man|male/i.test(persona)) return "男生";
     return null;
@@ -128,7 +141,7 @@ export function buildParticipantAppearancePrompt(characterIds: string[]): string
 }
 
 // 浏览器内把头像压缩到最长边 maxSize，减小传给 NAI 的 base64 体积（NAI 参考图无需原图大小）
-function resizeImageDataUrl(dataUrl: string, maxSize = 512): Promise<string | null> {
+export function resizeImageDataUrl(dataUrl: string, maxSize = 512): Promise<string | null> {
     return new Promise((resolve) => {
         if (typeof window === "undefined" || typeof document === "undefined") { resolve(dataUrl); return; }
         try {
@@ -343,14 +356,22 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
     });
     dispatchMomentsUpdated();
 
-    // 根据 prompt 语义决定是否注入作者角色/用户：
-    // 纯场景/物品 prompt 不再硬塞角色外貌与头像，避免「跑车马力机」被画成「江慎行」。
+    // 与初始生成（generateMomentPhotoUrl）完全对齐：
+    // 1) 明确"无人物/空景"的 prompt → 剥离中文否定片段 + 加英文负面指令，不注入角色；
+    // 2) 角色人物场景 → 强制使用锁脸参考图（characterId + useReferenceImage），头像 avatar 作为锁脸参考，性别/长相被锁定；
+    // 3) 角色档案 appearance 兜底，无则弱提取性别，至少把男女写进提示词。
+    let finalDescription = description;
+    const noPerson = hasExplicitNoPerson(description);
+    if (noPerson) {
+        finalDescription = `No people, no person, empty scene, solo. ${stripExplicitNoPerson(description)}`;
+    }
     const author = post.authorType === "character" && post.authorId
         ? loadCharacters().find((c) => c.id === post.authorId)
         : undefined;
-    const includeCharacters = momentDescriptionImpliesCharacter(description, author?.name);
+    const includeCharacters = !noPerson && momentDescriptionImpliesCharacter(description, author?.name);
     const momentParticipantIds = includeCharacters && post.authorId ? [post.authorId] : [];
-    const { specs: momentSpecs, appearanceText: momentAppearance } = buildParticipantSpecs(momentParticipantIds, includeCharacters);
+    // includeUser=false：朋友圈是角色本人视角的帖子，不把「你」硬塞进图片（与初始生成一致）
+    const { specs: momentSpecs, appearanceText: momentAppearance } = buildParticipantSpecs(momentParticipantIds, false);
     const momentRefImages = (await Promise.all(
         momentSpecs.map((s) => (s.avatar ? resizeImageDataUrl(s.avatar, 512) : Promise.resolve(null))),
     )).filter(Boolean) as string[];
@@ -363,14 +384,14 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
             authorName: author?.name,
         });
         const generated = await generateImageWithReferenceFallback({
-            description,
+            description: finalDescription,
             characterId: includeCharacters && post.authorType === "character" ? post.authorId : undefined,
             participantAppearance: includeCharacters ? momentAppearance || undefined : undefined,
             participants: includeCharacters ? momentSpecs.map((s) => ({ name: s.name, anchor: s.anchor })) : undefined,
             referenceImages: includeCharacters && momentRefImages.length ? momentRefImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
             sceneLighting: settings.sceneLighting?.trim() || undefined,
-            useReferenceImage: includeCharacters ? post.photoUseReferenceImage === true : false,
+            useReferenceImage: includeCharacters ? true : false,
             settings,
         });
         if (!generated) throw new Error("生图配置未启用或不完整");

@@ -646,6 +646,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
     quality: "auto",
     extraPrompt: "",
     openaiStylePreset: "auto",
+    openaiPresets: [],
     // --- 生图场景结构化字段 ---
     sceneBackground: "",
     sceneLighting: "",

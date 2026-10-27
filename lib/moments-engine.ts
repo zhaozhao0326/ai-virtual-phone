@@ -7,7 +7,7 @@
 import { loadCharacters } from "./character-storage";
 import { loadChatContacts } from "./chat-storage";
 import type { Character } from "./character-types";
-import { momentDescriptionImpliesCharacter } from "./generated-image-retry";
+import { momentDescriptionImpliesCharacter, hasExplicitNoPerson, stripExplicitNoPerson, buildParticipantSpecs, resizeImageDataUrl } from "./generated-image-retry";
 import {
     addMomentPost,
     addMomentComment,
@@ -1268,20 +1268,36 @@ export async function generateMomentPhotoUrl(
         let participantAppearance: string | undefined;
         let effectiveCharacterId: string | undefined;
         let effectiveUseReferenceImage = false;
+        let effectiveParticipants: Array<{ name: string; anchor?: string }> | undefined;
+        let effectiveReferenceImages: string[] | undefined;
+        // 「无人物 / 空景」等明确不要人的意图：剥离中文否定片段（避免 NAI 把"人物"当正标签画人），
+        // 并加英文负面指令；不注入角色，交由生图模型出纯场景。
+        const noPerson = hasExplicitNoPerson(description);
+        if (noPerson) {
+            finalDescription = `No people, no person, empty scene, solo. ${stripExplicitNoPerson(description)}`;
+        }
         try {
             const author = loadCharacters().find(c => c.id === characterId);
-            const includeAuthor = momentDescriptionImpliesCharacter(description, author?.name);
+            const includeAuthor = !noPerson && momentDescriptionImpliesCharacter(description, author?.name);
             if (includeAuthor && author) {
                 effectiveCharacterId = characterId;
-                effectiveUseReferenceImage = useReferenceImage;
+                // 角色发帖且本就应为人物场景时，强制使用锁脸参考图：确保性别/长相被锁定，不再"不区分男女"
+                effectiveUseReferenceImage = true;
                 // 把角色名写进提示词（仅当原描述未含该名字时），配合锁脸锚点使用
-                if (author.name && !description.includes(author.name)) {
-                    finalDescription = `${author.name}，${description}`;
+                if (author.name && !finalDescription.includes(author.name)) {
+                    finalDescription = `${author.name}，${finalDescription}`;
                 }
-                // 角色档案 appearance 作为外观描述兜底
-                if (author.appearance?.trim()) {
-                    participantAppearance = `${author.name}：${author.appearance.trim()}`;
-                }
+                // 复用聊天生图参与者规格：
+                // - appearanceText：角色档案外观（无外观时回落人设性别），作为「画面中的人物设定」注入，确保性别/特征可控；
+                // - 角色头像 avatar 作为锁脸参考图（与专用锁脸参考图 characterReferences 双保险），根治"不区分男女"。
+                // includeUser=false：朋友圈是角色本人视角，不把「你」硬塞进图片。
+                const { specs, appearanceText } = buildParticipantSpecs([characterId], false);
+                if (appearanceText) participantAppearance = appearanceText;
+                effectiveParticipants = specs.map((s) => ({ name: s.name, anchor: s.anchor }));
+                const refImages = (await Promise.all(
+                    specs.map((s) => (s.avatar ? resizeImageDataUrl(s.avatar, 512) : Promise.resolve(null))),
+                )).filter(Boolean) as string[];
+                if (refImages.length) effectiveReferenceImages = refImages;
             }
         } catch { /* 取不到角色名时退回原描述 */ }
         console.log("[Moments] 生图角色注入判断", {
@@ -1294,6 +1310,8 @@ export async function generateMomentPhotoUrl(
             characterId: effectiveCharacterId,
             useReferenceImage: effectiveUseReferenceImage,
             participantAppearance,
+            referenceImages: effectiveReferenceImages,
+            participants: effectiveParticipants,
             signal,
         });
         throwIfAborted(signal);

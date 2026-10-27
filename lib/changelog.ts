@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.94";
+export const APP_VERSION = "1.7.95";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.95",
+    date: "2026-10-27",
+    title: "修复：朋友圈生图「无人物却出人 / 不分男女」",
+    highlights: [
+      "修复「提示词写无人物、图片却有人」：朋友圈配图若含「无人物 / 空景 / 无人 / 空镜」等明确不要人的表述，现在会剥离该中文片段并追加英文负面指令（No people, empty scene, solo），不再被生图模型当成「人物」正标签强行画人",
+      "修复「不分人物、不分男女」：角色发朋友圈现在强制锁定脸参考图——角色头像作为锁脸参考（与专用锁脸参考图双保险），并把角色性别 / 外貌写进提示词，长相与男女稳定可控，不再画出模糊通用脸",
+      "初始生成与「重新生成」两条生图路径已对齐同一套判定逻辑，行为一致；朋友圈不再把「你」误塞进角色本人的自拍照里",
+      "「NSFW 提示词后缀」框不再空着不知道填啥：下方新增常用 NAI 英文标签一键追加（nudity / uncensored / explicit content / nsfw / nude / breasts / penis / vagina / sex / anal / blowjob / masturbation / cumshot），输入框也支持联想",
+    ],
+  },
   {
     version: "1.7.94",
     date: "2026-10-27",
