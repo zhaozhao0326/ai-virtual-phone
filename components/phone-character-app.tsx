@@ -345,6 +345,14 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
                 onNotice("导出成功");
               }
             }}
+            onQuickToggleFlag={(field, val) => {
+              const existing = view.id ? characters.find((c) => c.id === view.id) : null;
+              if (!existing) return;
+              const updated: Character = { ...existing, updatedAt: new Date().toISOString() };
+              if (field === "avatarIntentEnabled") updated.avatarIntentEnabled = val ? true : undefined;
+              else updated.meetingInviteEnabled = val ? true : undefined;
+              updateChars(characters.map((c) => (c.id === existing.id ? updated : c)));
+            }}
           />
         )}
       </div>
@@ -1837,6 +1845,7 @@ function CharArchiveView({
   onExportJson,
   onExportPng,
   dummy,
+  onQuickToggleFlag,
 }: {
   char: Character;
   isEditing?: boolean;
@@ -1850,6 +1859,7 @@ function CharArchiveView({
   onExportJson: () => void;
   onExportPng: () => Promise<void>;
   dummy?: boolean;
+  onQuickToggleFlag?: (field: "avatarIntentEnabled" | "meetingInviteEnabled", value: boolean) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState<"back" | "cancel" | null>(null);
@@ -2739,22 +2749,24 @@ function CharArchiveView({
           <div className="char-log-entry">
             <div className="char-log-entry-header">
               <span>头像意图识别</span>
-              {isEditing && (
-                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
-                  <input
-                    type="checkbox"
-                    checked={avatarIntentEnabled}
-                    onChange={e => setAvatarIntentEnabled(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  启用
-                </label>
-              )}
+              <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                <input
+                  type="checkbox"
+                  checked={avatarIntentEnabled}
+                  onChange={e => {
+                    const v = e.target.checked;
+                    setAvatarIntentEnabled(v);
+                    if (!isEditing && onQuickToggleFlag) onQuickToggleFlag("avatarIntentEnabled", v);
+                  }}
+                  className="mt-0.5"
+                />
+                启用
+              </label>
             </div>
             {!avatarIntentEnabled ? (
               <div className="mt-2 ts-11 opacity-60">
                 已关闭：聊天中不会识别换头像意图。开启后，你发图并说"用这张当头像"时，TA 会提议换上这张图（需你确认）。
-                {isEditing && "（勾选上方「启用」可开启）"}
+                {isEditing ? "（勾选上方「启用」可开启）" : "（点击上方「启用」即可开启，自动保存）"}
               </div>
             ) : (
               <div className="mt-2 ts-11 opacity-60">
@@ -2769,22 +2781,24 @@ function CharArchiveView({
           <div className="char-log-entry">
             <div className="char-log-entry-header">
               <span>见面邀请卡</span>
-              {isEditing && (
-                <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
-                  <input
-                    type="checkbox"
-                    checked={meetingInviteEnabled}
-                    onChange={e => setMeetingInviteEnabled(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  启用
-                </label>
-              )}
+              <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                <input
+                  type="checkbox"
+                  checked={meetingInviteEnabled}
+                  onChange={e => {
+                    const v = e.target.checked;
+                    setMeetingInviteEnabled(v);
+                    if (!isEditing && onQuickToggleFlag) onQuickToggleFlag("meetingInviteEnabled", v);
+                  }}
+                  className="mt-0.5"
+                />
+                启用
+              </label>
             </div>
             {!meetingInviteEnabled ? (
               <div className="mt-2 ts-11 opacity-60">
                 已关闭：TA 不会在私聊里主动发见面邀请。开启后，TA 可能在合适时机发一张"线下见面"邀请卡，你点接受即跳进剧情。
-                {isEditing && "（勾选上方「启用」可开启）"}
+                {isEditing ? "（勾选上方「启用」可开启）" : "（点击上方「启用」即可开启，自动保存）"}
               </div>
             ) : (
               <div className="mt-2 ts-11 opacity-60">

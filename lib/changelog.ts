@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.93";
+export const APP_VERSION = "1.7.94";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,14 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.94",
+    date: "2026-10-27",
+    title: "修复：角色设置开关可见性（免进编辑模式）",
+    highlights: [
+      "「头像意图识别」「见面邀请卡」两个每角色开关，之前只在编辑模式才显示，现已在角色详情页始终可见；查看模式下点击即可开关并自动保存，不用再先点「编辑」",
+    ],
+  },
   {
     version: "1.7.93",
     date: "2026-10-23",
