@@ -753,9 +753,8 @@ export function ImageGenerationSettings() {
         });
     };
 
-    // ── 锁脸增强：参考图字段合并（faceCrop / enabled / anchors 等）──
+    // ── 锁脸增强：参考图字段合并（faceCrop / enabled）──
     type CharacterReference = NonNullable<ImageGenerationSettingsType["characterReferences"][string]>;
-    type CharacterAnchor = NonNullable<CharacterReference["anchors"]>[number];
 
     const updateCharacterReference = (characterId: string, patch: Partial<CharacterReference>) => {
         const current = settings.characterReferences?.[characterId];
@@ -766,45 +765,6 @@ export function ImageGenerationSettings() {
                 [characterId]: { ...(current || { assetId: "", updatedAt: Date.now() }), ...patch } as CharacterReference,
             },
         });
-    };
-
-    const updateCharacterAnchors = (characterId: string, anchors: CharacterAnchor[]) => {
-        updateCharacterReference(characterId, { anchors });
-    };
-
-    const updateCharacterAnchor = (characterId: string, anchorId: string, patch: Partial<CharacterAnchor>) => {
-        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
-        updateCharacterAnchors(characterId, anchors.map(a => a.id === anchorId ? { ...a, ...patch, updatedAt: Date.now() } : a));
-    };
-
-    const addCharacterAnchor = (characterId: string) => {
-        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
-        updateCharacterAnchors(characterId, [...anchors, {
-            id: `anchor_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-            name: "新锚点",
-            category: "feature",
-            description: "",
-            enabled: true,
-            updatedAt: Date.now(),
-        }]);
-    };
-
-    const deleteCharacterAnchor = (characterId: string, anchorId: string) => {
-        const anchors = settings.characterReferences?.[characterId]?.anchors || [];
-        updateCharacterAnchors(characterId, anchors.filter(a => a.id !== anchorId));
-    };
-
-    const uploadCharacterAnchor = async (characterId: string, anchorId: string) => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = "image/*";
-        input.onchange = async () => {
-            const file = input.files?.[0];
-            if (!file) return;
-            const assetId = await saveChatImageToIndexedDB(file);
-            updateCharacterAnchor(characterId, anchorId, { assetId, enabled: true });
-        };
-        input.click();
     };
 
     const openFaceCrop = (characterId: string) => {
@@ -1918,67 +1878,6 @@ export function ImageGenerationSettings() {
                                                                     )}
                                                                 </div>
 
-                                                                {/* 稳定特征锚点（多张带标签参考图） */}
-                                                                <div className="flex flex-col gap-1">
-                                                                    <span className="ts-11 text-[var(--c-icon)] opacity-70">稳定特征锚点（服装 / 配饰 / 特征，多张带标签参考图拼板 + 注入提示词）</span>
-                                                                    {(reference?.anchors || []).map(anchor => (
-                                                                        <div key={anchor.id} className="flex flex-col gap-1 rounded-lg border border-[var(--c-border)] p-2">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <input
-                                                                                    className="flex-1 rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-2 py-1 ts-12 text-[var(--c-text)]"
-                                                                                    placeholder="锚点名（如：红丝带）"
-                                                                                    value={anchor.name}
-                                                                                    onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { name: e.target.value })}
-                                                                                />
-                                                                                <select
-                                                                                    className="rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-1 py-1 ts-12 text-[var(--c-text)]"
-                                                                                    value={anchor.category}
-                                                                                    onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { category: e.target.value as "accessory" | "clothing" | "feature" | "other" })}
-                                                                                >
-                                                                                    <option value="accessory">配饰</option>
-                                                                                    <option value="clothing">服装</option>
-                                                                                    <option value="feature">特征</option>
-                                                                                    <option value="other">其他</option>
-                                                                                </select>
-                                                                                <Toggle
-                                                                                    checked={anchor.enabled}
-                                                                                    onChange={(enabled) => updateCharacterAnchor(character.id, anchor.id, { enabled })}
-                                                                                    className="settings-toggle-control"
-                                                                                />
-                                                                                <button
-                                                                                    type="button"
-                                                                                    className="ui-link-btn"
-                                                                                    data-variant="danger"
-                                                                                    aria-label="删除锚点"
-                                                                                    onClick={() => deleteCharacterAnchor(character.id, anchor.id)}
-                                                                                >
-                                                                                    <Trash2 size={16} />
-                                                                                </button>
-                                                                            </div>
-                                                                            <textarea
-                                                                                className="w-full rounded border border-[var(--c-border)] bg-[var(--c-bg-secondary)] px-2 py-1 ts-12 text-[var(--c-text)] resize-none"
-                                                                                rows={1}
-                                                                                placeholder="描述（如：左耳红丝带、黑色 choker）"
-                                                                                value={anchor.description}
-                                                                                onChange={(e) => updateCharacterAnchor(character.id, anchor.id, { description: e.target.value })}
-                                                                            />
-                                                                            <button
-                                                                                type="button"
-                                                                                className="ui-btn ui-btn-soft-action self-start"
-                                                                                onClick={() => uploadCharacterAnchor(character.id, anchor.id)}
-                                                                            >
-                                                                                上传锚点图
-                                                                            </button>
-                                                                        </div>
-                                                                    ))}
-                                                                    <button
-                                                                        type="button"
-                                                                        className="ui-btn ui-btn-soft-action self-start"
-                                                                        onClick={() => addCharacterAnchor(character.id)}
-                                                                    >
-                                                                        + 新增锚点
-                                                                    </button>
-                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>

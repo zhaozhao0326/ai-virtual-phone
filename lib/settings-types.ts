@@ -329,7 +329,10 @@ export type ImageGenerationSettings = {
         enabled?: boolean;
         /** 归一化正方形脸部选区：仅裁出该区域作为锁脸参考，减少张冠李戴 */
         faceCrop?: { x: number; y: number; size: number };
-        /** 该角色的服装/配饰/稳定特征锚点（多张带标签参考图，拼板+注入提示词） */
+        /**
+         * @deprecated v1.7.105 起「稳定特征锚点」整块功能已下线（UI 与生图注入均已移除）。
+         * 字段保留仅为兼容旧存档，不再被任何逻辑读取；重新上线前请不要往里写数据。
+         */
         anchors?: Array<{
             id: string;
             name: string;
