@@ -32,7 +32,6 @@ import {
     pruneExpiredGroupMutes,
     type GroupAdminAction,
 } from "@/lib/group-admin";
-import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
 import { loadCharacters, setCharacterAutoJoinOffline } from "@/lib/character-storage";
 import {
@@ -196,8 +195,6 @@ type ChatSettingsPanelProps = {
     onJumpToMessage?: (messageId: string) => void;
     onDeleteFriend?: () => void;
     onToolHistoryCleared?: () => void;
-    onOfflineHistoryCleared?: () => void;
-    offlineHistoryBusy?: boolean;
 };
 
 const chatInfoIconStyle = (color: string): CSSProperties => ({
@@ -296,8 +293,6 @@ export function ChatSettingsPanel({
     onJumpToMessage,
     onDeleteFriend,
     onToolHistoryCleared,
-    onOfflineHistoryCleared,
-    offlineHistoryBusy = false,
 }: ChatSettingsPanelProps) {
     const [backgroundImage, setBackgroundImage] = useState<string>(session.backgroundImage || "");
     const [backgroundOpacity, setBackgroundOpacity] = useState<number>(typeof session.backgroundOpacity === "number" ? session.backgroundOpacity : 1);
@@ -482,7 +477,6 @@ export function ChatSettingsPanel({
     });
 
     const [showConfirmClear, setShowConfirmClear] = useState(false);
-    const [showConfirmClearOffline, setShowConfirmClearOffline] = useState(false);
     const [showConfirmClearTools, setShowConfirmClearTools] = useState(false);
     const [showConfirmDelete, setShowConfirmDelete] = useState(false);
     const [editingAlias, setEditingAlias] = useState(false);
@@ -705,13 +699,6 @@ export function ChatSettingsPanel({
     const handleClearHistory = () => {
         clearChatSessionMessages(session.id);
         setShowConfirmClear(false);
-    };
-
-    const handleClearOfflineHistory = () => {
-        if (offlineHistoryBusy) return;
-        clearChatOfflineTurns(session.id);
-        onOfflineHistoryCleared?.();
-        setShowConfirmClearOffline(false);
     };
 
     const handleClearToolHistory = () => {
@@ -1483,22 +1470,6 @@ export function ChatSettingsPanel({
                             <span className="menu-desc">不影响线下模式记录</span>
                         </div>
                     </button>
-                    <button
-                        className="menu-item"
-                        disabled={offlineHistoryBusy}
-                        onClick={() => {
-                            if (!offlineHistoryBusy) setShowConfirmClearOffline(true);
-                        }}
-                        style={offlineHistoryBusy ? { opacity: 0.55, cursor: "not-allowed" } : undefined}
-                    >
-                        <ChatInfoIcon icon={Trash2} color="var(--c-danger)" />
-                        <div className="menu-label-group">
-                            <span className="menu-label menu-label-danger">清空线下聊天记录</span>
-                            <span className="menu-desc">
-                                {offlineHistoryBusy ? "线下回复生成中，完成后再清空" : "同步移除该会话的线下短期记忆事件"}
-                            </span>
-                        </div>
-                    </button>
                 </div>
 
             </div>
@@ -1691,20 +1662,6 @@ export function ChatSettingsPanel({
                     cancelLabel="取消"
                     onConfirm={handleClearHistory}
                     onCancel={() => setShowConfirmClear(false)}
-                />
-            )}
-
-            {/* Modal: Confirm Clear Offline History */}
-            {showConfirmClearOffline && (
-                <ConfirmDialog
-                    title="确定要清空线下聊天记录吗？"
-                    message="会同步移除该会话的线下短期记忆事件，不影响线上聊天与已保存的长期记忆。清空后无法恢复。是否继续？"
-                    icon={AlertCircle}
-                    variant="danger"
-                    confirmLabel="清空"
-                    cancelLabel="取消"
-                    onConfirm={handleClearOfflineHistory}
-                    onCancel={() => setShowConfirmClearOffline(false)}
                 />
             )}
 

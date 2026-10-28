@@ -47,7 +47,7 @@ import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
 import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
-import { appendChatOfflineTurn, clearChatOfflineTurns, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { extractGroupBubbles, realizeOfflineTurnsToGroup, type ExtractedBubble } from "@/lib/group-offline-realize";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
@@ -4644,16 +4644,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setActiveOfflineTarget(null);
         const willEnter = !offlineMode;
         setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
+        // 进/出线下都只做一件事：从存储读回已有的线下记录（永远保留，绝不自动清空）。
+        // 用户明确要求线下记录必须一直留着，所以无论进入还是退出都不抹任何数据。
+        setOfflineTurns(loadChatOfflineTurns(session.id));
         if (willEnter) {
-            // 进入线下 = 全新场景：清掉上一次的记录与在场，回到只跟主角色的单人线下。
-            // 同时落盘，否则重开角色又会从存储读回旧记录。
-            setOfflineTurns([]);
+            // 进入线下时的温和提示（非记录，可清）：上一次生成留下的「建议开启白名单」提示不再复用
             setOfflineSuggests([]);
-            applyOfflineParticipants([session.contactId]);
-            clearChatOfflineTurns(session.id);
-        } else {
-            // 退出线下：保留存储里的历史，下次手动「清空线下聊天记录」才抹掉
-            setOfflineTurns(loadChatOfflineTurns(session.id));
         }
         setOfflineMode(prev => {
             const next = !prev;
@@ -7029,18 +7025,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             jumpToStoredMessage(messageId);
                         }}
                         onToolHistoryCleared={syncMessagesFromStorage}
-                        offlineHistoryBusy={isOfflineGenerating}
-                        onOfflineHistoryCleared={() => {
-                            setOfflineTurns([]);
-                            setOfflineVisibleCount(OFFLINE_INITIAL_LOAD);
-                            setPendingOfflineUserText("");
-                            offlineGenerationInputRef.current = "";
-                            setActiveOfflineTarget(null);
-                            setContextMenuAnchor(null);
-                            setEditingOfflineTarget(null);
-                            setEditingOfflineContent("");
-                            showChatToast("已清空线下聊天记录");
-                        }}
                         onDeleteFriend={() => onBack()}
                     />
                 </div>,
