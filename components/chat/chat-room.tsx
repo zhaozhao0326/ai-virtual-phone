@@ -1218,6 +1218,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const removeOfflineParticipantLocal = useCallback((characterId: string) => {
         applyOfflineParticipants(offlineParticipants.filter((id) => id !== characterId));
     }, [offlineParticipants, applyOfflineParticipants]);
+    // 一键回到只跟主角色的单人线下（移除所有非主角色）
+    const resetOfflineToMainLocal = useCallback(() => {
+        applyOfflineParticipants([session.contactId]);
+    }, [session.contactId, applyOfflineParticipants]);
     // 把在场角色 id 解析成角色对象，供状态栏 chips 显示
     const offlineParticipantChars = useMemo(() => {
         const chars = loadCharacters();
@@ -6046,6 +6050,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         const isMain = c.id === session.contactId;
                                         return (
                                             <span key={c.id} className="chat-offline-participant-chip">
+                                                {c.avatar ? (
+                                                    <img className="chat-offline-participant-avatar" src={c.avatar} alt={c.name} />
+                                                ) : (
+                                                    <span className="chat-offline-participant-avatar chat-offline-participant-avatar-fallback">{c.name.slice(0, 1)}</span>
+                                                )}
                                                 <span className="chat-offline-participant-name">{c.name}{isMain ? "（主）" : ""}</span>
                                                 {!isMain && (
                                                     <button
@@ -6066,6 +6075,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         className="ui-btn chat-offline-invite-trigger"
                                         onClick={() => setShowOfflineInviteMenu((v) => !v)}
                                     >+ 邀请角色</button>
+                                    {offlineParticipantChars.length > 1 && (
+                                        <button
+                                            type="button"
+                                            className="ui-btn chat-offline-reset-trigger"
+                                            title="移除所有其他角色，回到只跟主角色的单人线下"
+                                            onClick={resetOfflineToMainLocal}
+                                        >仅留主角色</button>
+                                    )}
                                     {showOfflineInviteMenu && (
                                         <div className="chat-offline-invite-menu">
                                             {offlineInviteCandidates.length === 0 ? (
@@ -6083,7 +6100,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         </div>
                                     )}
                                 </div>
-                                <div className="chat-offline-participants-hint">进入线下后可邀请其他角色一起演；主角色始终在场，点 × 让他人退场</div>
+                                <div className="chat-offline-participants-hint">进入线下后可邀请其他角色一起演；主角色始终在场，点 × 让他人退场，或一键「仅留主角色」回到单人</div>
                             </div>
                         )}
                         {offlineTurns.length === 0 && !pendingOfflineUserText ? (

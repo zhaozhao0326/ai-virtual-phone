@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.97";
+export const APP_VERSION = "1.7.98";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.98",
+    date: "2026-10-28",
+    title: "优化：线下在场条——一键回单人 + 角色头像",
+    highlights: [
+      "线下在场条新增「仅留主角色」按钮：多人同框时一键移除所有其他角色，回到只跟主角色的单人线下（原逐个 × 退场仍保留）",
+      "在场角色 chips 显示头像（无头像用首字兜底），谁在场一眼看清",
+      "说明文案补全：可邀请、主角色始终在场、点 × 退场，或一键「仅留主角色」回单人",
+    ],
+  },
   {
     version: "1.7.97",
     date: "2026-10-28",

@@ -843,6 +843,28 @@
 .chat-offline-participant-name {
   color: var(--c-text);
 }
+.chat-offline-participant-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.chat-offline-participant-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--c-accent, var(--c-primary)) 32%, transparent);
+  color: var(--c-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.chat-offline-reset-trigger {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: calc(12px*var(--app-text-scale,1));
+  margin-left: 6px;
+}
 .chat-offline-participant-remove {
   display: inline-flex;
   align-items: center;
