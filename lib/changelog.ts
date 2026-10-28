@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.103";
+export const APP_VERSION = "1.7.104";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.104",
+    date: "2026-10-28",
+    title: "线下记忆桥补强：自动加入（[join:]）的角色这轮也写入记忆",
+    highlights: [
+      "修复：1.7.103 的记忆桥读的是「加人前的旧在场列表」闭包值，导致 AI 在同一轮用 [join:角色名] 自动拉进场景的角色——虽出现在剧情里，却漏写记忆（正是用户说的「出现了但没真被邀请/没记忆」）",
+      "现在解析 [join:]/[leave:] 后，用解析后的 finalParticipants（含本轮自动加入的人）去写记忆桥，手动邀请与自动加入两条路径都覆盖（主路径 + 重试路径均改）",
+      "被邀请/被自动加入的角色，其线下共同时光现在稳定沉淀进各自长期记忆，之后任意对话可召回",
+    ],
+  },
   {
     version: "1.7.103",
     date: "2026-10-28",

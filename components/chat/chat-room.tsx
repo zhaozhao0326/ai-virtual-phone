@@ -4706,10 +4706,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     : await generateOfflineChatCompletion(effectiveSession, history, { signal: offlineRun.controller.signal });
                 if (!isCurrentOfflineRun()) return;
                 // 自动加入：模型在同轮里顺带输出 [join:名称]/[leave:名称]，解析后更新在场集合
+                let finalParticipants = offlineParticipants;
                 if (!session.isGroup && (result.pendingJoins?.length || result.pendingLeaves?.length)) {
-                    applyOfflineParticipants(
-                        resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
-                    );
+                    finalParticipants = resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId);
+                    applyOfflineParticipants(finalParticipants);
                 }
                 // 温和建议：模型认为应出现但未开白名单的角色（[suggest:名称]），仅提示用户
                 if (!session.isGroup && result.pendingSuggests?.length) {
@@ -4733,10 +4733,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 setOfflineTurns(prev => [...prev, saved]);
                 // 记忆桥：多人线下（有被邀请角色）时，把这次对话沉淀进每个在场角色的长期记忆，
                 // 让被邀请的角色之后也能「想起」这段线下时光（不额外调 LLM，仅本地写入）。
-                if (!session.isGroup && offlineParticipants.length > 1) {
+                // 用 finalParticipants（含本轮自动加入的人），避免漏掉刚被 [join:] 拉进场景的角色。
+                if (!session.isGroup && finalParticipants.length > 1) {
                     void recordOfflineSceneToMemory({
                         sessionId: session.id,
-                        participantIds: offlineParticipants,
+                        participantIds: finalParticipants,
                         mainId: session.contactId,
                         userText: currentText,
                         assistantText: assistantContent,
@@ -4848,10 +4849,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 : await generateOfflineChatCompletion(effectiveSession, history, { signal: offlineRun.controller.signal });
             if (!isCurrentOfflineRun()) return;
             // 自动加入：模型在同轮里顺带输出 [join:名称]/[leave:名称]，解析后更新在场集合
+            let finalParticipants = offlineParticipants;
             if (!session.isGroup && (result.pendingJoins?.length || result.pendingLeaves?.length)) {
-                applyOfflineParticipants(
-                    resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
-                );
+                finalParticipants = resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId);
+                applyOfflineParticipants(finalParticipants);
             }
             // 温和建议：模型认为应出现但未开白名单的角色（[suggest:名称]），仅提示用户
             if (!session.isGroup && result.pendingSuggests?.length) {
@@ -4874,10 +4875,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             });
             setOfflineTurns([...baseTurns, saved]);
             // 记忆桥：多人线下（有被邀请角色）时，把这次对话沉淀进每个在场角色的长期记忆
-            if (!session.isGroup && offlineParticipants.length > 1) {
+            // 用 finalParticipants（含本轮自动加入的人），避免漏掉刚被 [join:] 拉进场景的角色。
+            if (!session.isGroup && finalParticipants.length > 1) {
                 void recordOfflineSceneToMemory({
                     sessionId: session.id,
-                    participantIds: offlineParticipants,
+                    participantIds: finalParticipants,
                     mainId: session.contactId,
                     userText: retryInput,
                     assistantText: assistantContent,
