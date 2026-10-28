@@ -34,7 +34,7 @@ import {
 } from "@/lib/group-admin";
 import { clearChatOfflineTurns } from "@/lib/chat-offline-storage";
 import { triggerDeleteFriendReaction } from "@/lib/friend-request-engine";
-import { loadCharacters } from "@/lib/character-storage";
+import { loadCharacters, setCharacterAutoJoinOffline } from "@/lib/character-storage";
 import {
     loadGroupWarmupEnabled,
     saveGroupWarmupEnabled,
@@ -312,6 +312,10 @@ export function ChatSettingsPanel({
         if (session.isGroup) return true;
         return getFollowUpCharOverride(session.contactId) ?? loadFollowUpConfig().enabled;
     });
+    // 每角色独立开关：可被自动拉入线下（自动加入白名单，默认关；需全局「线下自动加入」开启才生效）
+    const [allowAutoJoinOffline, setAllowAutoJoinOffline] = useState<boolean>(() =>
+        (loadCharacters().find((c) => c.id === session.contactId)?.allowAutoJoinOffline === true)
+    );
     // ── 群冷场自动暖场（频率滑块 + 选人白名单，铁律：默认全关） ──
     const [gwRule, setGwRule] = useState<GroupWarmupRule | undefined>(() => (session.isGroup ? getGroupWarmupRule(session.id) : undefined));
     const [gwEnabled, setGwEnabled] = useState(() => loadGroupWarmupEnabled());
@@ -1211,6 +1215,24 @@ export function ChatSettingsPanel({
                                         setFollowUpCharOn(c);
                                         if (c) enableFollowUpForCharacter(session.contactId);
                                         else disableFollowUpForCharacter(session.contactId);
+                                    }}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    {!session.isGroup && (
+                        <div className="menu-item">
+                            <ChatInfoIcon icon={Users} color={BINDING_ACCENTS.preset} />
+                            <div className="menu-label-group">
+                                <span className="menu-label">可被自动拉入线下</span>
+                                <span className="menu-desc">开启且全局「线下自动加入」开启时，TA 可能在剧情需要时自动进场；只影响本角色，不动其他角色</span>
+                            </div>
+                            <div className="menu-right">
+                                <Toggle
+                                    checked={allowAutoJoinOffline}
+                                    onChange={c => {
+                                        setAllowAutoJoinOffline(c);
+                                        setCharacterAutoJoinOffline(session.contactId, c);
                                     }}
                                 />
                             </div>

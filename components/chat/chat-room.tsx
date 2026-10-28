@@ -630,6 +630,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     customPlusActions: RegisteredCustomAppChatPlusAction[];
     onClearQuote: () => void;
     onToggleOfflineMode: () => void;
+    offlineMode: boolean;
     onClosePanels: () => void;
     onToggleEmojiPanel: () => void;
     onToggleStickerPanel: () => void;
@@ -669,6 +670,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     customPlusActions,
     onClearQuote,
     onToggleOfflineMode,
+    offlineMode,
     onClosePanels,
     onToggleEmojiPanel,
     onToggleStickerPanel,
@@ -846,14 +848,15 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
             <div className="chat-input-actions">
                 <button
                     onClick={onToggleOfflineMode}
-                    className="ui-bare-btn text-[var(--c-text)] chat-offline-toggle"
+                    className={`ui-bare-btn text-[var(--c-text)] chat-offline-toggle${offlineMode ? " chat-offline-active" : ""}`}
                     aria-label="线下模式"
-                    title="线下模式"
+                    title={offlineMode ? "线下模式（已开启，点此退出）" : "线下模式（点此进入；进入后可邀请其他角色同框演绎）"}
                 >
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0Z" />
                         <circle cx="12" cy="10" r="3" />
                     </svg>
+                    <span className="chat-offline-toggle-label">线下</span>
                 </button>
                 <button onClick={onToggleEmojiPanel} disabled={inputLocked} className="ui-bare-btn text-[var(--c-text)]" style={inputLocked ? { opacity: 0.35 } : undefined}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
@@ -6080,6 +6083,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         </div>
                                     )}
                                 </div>
+                                <div className="chat-offline-participants-hint">进入线下后可邀请其他角色一起演；主角色始终在场，点 × 让他人退场</div>
                             </div>
                         )}
                         {offlineTurns.length === 0 && !pendingOfflineUserText ? (
@@ -6817,6 +6821,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 customPlusActions={customPlusActions}
                 onClearQuote={() => setQuotingMessage(null)}
                 onToggleOfflineMode={toggleOfflineMode}
+                offlineMode={offlineMode}
                 onClosePanels={() => { setShowEmojiPanel(false); setShowStickerPanel(false); setShowPlusMenu(false); }}
 	                onToggleEmojiPanel={() => { setShowEmojiPanel(!showEmojiPanel); setShowStickerPanel(false); setShowPlusMenu(false); }}
 	                onToggleStickerPanel={() => { setShowStickerPanel(!showStickerPanel); setShowEmojiPanel(false); setShowPlusMenu(false); }}

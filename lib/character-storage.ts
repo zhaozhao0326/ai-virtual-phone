@@ -84,6 +84,17 @@ export function saveCharacters(chars: Character[]): void {
   _charsCache = null;
 }
 
+/** 设置某角色「可被自动拉入线下」白名单开关（写回角色卡，不影响其他字段）。 */
+export function setCharacterAutoJoinOffline(characterId: string, enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  const chars = loadCharacters();
+  const idx = chars.findIndex((c) => c.id === characterId);
+  if (idx < 0) return;
+  const next = [...chars];
+  next[idx] = { ...next[idx], allowAutoJoinOffline: enabled ? true : undefined };
+  saveCharacters(next);
+}
+
 /**
  * 头像意图接受：把一张图设为某角色头像。mediaUrl 可能是 data URL，也可能是媒体库引用/资源 id，
  * 非 data: 时尝试从 IndexedDB 解析为 data URL，保证头像可持久化。

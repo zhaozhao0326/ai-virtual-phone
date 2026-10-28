@@ -740,6 +740,15 @@
 
 .chat-offline-toggle {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.chat-offline-toggle-label {
+  font-size: calc(12px*var(--app-text-scale,1));
+  line-height: 1;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 .chat-offline-toggle.chat-offline-active {
@@ -806,6 +815,13 @@
   color: var(--c-icon);
   opacity: 0.7;
   flex: 0 0 auto;
+}
+.chat-offline-participants-hint {
+  flex-basis: 100%;
+  font-size: calc(11px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.6;
+  line-height: 1.4;
 }
 .chat-offline-participants-list {
   display: flex;
