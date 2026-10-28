@@ -10,6 +10,7 @@ import type { Character } from "./character-types";
 import {
     ChatSession,
     ChatMessage,
+    getOfflineParticipants,
     loadFollowUpSchedule,
     loadChatAppSettings,
     getMaxToolRounds,
@@ -2085,6 +2086,55 @@ export async function generateOfflineChatCompletion(
         },
     );
     const summaryTag = preset?.story_summary_tag?.trim() || "summary";
+
+    // 线下「在场角色」>1 时，把其他在场角色的 persona/外貌追加进 system，
+    // 让单人线下生成也能正确演绎多人同框（不借用群生成，零影响线上聊天）。
+    // 仅单人会话走这里：群线下已由群引擎原生处理多角色，避免重复注入。
+    const offlineParticipants = getOfflineParticipants(session);
+    if (!session.isGroup && offlineParticipants.length > 1) {
+        const allChars = loadCharacters();
+        const extraBlocks = offlineParticipants
+            .filter(id => id !== session.contactId)
+            .map(id => {
+                const c = allChars.find(ch => ch.id === id);
+                if (!c) return null;
+                const lines = [`【当前线下同在场角色：${c.name}】`];
+                if (c.appearance?.trim()) lines.push(`外貌：${c.appearance.trim()}`);
+                if (c.persona?.trim()) lines.push(`人设：${c.persona.trim()}`);
+                return lines.join("\n");
+            })
+            .filter(Boolean) as string[];
+        if (extraBlocks.length) {
+            const extraText = `\n\n${extraBlocks.join("\n\n")}\n\n【注意】上面列出的角色此刻正与「${character.name}」和用户一同处于线下场景中，请按各自人设自然互动、各自发言，不要混淆身份。`;
+            for (const m of llmMessages) {
+                if (m.role === "system" && typeof m.content === "string") {
+                    m.content += extraText;
+                    break;
+                }
+            }
+        }
+    }
+
+    // 自动加入判定（仅单人会话、且全局开关开启时）：把允许被拉入的候选角色列给模型，
+    // 让其在剧情合理时用 [join:角色名]/[leave:角色名] 标记。群线下不触发（群成员已由群引擎管理）。
+    if (!session.isGroup && loadChatAppSettings().offlineAutoJoinEnabled) {
+        const candidates = loadCharacters().filter(
+            c => c.id !== session.contactId && c.allowAutoJoinOffline && !offlineParticipants.includes(c.id),
+        );
+        if (candidates.length) {
+            const candText = candidates
+                .map(c => `- ${c.name}${c.appearance?.trim() ? `（外貌：${c.appearance.trim()}）` : ""}`)
+                .join("\n");
+            const autoJoinHint = `\n\n【自动加入线下（可选）】以下角色允许临时进入这个线下场景，仅当剧情自然需要他们出现时才让他们加入，不要硬塞、不要每轮都拉人：\n${candText}\n若此刻应让其中某角色加入，在你回复正文之后用单独一行写 [join:角色名]；若当前已在场的某非主角色应离开，写 [leave:角色名]。`;
+            for (const m of llmMessages) {
+                if (m.role === "system" && typeof m.content === "string") {
+                    m.content += autoJoinHint;
+                    break;
+                }
+            }
+        }
+    }
+
     let reasoning = "";
     const rawOutput = await sendLLMRequest(config, preset, llmMessages, regexes, {
         characterName: character.name,

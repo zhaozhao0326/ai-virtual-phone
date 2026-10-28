@@ -790,6 +790,108 @@
   line-height: 1.4;
 }
 
+/* 线下「在场角色」条：手动邀请 + 离开 */
+.chat-offline-participants-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-card) 60%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 34%, transparent);
+}
+.chat-offline-participants-label {
+  font-size: calc(11px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
+.chat-offline-participants-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.chat-offline-participant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-accent, var(--c-primary)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-accent, var(--c-primary)) 26%, transparent);
+  font-size: calc(12px*var(--app-text-scale,1));
+  line-height: 1.3;
+}
+.chat-offline-participant-name {
+  color: var(--c-text);
+}
+.chat-offline-participant-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: color-mix(in srgb, var(--c-text) 16%, transparent);
+  color: var(--c-text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.chat-offline-participant-remove:hover {
+  background: color-mix(in srgb, var(--c-danger, #b4233b) 70%, transparent);
+  color: #fff;
+}
+.chat-offline-invite {
+  position: relative;
+  flex: 0 0 auto;
+}
+.chat-offline-invite-trigger {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: calc(12px*var(--app-text-scale,1));
+}
+.chat-offline-invite-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 168px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--c-card);
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 50%, transparent);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chat-offline-invite-item {
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--c-text);
+  font-size: calc(13px*var(--app-text-scale,1));
+  cursor: pointer;
+}
+.chat-offline-invite-item:hover {
+  background: color-mix(in srgb, var(--c-accent, var(--c-primary)) 16%, transparent);
+}
+.chat-offline-invite-empty {
+  padding: 8px 10px;
+  font-size: calc(12px*var(--app-text-scale,1));
+  color: var(--c-icon);
+  opacity: 0.7;
+}
+
 /* 落成弹窗：气泡编辑器 */
 .realize-bubble-list {
   display: flex;

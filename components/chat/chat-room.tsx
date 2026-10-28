@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, resolveOfflineParticipantChanges } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
 import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, MEETING_INVITE_TAG_RE, parseMeetingInvite, type ParsedMeetingInvite, type ParsedMessagePart } from "@/lib/rich-message-parser";
@@ -1195,6 +1195,31 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [isGenerating, setIsGenerating] = useState(false);
     const [lifelikeWaiting, setLifelikeWaiting] = useState(false);
     const [offlineMode, setOfflineMode] = useState(false);
+    // 线下「在场角色」本地镜像：props.session 不可变，这里维护在场集合，写回 storage 同步
+    const [offlineParticipants, setOfflineParticipants] = useState<string[]>(() => getOfflineParticipants(session));
+    const [showOfflineInviteMenu, setShowOfflineInviteMenu] = useState(false);
+    const offlineInviteCandidates = useMemo(() => {
+        const chars = loadCharacters();
+        return chars.filter((c) => c.id !== session.contactId && !offlineParticipants.includes(c.id));
+    }, [offlineParticipants, session.contactId]);
+    const applyOfflineParticipants = useCallback((ids: string[]) => {
+        updateOfflineParticipants(session.id, ids);
+        setOfflineParticipants([...ids]);
+    }, [session.id]);
+    const inviteOfflineParticipant = useCallback((characterId: string) => {
+        const base = offlineParticipants.includes(session.contactId) ? [...offlineParticipants] : [session.contactId, ...offlineParticipants];
+        if (!base.includes(characterId)) base.push(characterId);
+        applyOfflineParticipants(base);
+        setShowOfflineInviteMenu(false);
+    }, [offlineParticipants, session.contactId, applyOfflineParticipants]);
+    const removeOfflineParticipantLocal = useCallback((characterId: string) => {
+        applyOfflineParticipants(offlineParticipants.filter((id) => id !== characterId));
+    }, [offlineParticipants, applyOfflineParticipants]);
+    // 把在场角色 id 解析成角色对象，供状态栏 chips 显示
+    const offlineParticipantChars = useMemo(() => {
+        const chars = loadCharacters();
+        return offlineParticipants.map((id) => chars.find((c) => c.id === id)).filter(Boolean) as Character[];
+    }, [offlineParticipants]);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
     // 线下状态栏：同一时刻只展开一条，且只在展开时才挂载沙盒 iframe（避免长历史里一堆 iframe 空跑）
@@ -4579,10 +4604,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         void (async () => {
             try {
                 const history = buildOfflinePromptHistory(offlineTurns, currentText);
+                // props.session 不可变，构造带当前「在场角色」镜像的增强 session 传给生成函数
+                const effectiveSession: ChatSession = { ...session, offlineParticipants };
                 const result = session.isGroup
                     ? await generateGroupOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal })
-                    : await generateOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal });
+                    : await generateOfflineChatCompletion(effectiveSession, history, { signal: offlineRun.controller.signal });
                 if (!isCurrentOfflineRun()) return;
+                // 自动加入：模型在同轮里顺带输出 [join:名称]/[leave:名称]，解析后更新在场集合
+                if (!session.isGroup && (result.pendingJoins?.length || result.pendingLeaves?.length)) {
+                    applyOfflineParticipants(
+                        resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
+                    );
+                }
                 const assistantContent = result.content.trim() || result.rawText.trim();
                 if (!assistantContent) throw new Error("AI 没有返回线下正文");
                 if (!result.summary.trim()) showChatToast(`未提取到 <${result.summaryTag}> 摘要`);
@@ -4696,10 +4729,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         try {
             const history = buildOfflinePromptHistory(baseTurns, retryInput);
+            // props.session 不可变，构造带当前「在场角色」镜像的增强 session 传给生成函数
+            const effectiveSession: ChatSession = { ...session, offlineParticipants };
             const result = session.isGroup
                 ? await generateGroupOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal })
-                : await generateOfflineChatCompletion(session, history, { signal: offlineRun.controller.signal });
+                : await generateOfflineChatCompletion(effectiveSession, history, { signal: offlineRun.controller.signal });
             if (!isCurrentOfflineRun()) return;
+            // 自动加入：模型在同轮里顺带输出 [join:名称]/[leave:名称]，解析后更新在场集合
+            if (!session.isGroup && (result.pendingJoins?.length || result.pendingLeaves?.length)) {
+                applyOfflineParticipants(
+                    resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
+                );
+            }
             const assistantContent = result.content.trim() || result.rawText.trim();
             if (!assistantContent) throw new Error("AI 没有返回线下正文");
             if (!result.summary.trim()) showChatToast(`未提取到 <${result.summaryTag}> 摘要`);
@@ -5976,6 +6017,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     if (showEmojiPanel) setShowEmojiPanel(false);
                     if (showStickerPanel) setShowStickerPanel(false);
                     if (showPlusMenu) setShowPlusMenu(false);
+                    if (showOfflineInviteMenu) setShowOfflineInviteMenu(false);
                 }}
             >
                 {offlineMode && (
@@ -5991,6 +6033,53 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     {realizeLoading ? "抽取中…" : "落成真实群"}
                                 </button>
                                 <span className="chat-offline-realize-hint">把剧本里角色说的话，落成进这个真实群聊</span>
+                            </div>
+                        )}
+                        {!session.isGroup && (
+                            <div className="chat-offline-participants-bar">
+                                <div className="chat-offline-participants-label">线下在场</div>
+                                <div className="chat-offline-participants-list">
+                                    {offlineParticipantChars.map((c) => {
+                                        const isMain = c.id === session.contactId;
+                                        return (
+                                            <span key={c.id} className="chat-offline-participant-chip">
+                                                <span className="chat-offline-participant-name">{c.name}{isMain ? "（主）" : ""}</span>
+                                                {!isMain && (
+                                                    <button
+                                                        type="button"
+                                                        className="chat-offline-participant-remove"
+                                                        title="让 TA 离开线下"
+                                                        aria-label={`让 ${c.name} 离开线下`}
+                                                        onClick={() => removeOfflineParticipantLocal(c.id)}
+                                                    >×</button>
+                                                )}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
+                                <div className="chat-offline-invite">
+                                    <button
+                                        type="button"
+                                        className="ui-btn chat-offline-invite-trigger"
+                                        onClick={() => setShowOfflineInviteMenu((v) => !v)}
+                                    >+ 邀请角色</button>
+                                    {showOfflineInviteMenu && (
+                                        <div className="chat-offline-invite-menu">
+                                            {offlineInviteCandidates.length === 0 ? (
+                                                <div className="chat-offline-invite-empty">没有可邀请的角色</div>
+                                            ) : (
+                                                offlineInviteCandidates.map((c) => (
+                                                    <button
+                                                        key={c.id}
+                                                        type="button"
+                                                        className="chat-offline-invite-item"
+                                                        onClick={() => inviteOfflineParticipant(c.id)}
+                                                    >{c.name}</button>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         )}
                         {offlineTurns.length === 0 && !pendingOfflineUserText ? (

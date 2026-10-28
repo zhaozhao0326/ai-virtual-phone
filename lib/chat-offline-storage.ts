@@ -35,6 +35,10 @@ export type ParsedOfflineResponse = {
     summaryTag: string;
     /** [状态栏]...[/状态栏] 块原文，已从 content 里剥离；未启用时为空串 */
     statusRaw: string;
+    /** 自动加入判定：模型在回复里用 [join:角色名] 标记应加入在场集合的角色名 */
+    pendingJoins?: string[];
+    /** 自动加入判定：模型用 [leave:角色名] 标记应离场的角色名 */
+    pendingLeaves?: string[];
 };
 
 function storageKey(sessionId: string): string {
@@ -247,11 +251,23 @@ export function parseOfflineResponse(rawText: string, summaryTag: string): Parse
     const cleanedContent = statusRaw
         ? content.replace(/\[状态栏\][\s\S]*?\[\/状态栏\]/g, "")
         : content;
+    // 自动加入判定标记：[join:角色名] / [leave:角色名] 可能写在正文内或正文外，
+    // 无论哪种都要从展示正文里剥掉，只留给调用方做在场集合增减。
+    const contentWithoutJoinMarks = cleanedContent
+        .replace(/^\s*\[join:\s*[^\]\n]+?\s*\]\s*$/gm, "")
+        .replace(/^\s*\[leave:\s*[^\]\n]+?\s*\]\s*$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+    // 自动加入判定标记：[join:角色名] / [leave:角色名]（不影响正文/摘要，仅给调用方做在场集合增减）
+    const pendingJoins = [...trimmed.matchAll(/\[join:\s*([^\]\n]+?)\s*\]/g)].map(m => m[1].trim()).filter(Boolean);
+    const pendingLeaves = [...trimmed.matchAll(/\[leave:\s*([^\]\n]+?)\s*\]/g)].map(m => m[1].trim()).filter(Boolean);
     return {
         rawText: trimmed,
-        content: cleanedContent.trim(),
+        content: contentWithoutJoinMarks,
         summary: summary.trim(),
         summaryTag: effectiveSummaryTag,
         statusRaw,
+        pendingJoins: pendingJoins.length ? pendingJoins : undefined,
+        pendingLeaves: pendingLeaves.length ? pendingLeaves : undefined,
     };
 }

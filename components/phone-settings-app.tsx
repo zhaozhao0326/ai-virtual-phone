@@ -118,6 +118,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [floatingDockEnabled, setFloatingDockEnabled] = useState(false);
     const [floatingDockSheetOpen, setFloatingDockSheetOpen] = useState(false);
     const [keepAlive, setKeepAlive] = useState(false);
+    const [offlineAutoJoinEnabled, setOfflineAutoJoinEnabled] = useState(false);
     // 角色电脑：施工中弹窗（返回 / 仍要看看）
     const pageBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -248,6 +249,12 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         onNotice(next ? "已开启悬浮球贴边收拢" : "已关闭悬浮球贴边收拢");
     }, [onNotice]);
 
+    const handleOfflineAutoJoinChange = useCallback((next: boolean) => {
+        setOfflineAutoJoinEnabled(next);
+        saveChatAppSettings({ ...loadChatAppSettings(), offlineAutoJoinEnabled: next });
+        onNotice(next ? "已开启线下自动加入" : "已关闭线下自动加入");
+    }, [onNotice]);
+
     const handleKeepAliveChange = useCallback((next: boolean) => {
         setKeepAlive(next);
         saveKeepAlive(next);
@@ -359,6 +366,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         setPromptViewerEnabled(settings.promptViewerEnabled === true);
         setQuickActionEnabled(settings.quickActionEnabled === true);
         setFloatingDockEnabled(settings.floatingDockEnabled === true);
+        setOfflineAutoJoinEnabled(settings.offlineAutoJoinEnabled === true);
         setKeepAlive(loadKeepAlive());
     }, []);
 
@@ -454,6 +462,16 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                     <div className="card-featured-desc">切到后台时尽量保持网页运行，主动消息与轮询不中断</div>
                                 </div>
                                 <Toggle checked={keepAlive} onChange={handleKeepAliveChange} className="settings-toggle-control" />
+                            </div>
+                            <div className="app-card card-featured settings-toggle-card">
+                                <span className="card-icon card-icon-glass" aria-hidden="true">
+                                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+                                </span>
+                                <div className="card-featured-body">
+                                    <div className="card-featured-label">线下自动加入</div>
+                                    <div className="card-featured-desc">剧情需要时，模型可自动把「允许被拉入」的角色带进单人线下场景（仍需角色白名单）</div>
+                                </div>
+                                <Toggle checked={offlineAutoJoinEnabled} onChange={handleOfflineAutoJoinChange} className="settings-toggle-control" />
                             </div>
                         </div>
                         {isAdmin ? (

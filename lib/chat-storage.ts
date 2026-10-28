@@ -63,6 +63,9 @@ export type ChatSession = {
     isGroup?: boolean;
     groupName?: string;
     participantIds?: string[]; // characterId array
+    /** 线下场景「在场角色」集合（characterId 数组）：单人线下默认仅主角色，多人线下临时加入其他角色。
+     *  不填则回退到主角色（群则回退到 participantIds）。用于「单人↔多人线下」灵活转换。 */
+    offlineParticipants?: string[];
     groupVideoBackgrounds?: Record<string, string>; // characterId|"self" → image ID
     // Group admin fields ("self" = the user)
     groupOwnerId?: string; // "self" | characterId; legacy groups default to "self", spectator groups to first member
@@ -302,6 +305,8 @@ export type ChatAppSettings = {
     callVibrationEnabled?: boolean; // 语音/视频来电等待接听时循环振动（默认开；iOS 网页不支持振动则无效果）
     maxToolRounds?: number; // 单条消息的工具循环轮数上限（默认 5；每轮=一次模型请求，轮内调用条数不限）
     floatingDockEnabled?: boolean; // 悬浮球贴边半隐藏收拢模式（默认关）
+    /** 允许自动加入线下：开启后，单人/多人线下生成时模型可在剧情合理时把白名单角色临时拉入/请离（默认关） */
+    offlineAutoJoinEnabled?: boolean;
 };
 
 /** 单条消息工具循环轮数上限（默认 5，夹在 1–20 之间） */
@@ -1082,6 +1087,82 @@ export function saveChatSessions(sessions: ChatSession[]) {
     }
     if (normalized.changed || redirectedMessages > 0 || refreshed.changed) dbReplaceSessions(refreshed.items);
     else dbPutSessions(refreshed.items);
+}
+
+/** 线下场景「在场角色」集合：默认回退到主角色（群则回退到 participantIds）。 */
+export function getOfflineParticipants(session: ChatSession): string[] {
+    if (session.isGroup) {
+        return session.participantIds && session.participantIds.length ? session.participantIds : [];
+    }
+    if (Array.isArray(session.offlineParticipants) && session.offlineParticipants.length) {
+        return session.offlineParticipants;
+    }
+    return session.contactId ? [session.contactId] : [];
+}
+
+/** 直接覆盖线下在场集合（去重、保序）。 */
+export function updateOfflineParticipants(sessionId: string, ids: string[]): void {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx < 0) return;
+    sessions[idx] = { ...sessions[idx], offlineParticipants: [...new Set(ids)] };
+    saveChatSessions(sessions);
+}
+
+/** 把某角色加入线下在场集合（单人会话首次加入时会自动带上主角色）。 */
+export function addOfflineParticipant(sessionId: string, characterId: string): void {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx < 0) return;
+    const base = sessions[idx].offlineParticipants && sessions[idx].offlineParticipants.length
+        ? [...sessions[idx].offlineParticipants!]
+        : (sessions[idx].contactId ? [sessions[idx].contactId] : []);
+    if (!base.includes(characterId)) base.push(characterId);
+    sessions[idx] = { ...sessions[idx], offlineParticipants: base };
+    saveChatSessions(sessions);
+}
+
+/** 把某角色移出线下在场集合（不会移除主角色 contactId）。 */
+export function removeOfflineParticipant(sessionId: string, characterId: string): void {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx < 0) return;
+    const base = (sessions[idx].offlineParticipants || []).filter(id => id !== characterId);
+    sessions[idx] = { ...sessions[idx], offlineParticipants: base };
+    saveChatSessions(sessions);
+}
+
+/**
+ * 根据模型输出的 [join:名称]/[leave:名称] 标记，计算新的线下在场集合。
+ * 入参 joinNames/leaveNames 是角色「名称」（模型按提示写的是名字），这里解析成 characterId。
+ * 主角色 contactId 永远保留，不会被 leave 移除。找不到匹配的角色会被静默忽略。
+ */
+export function resolveOfflineParticipantChanges(
+    currentIds: string[],
+    joinNames: string[] | undefined,
+    leaveNames: string[] | undefined,
+    mainCharacterId: string | undefined
+): string[] {
+    const chars = loadCharacters();
+    const resolve = (name: string): string | null => {
+        const t = name.trim();
+        if (!t) return null;
+        const byName = chars.find(c => c.name === t || c.name.toLowerCase() === t.toLowerCase());
+        if (byName) return byName.id;
+        const byId = chars.find(c => c.id === t);
+        return byId ? byId.id : null;
+    };
+    const set = new Set(currentIds);
+    if (mainCharacterId) set.add(mainCharacterId);
+    for (const n of joinNames ?? []) {
+        const id = resolve(n);
+        if (id) set.add(id);
+    }
+    for (const n of leaveNames ?? []) {
+        const id = resolve(n);
+        if (id && id !== mainCharacterId) set.delete(id);
+    }
+    return [...set];
 }
 
 /** 累加某个会话的未读计数（角色主动私聊等场景使用），并写回存储。 */

@@ -350,7 +350,8 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
               if (!existing) return;
               const updated: Character = { ...existing, updatedAt: new Date().toISOString() };
               if (field === "avatarIntentEnabled") updated.avatarIntentEnabled = val ? true : undefined;
-              else updated.meetingInviteEnabled = val ? true : undefined;
+              else if (field === "meetingInviteEnabled") updated.meetingInviteEnabled = val ? true : undefined;
+              else updated.allowAutoJoinOffline = val ? true : undefined;
               updateChars(characters.map((c) => (c.id === existing.id ? updated : c)));
             }}
           />
@@ -1859,7 +1860,7 @@ function CharArchiveView({
   onExportJson: () => void;
   onExportPng: () => Promise<void>;
   dummy?: boolean;
-  onQuickToggleFlag?: (field: "avatarIntentEnabled" | "meetingInviteEnabled", value: boolean) => void;
+  onQuickToggleFlag?: (field: "avatarIntentEnabled" | "meetingInviteEnabled" | "allowAutoJoinOffline", value: boolean) => void;
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState<"back" | "cancel" | null>(null);
@@ -1900,6 +1901,8 @@ function CharArchiveView({
   const [avatarIntentEnabled, setAvatarIntentEnabled] = useState(char.avatarIntentEnabled === true);
   // 见面邀请卡（每角色开关，默认关）
   const [meetingInviteEnabled, setMeetingInviteEnabled] = useState(char.meetingInviteEnabled === true);
+  // 线下自动加入白名单（每角色开关，默认关）：开启后，全局「线下自动加入」开启时，该角色可被模型拉入单人线下场景
+  const [allowAutoJoinOffline, setAllowAutoJoinOffline] = useState(char.allowAutoJoinOffline === true);
   const [autoMemEntries, setAutoMemEntries] = useState<AutoMemoryEntry[]>([]);
   const [autoMemEditing, setAutoMemEditing] = useState(false);
   const [autoMemDraft, setAutoMemDraft] = useState<{ id?: string; category: AutoMemoryCategory; priority: AutoMemoryPriority; content: string }>({
@@ -1972,6 +1975,7 @@ function CharArchiveView({
     if (autoMemEnabled !== (char.autoMemoryEnabled !== false)) return true;
     if (avatarIntentEnabled !== (char.avatarIntentEnabled === true)) return true;
     if (meetingInviteEnabled !== (char.meetingInviteEnabled === true)) return true;
+    if (allowAutoJoinOffline !== (char.allowAutoJoinOffline === true)) return true;
     if ((initialStage || undefined) !== (char.initialRelationshipStage || undefined)) return true;
     return false;
   }
@@ -2003,6 +2007,7 @@ function CharArchiveView({
       setAutoMemEnabled(char.autoMemoryEnabled !== false);
       setAvatarIntentEnabled(char.avatarIntentEnabled === true);
       setMeetingInviteEnabled(char.meetingInviteEnabled === true);
+      setAllowAutoJoinOffline(char.allowAutoJoinOffline === true);
     }
   }, [isEditing, char]);
 
@@ -2134,6 +2139,7 @@ function CharArchiveView({
         autoMemoryEnabled: autoMemEnabled !== false ? undefined : false,
         avatarIntentEnabled: avatarIntentEnabled ? true : undefined,
         meetingInviteEnabled: meetingInviteEnabled ? true : undefined,
+        allowAutoJoinOffline: allowAutoJoinOffline ? true : undefined,
       }, createVersion);
     }
   }
@@ -2803,6 +2809,38 @@ function CharArchiveView({
             ) : (
               <div className="mt-2 ts-11 opacity-60">
                 已开启：TA 会在私聊合适时机主动发见面邀请卡，你接受即跳进剧情、从此处开始一段见面剧情（拒绝则只记状态，不影响聊天）。
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 线下自动加入白名单：全局「线下自动加入」开启时，本角色可被模型拉入单人线下场景（默认关，零额外开销） */}
+        <div className="char-archive-text-section border-b-0">
+          <div className="char-log-entry">
+            <div className="char-log-entry-header">
+              <span>可被自动拉入线下</span>
+              <label className="flex items-center gap-1.5 cursor-pointer ts-11 opacity-80">
+                <input
+                  type="checkbox"
+                  checked={allowAutoJoinOffline}
+                  onChange={e => {
+                    const v = e.target.checked;
+                    setAllowAutoJoinOffline(v);
+                    if (!isEditing && onQuickToggleFlag) onQuickToggleFlag("allowAutoJoinOffline", v);
+                  }}
+                  className="mt-0.5"
+                />
+                启用
+              </label>
+            </div>
+            {!allowAutoJoinOffline ? (
+              <div className="mt-2 ts-11 opacity-60">
+                已关闭：即使全局开启「线下自动加入」，TA 也不会被自动拉进你的单人线下场景（你仍可手动邀请）。
+                {isEditing ? "（勾选上方「启用」可开启）" : "（点击上方「启用」即可开启，自动保存）"}
+              </div>
+            ) : (
+              <div className="mt-2 ts-11 opacity-60">
+                已开启：当全局「线下自动加入」打开、且剧情自然需要时，TA 会被自动带进你的单人线下场景；不合适时不会硬塞。
               </div>
             )}
           </div>
