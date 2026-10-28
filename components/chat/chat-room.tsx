@@ -29,6 +29,7 @@ import remarkGfm from "remark-gfm";
 import { createPortal } from "react-dom";
 
 import { loadCharacters } from "@/lib/character-storage";
+import { getCharacterWorldGroup } from "@/lib/character-world-storage";
 import { Character } from "@/lib/character-types";
 import { loadCustomAppChatPlusActions, type RegisteredCustomAppChatPlusAction } from "@/lib/custom-app-chat-directives";
 import { CUSTOM_APPS_UPDATED_EVENT, getInstalledCustomApp } from "@/lib/custom-app-storage";
@@ -1201,20 +1202,66 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     // 线下「在场角色」本地镜像：props.session 不可变，这里维护在场集合，写回 storage 同步
     const [offlineParticipants, setOfflineParticipants] = useState<string[]>(() => getOfflineParticipants(session));
     const [showOfflineInviteMenu, setShowOfflineInviteMenu] = useState(false);
-    const offlineInviteCandidates = useMemo(() => {
+    // 邀请候选池：按「跟当前线下主角色」的关联度分三档——有明确关系的 → 同世界的 → 其他。
+    // 有关系的人排最前并带关系标签，避免一打开就是一堆跟主角色毫无关系的人。
+    const [showOfflineInviteOthers, setShowOfflineInviteOthers] = useState(false);
+    const offlineInviteGroups = useMemo(() => {
         const chars = loadCharacters();
-        return chars.filter((c) => c.id !== session.contactId && !offlineParticipants.includes(c.id));
-    }, [offlineParticipants, session.contactId]);
+        const worldGroup = getCharacterWorldGroup(session.contactId);
+        const members = new Set(worldGroup?.memberIds || []);
+        const linked: { char: Character; relationLabel: string }[] = [];
+        const sameWorld: Character[] = [];
+        const others: Character[] = [];
+        for (const c of chars) {
+            if (c.id === session.contactId) continue;
+            const rel = worldGroup?.relations?.find(
+                (r) => (r.fromCharacterId === session.contactId && r.toCharacterId === c.id)
+                    || (r.toCharacterId === session.contactId && r.fromCharacterId === c.id)
+            );
+            if (rel?.label && rel.label.trim()) linked.push({ char: c, relationLabel: rel.label.trim() });
+            else if (members.has(c.id)) sameWorld.push(c);
+            else others.push(c);
+        }
+        return { linked, sameWorld, others, worldName: worldGroup?.name || "" };
+    }, [session.contactId]);
     const applyOfflineParticipants = useCallback((ids: string[]) => {
         updateOfflineParticipants(session.id, ids);
         setOfflineParticipants([...ids]);
     }, [session.id]);
-    const inviteOfflineParticipant = useCallback((characterId: string) => {
-        const base = offlineParticipants.includes(session.contactId) ? [...offlineParticipants] : [session.contactId, ...offlineParticipants];
-        if (!base.includes(characterId)) base.push(characterId);
+    // 点一下加进来、再点一下移出去；菜单不关闭，能在列表里直接看到「✓ 已在场」的选中态
+    const toggleOfflineParticipant = useCallback((characterId: string) => {
+        if (characterId === session.contactId) return;
+        if (offlineParticipants.includes(characterId)) {
+            applyOfflineParticipants(offlineParticipants.filter((id) => id !== characterId));
+            return;
+        }
+        const base = offlineParticipants.includes(session.contactId)
+            ? [...offlineParticipants]
+            : [session.contactId, ...offlineParticipants];
+        base.push(characterId);
         applyOfflineParticipants(base);
-        setShowOfflineInviteMenu(false);
     }, [offlineParticipants, session.contactId, applyOfflineParticipants]);
+    // 邀请菜单里的一行：头像 + 名字 + 关系标签 + 「✓ 在场」选中态（再点一下移出）
+    const renderOfflineInviteRow = (c: Character, relationLabel?: string) => {
+        const active = offlineParticipants.includes(c.id);
+        return (
+            <button
+                key={c.id}
+                type="button"
+                className={`chat-offline-invite-item${active ? " is-active" : ""}${relationLabel ? "" : " is-plain"}`}
+                onClick={() => toggleOfflineParticipant(c.id)}
+            >
+                {c.avatar ? (
+                    <img className="chat-offline-invite-avatar" src={c.avatar} alt={c.name} />
+                ) : (
+                    <span className="chat-offline-invite-avatar chat-offline-invite-avatar-fallback">{c.name.slice(0, 1)}</span>
+                )}
+                <span className="chat-offline-invite-name">{c.name}</span>
+                {relationLabel ? <span className="chat-offline-invite-tag">{relationLabel}</span> : null}
+                {active ? <span className="chat-offline-invite-check">✓ 在场</span> : null}
+            </button>
+        );
+    };
     const removeOfflineParticipantLocal = useCallback((characterId: string) => {
         applyOfflineParticipants(offlineParticipants.filter((id) => id !== characterId));
     }, [offlineParticipants, applyOfflineParticipants]);
@@ -6117,18 +6164,40 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     )}
                                     {showOfflineInviteMenu && (
                                         <div className="chat-offline-invite-menu">
-                                            {offlineInviteCandidates.length === 0 ? (
-                                                <div className="chat-offline-invite-empty">没有可邀请的角色</div>
-                                            ) : (
-                                                offlineInviteCandidates.map((c) => (
-                                                    <button
-                                                        key={c.id}
-                                                        type="button"
-                                                        className="chat-offline-invite-item"
-                                                        onClick={() => inviteOfflineParticipant(c.id)}
-                                                    >{c.name}</button>
-                                                ))
+                                            {offlineInviteGroups.linked.length > 0 && (
+                                                <>
+                                                    <div className="chat-offline-invite-group-title">和 TA 有关系</div>
+                                                    {offlineInviteGroups.linked.map(({ char: c, relationLabel }) => renderOfflineInviteRow(c, relationLabel))}
+                                                </>
                                             )}
+                                            {offlineInviteGroups.sameWorld.length > 0 && (
+                                                <>
+                                                    <div className="chat-offline-invite-group-title">
+                                                        {offlineInviteGroups.worldName
+                                                            ? `同世界 · ${offlineInviteGroups.worldName}`
+                                                            : "同世界的其他角色"}
+                                                    </div>
+                                                    {offlineInviteGroups.sameWorld.map((c) => renderOfflineInviteRow(c))}
+                                                </>
+                                            )}
+                                            {offlineInviteGroups.others.length > 0 && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        className="chat-offline-invite-more"
+                                                        onClick={() => setShowOfflineInviteOthers((v) => !v)}
+                                                    >
+                                                        {showOfflineInviteOthers
+                                                            ? "收起其他角色"
+                                                            : `其他角色（${offlineInviteGroups.others.length}）`}
+                                                    </button>
+                                                    {showOfflineInviteOthers && offlineInviteGroups.others.map((c) => renderOfflineInviteRow(c))}
+                                                </>
+                                            )}
+                                            {offlineInviteGroups.linked.length === 0 && offlineInviteGroups.sameWorld.length === 0 && offlineInviteGroups.others.length === 0 && (
+                                                <div className="chat-offline-invite-empty">还没有其他角色</div>
+                                            )}
+                                            <div className="chat-offline-invite-foot">点一下加入、再点一下移出，可连续选；顶部「线下在场」会同步变化</div>
                                         </div>
                                     )}
                                 </div>
