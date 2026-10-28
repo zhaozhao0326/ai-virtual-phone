@@ -929,6 +929,32 @@
   color: var(--c-icon);
   opacity: 0.7;
 }
+.chat-offline-suggest-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-accent, var(--c-primary)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c-accent, var(--c-primary)) 24%, transparent);
+}
+.chat-offline-suggest-text {
+  flex: 1 1 auto;
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  color: var(--c-text);
+  line-height: 1.4;
+}
+.chat-offline-suggest-dismiss {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c-card-border) 50%, transparent);
+  background: transparent;
+  color: var(--c-text);
+  font-size: calc(11.5px*var(--app-text-scale,1));
+  cursor: pointer;
+}
 
 /* 落成弹窗：气泡编辑器 */
 .realize-bubble-list {

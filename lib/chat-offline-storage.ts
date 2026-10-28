@@ -39,6 +39,8 @@ export type ParsedOfflineResponse = {
     pendingJoins?: string[];
     /** 自动加入判定：模型用 [leave:角色名] 标记应离场的角色名 */
     pendingLeaves?: string[];
+    /** 自动加入建议：模型认为此刻合适但该角色未开白名单，用 [suggest:角色名] 提出（仅建议，不会自动拉入，供 UI 给温柔提示） */
+    pendingSuggests?: string[];
 };
 
 function storageKey(sessionId: string): string {
@@ -256,11 +258,14 @@ export function parseOfflineResponse(rawText: string, summaryTag: string): Parse
     const contentWithoutJoinMarks = cleanedContent
         .replace(/^\s*\[join:\s*[^\]\n]+?\s*\]\s*$/gm, "")
         .replace(/^\s*\[leave:\s*[^\]\n]+?\s*\]\s*$/gm, "")
+        .replace(/^\s*\[suggest:\s*[^\]\n]+?\s*\]\s*$/gm, "")
         .replace(/\n{3,}/g, "\n\n")
         .trim();
     // 自动加入判定标记：[join:角色名] / [leave:角色名]（不影响正文/摘要，仅给调用方做在场集合增减）
     const pendingJoins = [...trimmed.matchAll(/\[join:\s*([^\]\n]+?)\s*\]/g)].map(m => m[1].trim()).filter(Boolean);
     const pendingLeaves = [...trimmed.matchAll(/\[leave:\s*([^\]\n]+?)\s*\]/g)].map(m => m[1].trim()).filter(Boolean);
+    // 自动加入建议标记：[suggest:角色名]（不自动拉入，仅给 UI 提示用户「差一步就能让 TA 进场」）
+    const pendingSuggests = [...trimmed.matchAll(/\[suggest:\s*([^\]\n]+?)\s*\]/g)].map(m => m[1].trim()).filter(Boolean);
     return {
         rawText: trimmed,
         content: contentWithoutJoinMarks,
@@ -269,5 +274,6 @@ export function parseOfflineResponse(rawText: string, summaryTag: string): Parse
         statusRaw,
         pendingJoins: pendingJoins.length ? pendingJoins : undefined,
         pendingLeaves: pendingLeaves.length ? pendingLeaves : undefined,
+        pendingSuggests: pendingSuggests.length ? pendingSuggests : undefined,
     };
 }

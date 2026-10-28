@@ -1222,6 +1222,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const resetOfflineToMainLocal = useCallback(() => {
         applyOfflineParticipants([session.contactId]);
     }, [session.contactId, applyOfflineParticipants]);
+    // 自动加入的「温和建议」：模型认为应出现但未开白名单的角色，解析成角色对象（仅提示，不自动拉入）
+    const [offlineSuggests, setOfflineSuggests] = useState<Character[]>([]);
+    const resolveOfflineSuggestChars = useCallback((names: string[]): Character[] => {
+        if (!names.length) return [];
+        const chars = loadCharacters();
+        const present = new Set(offlineParticipants);
+        const seen = new Set<string>();
+        const out: Character[] = [];
+        for (const n of names) {
+            const t = n.trim();
+            if (!t) continue;
+            const c = chars.find(ch => ch.name === t || ch.name.toLowerCase() === t.toLowerCase() || ch.id === t);
+            if (!c) continue;
+            if (present.has(c.id) || c.id === session.contactId) continue;
+            if (seen.has(c.id)) continue;
+            seen.add(c.id);
+            out.push(c);
+        }
+        return out;
+    }, [offlineParticipants, session.contactId]);
     // 把在场角色 id 解析成角色对象，供状态栏 chips 显示
     const offlineParticipantChars = useMemo(() => {
         const chars = loadCharacters();
@@ -4623,6 +4643,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
                     );
                 }
+                // 温和建议：模型认为应出现但未开白名单的角色（[suggest:名称]），仅提示用户
+                if (!session.isGroup && result.pendingSuggests?.length) {
+                    setOfflineSuggests(resolveOfflineSuggestChars(result.pendingSuggests));
+                } else {
+                    setOfflineSuggests([]);
+                }
                 const assistantContent = result.content.trim() || result.rawText.trim();
                 if (!assistantContent) throw new Error("AI 没有返回线下正文");
                 if (!result.summary.trim()) showChatToast(`未提取到 <${result.summaryTag}> 摘要`);
@@ -4747,6 +4773,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 applyOfflineParticipants(
                     resolveOfflineParticipantChanges(offlineParticipants, result.pendingJoins, result.pendingLeaves, session.contactId)
                 );
+            }
+            // 温和建议：模型认为应出现但未开白名单的角色（[suggest:名称]），仅提示用户
+            if (!session.isGroup && result.pendingSuggests?.length) {
+                setOfflineSuggests(resolveOfflineSuggestChars(result.pendingSuggests));
+            } else {
+                setOfflineSuggests([]);
             }
             const assistantContent = result.content.trim() || result.rawText.trim();
             if (!assistantContent) throw new Error("AI 没有返回线下正文");
@@ -6101,6 +6133,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     )}
                                 </div>
                                 <div className="chat-offline-participants-hint">进入线下后可邀请其他角色一起演；主角色始终在场，点 × 让他人退场，或一键「仅留主角色」回到单人</div>
+                            </div>
+                        )}
+                        {!session.isGroup && offlineSuggests.length > 0 && (
+                            <div className="chat-offline-suggest-bar">
+                                <span className="chat-offline-suggest-text">剧情里可能也需要 {offlineSuggests.map((c) => c.name).join("、")}——去 TA 的聊天设置开启「可被自动拉入线下」，下次就能自动进场</span>
+                                <button
+                                    type="button"
+                                    className="chat-offline-suggest-dismiss"
+                                    onClick={() => setOfflineSuggests([])}
+                                >知道了</button>
                             </div>
                         )}
                         {offlineTurns.length === 0 && !pendingOfflineUserText ? (

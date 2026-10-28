@@ -2125,7 +2125,7 @@ export async function generateOfflineChatCompletion(
             const candText = candidates
                 .map(c => `- ${c.name}${c.appearance?.trim() ? `（外貌：${c.appearance.trim()}）` : ""}`)
                 .join("\n");
-            const autoJoinHint = `\n\n【自动加入线下（可选）】以下角色允许临时进入这个线下场景，仅当剧情自然需要他们出现时才让他们加入，不要硬塞、不要每轮都拉人：\n${candText}\n若此刻应让其中某角色加入，在你回复正文之后用单独一行写 [join:角色名]；若当前已在场的某非主角色应离开，写 [leave:角色名]。`;
+            const autoJoinHint = `\n\n【自动加入线下（可选）】以下角色允许临时进入这个线下场景，仅当剧情自然需要他们出现时才让他们加入，不要硬塞、不要每轮都拉人：\n${candText}\n若此刻应让其中某角色加入，在你回复正文之后用单独一行写 [join:角色名]；若当前已在场的某非主角色应离开，写 [leave:角色名]。\n若你认为此刻剧情合适、但某个当前不在场且未开「可被自动拉入线下」的角色也应当出现，可用单独一行写 [suggest:角色名] 作温和建议（不会自动拉入，仅提示用户去开启）；不要为已在允许名单里的角色再写 suggest。`;
             for (const m of llmMessages) {
                 if (m.role === "system" && typeof m.content === "string") {
                     m.content += autoJoinHint;

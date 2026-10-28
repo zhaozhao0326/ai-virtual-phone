@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.98";
+export const APP_VERSION = "1.7.99";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.99",
+    date: "2026-10-28",
+    title: "优化：自动加入「温和提示」——差一步就知道",
+    highlights: [
+      "自动加入开启、但模型判断某角色此刻该出现却没开白名单时，用 [suggest:角色名] 在同轮里温和建议，UI 顶部弹出提示：「剧情里可能也需要 X——去 TA 的聊天设置开启『可被自动拉入线下』，下次就能自动进场」，点「知道了」消除",
+      "仍不自动拉人、零额外 token：suggest 与 join/leave 同轮判定，标记只用于提示、不进在场集合、不显示给用户",
+      "解析层 parseOfflineResponse 新增 pendingSuggests 并剥离 [suggest:] 标记；聊天设置栏的「可被自动拉入线下」白名单开关即对应入口",
+    ],
+  },
   {
     version: "1.7.98",
     date: "2026-10-28",
