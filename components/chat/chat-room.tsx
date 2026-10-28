@@ -48,6 +48,7 @@ import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
 import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
+import { recordOfflineSceneToMemory } from "@/lib/chat-offline-memory";
 import { extractGroupBubbles, realizeOfflineTurnsToGroup, type ExtractedBubble } from "@/lib/group-offline-realize";
 import { applyDisplayRegex, applyEditRegex } from "@/lib/llm-prompt-assembler";
 import { scheduleFollowUp, cancelFollowUp, cancelBackgroundGeneration, isBackgroundReplyGenerating } from "@/lib/follow-up-service";
@@ -4730,6 +4731,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     statusRaw: result.statusRaw,
                 });
                 setOfflineTurns(prev => [...prev, saved]);
+                // 记忆桥：多人线下（有被邀请角色）时，把这次对话沉淀进每个在场角色的长期记忆，
+                // 让被邀请的角色之后也能「想起」这段线下时光（不额外调 LLM，仅本地写入）。
+                if (!session.isGroup && offlineParticipants.length > 1) {
+                    void recordOfflineSceneToMemory({
+                        sessionId: session.id,
+                        participantIds: offlineParticipants,
+                        mainId: session.contactId,
+                        userText: currentText,
+                        assistantText: assistantContent,
+                    }).catch(() => {});
+                }
             } catch (error: any) {
                 if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
                 offlineTextInputRef.current?.setText(currentText);
@@ -4861,6 +4873,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 statusRaw: result.statusRaw,
             });
             setOfflineTurns([...baseTurns, saved]);
+            // 记忆桥：多人线下（有被邀请角色）时，把这次对话沉淀进每个在场角色的长期记忆
+            if (!session.isGroup && offlineParticipants.length > 1) {
+                void recordOfflineSceneToMemory({
+                    sessionId: session.id,
+                    participantIds: offlineParticipants,
+                    mainId: session.contactId,
+                    userText: retryInput,
+                    assistantText: assistantContent,
+                }).catch(() => {});
+            }
         } catch (error: any) {
             if (!isCurrentOfflineRun() || isAbortLikeError(error)) return;
             offlineTextInputRef.current?.setText(retryInput);
@@ -6142,7 +6164,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                             </div>
                         )}
                         {!session.isGroup && (
-                            <div className="chat-offline-participants-bar">
+                            <div
+                                className="chat-offline-participants-bar"
+                                onPointerDown={(e) => e.stopPropagation()}
+                            >
                                 <div className="chat-offline-participants-label">线下在场</div>
                                 <div className="chat-offline-participants-list">
                                     {offlineParticipantChars.map((c) => {
