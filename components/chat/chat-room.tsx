@@ -1209,6 +1209,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const chars = loadCharacters();
         const worldGroup = getCharacterWorldGroup(session.contactId);
         const members = new Set(worldGroup?.memberIds || []);
+        // 同群线索：主角色所在的未解散群聊里，其他成员也算「跟 TA 有关系」（关系网没填时的兜底）
+        const sameGroupLabels = new Map<string, string>();
+        for (const s of loadChatSessions()) {
+            if (!s.isGroup || s.dissolved) continue;
+            const pids = s.participantIds || [];
+            if (!pids.includes(session.contactId)) continue;
+            for (const pid of pids) {
+                if (pid === session.contactId || pid === "self") continue;
+                if (!sameGroupLabels.has(pid)) sameGroupLabels.set(pid, s.groupName || "群聊");
+            }
+        }
         const linked: { char: Character; relationLabel: string }[] = [];
         const sameWorld: Character[] = [];
         const others: Character[] = [];
@@ -1218,7 +1229,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 (r) => (r.fromCharacterId === session.contactId && r.toCharacterId === c.id)
                     || (r.toCharacterId === session.contactId && r.fromCharacterId === c.id)
             );
+            const groupName = sameGroupLabels.get(c.id);
             if (rel?.label && rel.label.trim()) linked.push({ char: c, relationLabel: rel.label.trim() });
+            else if (groupName) linked.push({ char: c, relationLabel: `同群 · ${groupName}` });
             else if (members.has(c.id)) sameWorld.push(c);
             else others.push(c);
         }
