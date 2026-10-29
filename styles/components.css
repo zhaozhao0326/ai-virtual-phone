@@ -1526,6 +1526,27 @@
 .settings-tools-menu-toggle {
   margin-left: 12px;
 }
+/* NSFW 提示词后缀：长说明 + 输入框 + 标签组必须上下堆叠。
+   横排时 .menu-right 的 flex-shrink:0 + 内部 input width:100% 会把左侧说明
+   压到 min-width:0 的极限，导致每行只剩一个中文字（竖排成一条），右侧却
+   大片空白。v1.7.106 改为纵向：说明占满行宽正常换行，输入框与标签落到下一行。 */
+.menu-item.story-nsfw-suffix-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.menu-item.story-nsfw-suffix-row .settings-tools-menu-copy {
+  width: 100%;
+  flex: 0 0 auto;
+}
+.menu-item.story-nsfw-suffix-row .story-nsfw-suffix-input {
+  width: 100%;
+  margin-left: 0;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
 .settings-tools-header {
   margin: 8px 4px 0;
 }

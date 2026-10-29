@@ -1992,7 +1992,7 @@ export function ImageGenerationSettings() {
                     <div className="menu-item story-nsfw-suffix-row">
                         <span className="settings-tools-menu-copy">
                             <span className="menu-label appearance-menu-item-label">NSFW 提示词后缀</span>
-                            <span className="menu-desc settings-tools-menu-desc">仅在上方「NSFW 模式」开启时生效，追加到提示词末尾，用于引导成人内容。NAI 是基于标签的模型，仅靠中文软描述（如「亲密中」）不会出裸体——需填英文标签。点下方标签可一键追加，或自己输入（逗号分隔，输入框也能联想）。</span>
+                            <span className="menu-desc settings-tools-menu-desc">仅在上方「NSFW 模式」开启时生效，追加到提示词末尾引导成人内容。NAI 靠英文标签生效，中文描述不会出裸体；点下方标签一键追加，或自行输入（逗号分隔，支持联想）。</span>
                         </span>
                         <span className="menu-right story-nsfw-suffix-input">
                             <input
