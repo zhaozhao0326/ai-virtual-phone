@@ -3859,6 +3859,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // 与「角色发图」链路一致：勾选的人有参考图就全量锁脸；无图者不传图，
         // 但 participants 仍保留其 anchor（来自角色 appearance 生图描述词），靠文字描述兜底。
         const refImages: string[] = [];
+        // v1.7.110：记录「真的取到图」的人。取图失败（assetId 失效/IndexedDB 被清）时
+        // hasReference 仍为 true，会导致文字外观被一起丢掉 → 画面里出现无名无貌的路人。
+        const gotRefIds = new Set<string>();
         for (const s of specList) {
             if (!s.faceLockSource) continue;
             let raw: string | null = null;
@@ -3879,24 +3882,54 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 ? await normalizeReferenceImageForEdit(raw, u.faceCrop)
                 : raw;
             const compressed = await compressImageDataUrlForChat(cropped, refMaxSize);
-            if (compressed) refImages.push(compressed);
+            if (compressed) {
+                refImages.push(compressed);
+                gotRefIds.add(s.id);
+            }
         }
 
+        // v1.7.110：勾了「锁定脸」却一张图都取不出来时，旧实现会静默退化成纯文字生图 ——
+        // 用户只会看到「脸又不像」，完全查不到原因。这里改成明确的错误提示。
+        const expectedRefCount = specList.filter((s) => s.hasReference && s.faceLockSource).length;
+        if (expectedRefCount > 0 && gotRefIds.size === 0) {
+            throw new Error("参考图读取失败：本地图库里的锁脸图取不出来。请到「设置 → 生图」给该角色重新上传一次参考图。");
+        }
+
+        // v1.7.110：从 anchor（「性别，外貌描述」）里只取性别词。
+        // 带参考图的人，五官/发型/发色由参考图决定；把角色卡外观再写一遍会和参考图打架，
+        // gpt-image 系倾向按文字重画一张脸 —— 这就是「锁脸失败、出来的是参考图那个风格」的根因。
+        const pickGenderOnly = (anchor?: string): string => {
+            if (!anchor) return "";
+            return anchor
+                .split(/[，,、;；/|]+/)
+                .map((t) => t.trim())
+                .find((t) => /^(女生|男生|女性|男性|女人|男人|女孩|男孩|少女|少年|女|男|female|male|woman|man|girl|boy)$/i.test(t)) || "";
+        };
+
         const appearanceText = specList.length
-            ? `画面中的人物设定：${specList.map((s) => s.anchor ? `${s.name}（${s.anchor}）` : s.name).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
+            ? `画面中的人物设定：${specList.map((s) => {
+                if (gotRefIds.has(s.id)) {
+                    const g = pickGenderOnly(s.anchor);
+                    return g ? `${s.name}（${g}）` : s.name;
+                }
+                return s.anchor ? `${s.name}（${s.anchor}）` : s.name;
+            }).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
             : "";
         // v1.5.11 立过「人设 > 参考图」以防参考图反推把性别带偏，但旧措辞写成了
         // 「参考图仅用于贴合画质与风格」——这把锁脸直接降级成风格参考，模型于是照人设文字另画一张脸。
         // v1.7.107 改成按维度裁决：性别/年龄/体型看人设，五官长相（脸型、眼睛、鼻子、轮廓）必须来自参考图。
+        // v1.7.110 补上「发色/发型由参考图唯一决定」，并明确禁止按文字重新设计脸。
         const appearancePrompt = appearanceText
-            ? `${appearanceText}\n\n重要：按维度裁决——人物的性别、年龄段、体型以上述人设为准；但五官长相（脸型、眼睛、鼻子、嘴唇、面部轮廓）以及发型发色必须严格来自提供的参考图，这是本人的脸，不是风格参考；文字里关于长相/发型发色的描述与参考图冲突时，以参考图为准。参考图只用于人物本身，画面的姿势、背景、衣着仍以文字描述为准。`
+            ? `${appearanceText}\n\n重要：人物的性别、年龄段、体型以上述人设为准；但脸型、眼睛、鼻子、嘴唇、面部轮廓，以及发型与发色，必须严格以提供的参考图为准——这是本人的脸，参考图不是风格参考。文字里任何关于长相/发型/发色的描述若与参考图冲突，一律以参考图为准，禁止按文字重新设计五官或改发色。参考图只决定人物本身，画面的姿势、背景、衣着仍以文字描述为准。`
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
         const requestBody = {
             description: prompt,
             participantAppearance: appearancePrompt || undefined,
-            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor, hasReference: s.hasReference })),
+            // v1.7.110：hasReference 按「真实取到图」回报，而非按「配置里有图」。
+            // 否则取图失败的人会被服务端当成有图者 → 外貌描述被降级 + 参考图张冠李戴。
+            participants: specList.map((s) => ({ name: s.name, anchor: s.anchor, hasReference: gotRefIds.has(s.id) })),
             referenceImages: refImages.length ? refImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
             sceneLighting: settings.sceneLighting?.trim() || undefined,

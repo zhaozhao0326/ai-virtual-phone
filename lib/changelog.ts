@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.109";
+export const APP_VERSION = "1.7.110";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,20 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.110",
+    date: "2026-10-30",
+    title: "文字生图锁脸真正修好（v1.7.109 的修复其实没送达，白改）",
+    highlights: [
+      "致命断点：v1.7.109 只改了服务端「始终注入 participantAppearance」，但 OpenAI 链路前端根本没把这个字段发出去——中转函数 generateImageViaServerOrProxy 手写的参数类型里漏了 participantAppearance，TS 不会报错，字段被静默丢弃。服务端拿到的一直是 undefined，那段修复完全空转",
+      "已把中转函数参数类型改为从 generateImageViaServer 派生，并在 OpenAI 分支补传 participantAppearance；以后新增字段不会再漏（编译期就能发现）",
+      "第二处断点：浏览器直连 / 代理模式（requestMode=direct 或配置了 IMAGE_GEN_PROXY_URL）只认单张 referenceImageDataUrl，不认 referenceImages 数组。文字生图恰好只传数组、没有 characterId，于是参考图被整包丢弃、直接退化成纯文字 generations——这就是「怎么改都锁不住脸」的另一半原因。现已支持多图 + input_fidelity=high + 裁决句",
+      "第三处（最容易漏的）：participants 的 anchor 会把角色卡外观（发色、五官）整段写进提示词，与参考图直接打架，gpt-image 系倾向按文字重画一张脸。现已改为：确实带参考图的人只保留性别词，长相/发型/发色完全交给参考图；没图的人仍保留完整外观做文字兜底",
+      "hasReference 改为按「真实取到图」回报（原按「配置里有图」），避免取图失败时把外貌描述一起丢、还把参考图张冠李戴",
+      "自查：勾了锁定脸却一张图都取不出来时不再静默生成，直接报「参考图读取失败，请重新上传」",
+      "锁脸提示词补上「发型与发色同样以参考图为准，禁止按文字改发色」",
+    ],
+  },
   {
     version: "1.7.109",
     date: "2026-10-30",

@@ -192,6 +192,17 @@ function buildNaiPrompt(prompt: string, input: ImageGenerationRequest): string {
         .replace(/[,\s]+$/, "");
 }
 
+// ── v1.7.110：从 anchor（前端拼成「性别，外貌描述…」）里只取性别词 ──
+// 有参考图的人，五官 / 发型 / 发色必须由参考图决定。若仍把角色卡的外观全量写进提示词，
+// 文字会和参考图直接打架，模型（尤其 gpt-image 系）倾向于按文字重画一张脸 ——
+// 这正是「锁脸失败、出来的是参考图那个风格而不是本人」的根因之一。
+// 保留性别是必要的：它用于区分同画面多人的男女，且不会覆盖脸。
+const GENDER_WORD_RE = /^(女生|男生|女性|男性|女人|男人|女孩|男孩|少女|少年|女|男|female|male|woman|man|girl|boy)$/i;
+function pickGenderWord(anchor: string): string {
+    const segs = anchor.split(/[，,、;；/|]+/).map((s) => s.trim()).filter(Boolean);
+    return segs.find((s) => GENDER_WORD_RE.test(s)) || "";
+}
+
 // ── 结构化场景提示词拼装（v19：NAI 与 OpenAI 共用）──
 // 顺序：背景 → 光源 → 各参与者(人物名(锚点形容) 动作) → 用户原文([照片:]内容)
 // 这样无论哪个 provider，提示词都是「谁是谁 + 在哪 + 什么光 + 在做什么」的统一格式。
@@ -207,6 +218,7 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
         const refList = (input.referenceImages || [])
             .filter((d) => typeof d === "string" && d.startsWith("data:"))
             .slice(0, 4);
+        const refCount = refList.length;
         // v1.7.31 锁脸错位修复：participants 带有 hasReference 标记时，
         // {charN} 只分配给「有参考图的人」（按出现顺序紧凑编号 char1..charK），
         // 无参考图的人不占用锚点序号——避免中间缺图的人挤占索引、把后面的脸全部绑错。
@@ -218,10 +230,12 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             const anchor = (p.anchor || "").trim();
             const action = (p.action || "").trim();
             if (!name && !anchor && !action) return;
-            const hasRef = knownRefs ? p.hasReference === true : Boolean(refList[idx]);
-            // 有图标记但图已用尽（数据不一致）时退化为只写名字，锚点绝不超界
+            // hasRef 必须同时满足「标记有图」且「确实收到了图」，否则图丢了会连外貌描述一起丢
+            const hasRef = (knownRefs ? p.hasReference === true : Boolean(refList[idx])) && refCount > 0;
+            // 有参考图 → anchor 只留性别词（长相交给参考图）；没图 → 保留完整外观做文字兜底
+            const anchorText = hasRef ? pickGenderWord(anchor) : anchor;
             let clause = (hasRef && isNai && charCounter < refList.length) ? `{char${++charCounter}} ${name || "某人"}` : (name || "某人");
-            if (anchor) clause += `（${anchor}）`;
+            if (anchorText) clause += `（${anchorText}）`;
             if (action) clause += ` ${action}`;
             parts.push(clause);
         });
@@ -917,6 +931,8 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
     console.log("[OAI-PROMPT] final:", {
       hasReference,
       refCount,
+      // v1.7.110：锁脸裁决是否真的送达（此前 OAI 链路一直丢，等于没有）
+      appearanceLen: input.participantAppearance?.length ?? 0,
       hasCJK,
       endpoint: hasReference ? "edits" : "generations",
       model,

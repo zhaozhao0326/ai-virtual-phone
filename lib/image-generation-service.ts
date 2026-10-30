@@ -705,31 +705,55 @@ async function generateImageDirect(params: {
   settings: ImageGenerationSettings;
   prompt: string;
   referenceImageDataUrl: string | null;
+  /** v1.7.110：多张参考图（文字生图/合影走的都是这个通道）。旧实现只认单张
+   *  referenceImageDataUrl，导致「浏览器直连 / 代理」模式下文字生图的参考图被整包丢掉，
+   *  直接退化成纯文字 generations —— 表现就是「怎么改都锁不住脸」。
+   *  角色发图那条链路恰好带 characterId，才会把图放进 referenceImageDataUrl，所以那边一直正常。 */
+  referenceImages?: string[];
+  /** v1.7.110：锁脸裁决（五官以参考图为准）。直连不经过我们的服务端路由，
+   *  必须在这里自己拼进 prompt，否则「文字与参考图冲突时以参考图为准」同样丢失。 */
+  participantAppearance?: string;
   signal?: AbortSignal;
   /** 走通用代理:请求发往代理地址,真实上游放进 x-upstream-base-url 头 */
   proxyBaseUrl?: string;
 }): Promise<ImageGenerationApiResponse> {
-  const { settings, prompt, referenceImageDataUrl, signal, proxyBaseUrl } = params;
+  const { settings, prompt, signal, proxyBaseUrl } = params;
   throwIfAborted(signal);
-  const hasReference = Boolean(referenceImageDataUrl);
+  // 参考图合集：优先多图（参与者/合影），否则退回单张角色锁脸图
+  const refList = (params.referenceImages?.length
+    ? params.referenceImages
+    : (params.referenceImageDataUrl ? [params.referenceImageDataUrl] : [])
+  ).filter((v): v is string => typeof v === "string" && v.startsWith("data:image/"));
+  const hasReference = refList.length > 0;
   const url = buildImageUrl(proxyBaseUrl || settings.baseUrl, hasReference ? "edits" : "generations");
   const headers: Record<string, string> = { Authorization: `Bearer ${settings.apiKey}` };
   if (proxyBaseUrl) headers["x-upstream-base-url"] = normalizeBaseUrl(settings.baseUrl);
   let body: BodyInit;
 
   if (hasReference) {
-    const converted = dataUrlToBlob(referenceImageDataUrl || "");
-    if (!converted) throw new Error("参考图格式无效");
     const form = new FormData();
     form.set("model", settings.model);
     // 锁脸（面部一致性）必须保留：参考图的核心作用是锁定「面部特征与身份」。
     // 但同时禁止模型照搬参考图的背景/姿势/衣服，场景与构图由文字 prompt 主导，
     // 避免 gpt-image 在 edits 模式把参考图直接拼回输出（"关键词不读 + 两张参考图拼接"）。
-    const refInstruction = "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: ";
+    // v1.7.110：补上「冲突时以参考图为准」的裁决 + 参与者外观，与服务端路由的措辞对齐。
+    const faceRule = refList.length > 1
+      ? "LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images."
+      : "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.";
+    const appearanceNote = params.participantAppearance?.trim() ? ` ${params.participantAppearance.trim()}` : "";
+    const refInstruction = `${faceRule} Where the text description of a person's face, hairstyle or hair colour conflicts with the reference image, the reference image WINS — do not redesign the face.${appearanceNote} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: `;
     form.set("prompt", refInstruction + prompt);
     if (settings.size && settings.size !== "auto") form.set("size", settings.size);
     if (settings.quality && settings.quality !== "auto") form.set("quality", settings.quality);
-    form.append("image", converted.blob, `reference.${imageExtension(converted.mimeType)}`);
+    // gpt-image 系：身份保真钉死（与 /api/image-generation 路由同一策略，mini 不支持故跳过）
+    if (/gpt-image/i.test((settings.model || "").trim()) && !/mini/i.test((settings.model || "").trim())) {
+      form.set("input_fidelity", "high");
+    }
+    for (const ref of refList) {
+      const converted = dataUrlToBlob(ref);
+      if (!converted) continue;
+      form.append("image", converted.blob, `reference.${imageExtension(converted.mimeType)}`);
+    }
     body = form;
   } else {
     headers["Content-Type"] = "application/json";
@@ -773,16 +797,13 @@ async function generateImageDirect(params: {
 // 到服务端,并按 baseUrl 记住失败结果,本次会话内不再重复探测。
 const directCorsFailedBaseUrls = new Set<string>();
 
-async function generateImageViaServerOrProxy(params: {
-  settings: ImageGenerationSettings;
-  prompt: string;
-  referenceImageDataUrl: string | null;
-  participants?: Array<{ name: string; anchor?: string; action?: string }>;
-  referenceImages?: string[];
-  sceneBackground?: string;
-  sceneLighting?: string;
-  signal?: AbortSignal;
-}): Promise<ImageGenerationApiResponse> {
+// v1.7.110：参数类型改为从 generateImageViaServer 派生。
+// 旧实现手写了一份字段清单，**漏掉了 participantAppearance**（以及后续新增字段），
+// TypeScript 因此无法在调用处提醒，导致「锁脸裁决（五官以参考图为准）」在 OAI 链路上被静默丢弃：
+// 服务端 route.ts 里那段「始终注入 participantAppearance」于是永远拿到 undefined，等于空转。
+async function generateImageViaServerOrProxy(
+  params: Parameters<typeof generateImageViaServer>[0],
+): Promise<ImageGenerationApiResponse> {
   const requestMode = params.settings.requestMode;
   // 显式浏览器直连：只走浏览器直连，不回落到海外部署平台服务器
   // （国内中转站 Vercel 够不到，回落只会拿到 "Failed to fetch"）。
@@ -1253,6 +1274,10 @@ export async function generateImageFromConfiguredApi(params: {
   const data = await serializeProvider("openai", () => generateImageViaServerWithRetry({
     settings,
     prompt,
+    // v1.7.110：OAI 分支此前**漏传** participantAppearance，导致锁脸裁决
+    //（「五官长相必须来自参考图，文字与之冲突时以参考图为准」）从来没送达服务端，
+    // 模型只能按 participants 里的角色卡外观描述画脸 → 锁脸永远失败。
+    participantAppearance: params.participantAppearance,
     referenceImageDataUrl: compressedReferenceImageDataUrl,
     referenceImages: mergedReferenceImages,
     participants: params.participants,
