@@ -229,8 +229,11 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
     // 场景/光线仅作“背景参考”，明确降级，避免盖过用户主体描述
     if (input.sceneBackground?.trim()) parts.push(`背景参考：${input.sceneBackground.trim()}`);
     if (input.sceneLighting?.trim()) parts.push(`光线参考：${input.sceneLighting.trim()}`);
-    // 兼容旧字段 participantAppearance（未传结构化 participants 时）
-    if ((!input.participants || input.participants.length === 0) && input.participantAppearance?.trim()) {
+    // 参与者外观 / 锁脸裁决指令（participantAppearance）必须始终注入：
+    // 它携带「五官长相以参考图为准、文字描述与参考图冲突时以参考图为优先」的锁脸裁决。
+    // 旧逻辑只在 participants 为空时才注入，而文字生图前端永远带 participants，导致这段裁决被静默丢弃，
+    // 模型改按角色卡文字外观（如「棕色长发」）另画一张脸 → 表现成「脸锁不住 / 出来的是参考图风格而非本人」。
+    if (input.participantAppearance?.trim()) {
         parts.push(input.participantAppearance.trim());
     }
     return parts.join("。");
@@ -828,7 +831,7 @@ export async function runGoogleImagenImageGeneration(input: ImageGenerationReque
 
 // OpenAI 兼容风格预设后缀（自然语种，仅 provider=openai 且 openaiStylePreset≠none 时追加到提示词）
 const OAI_STYLE_PRESETS: Record<string, string> = {
-    auto: "Cinematic lighting, strong contrast, shallow depth of field, refined details, dynamic composition, photorealistic.",
+    auto: "Cinematic lighting, soft volumetric rim light, refined natural skin rendering, strong yet balanced contrast, shallow depth of field, deliberate dynamic composition, ultra-detailed, 8k, professional color grading, photorealistic.",
     tension: "Cinematic composition with dramatic lighting, strong contrast, rim light, shallow depth of field, dynamic camera angle, intense expressive mood, film grain, photorealistic.",
     cinematic: "Cinematic film still, anamorphic lens flare, film grain, depth of field, moody atmospheric lighting, photorealistic.",
     portrait: "Elegant portrait photography, soft refined lighting, delicate details, magazine aesthetic, photorealistic.",
@@ -908,7 +911,7 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
         : "";
       const refNote = refCount > 1
         ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.${bleed}`
-        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.${bleed}`;
+        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Do NOT redesign or alter the person's face, hairstyle, eyes, or identity — keep the exact same person.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.${bleed}`;
       finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
     console.log("[OAI-PROMPT] final:", {
@@ -944,7 +947,12 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       // 不锁脸，生成两个陌生人。gpt-image-1-mini / dall-e 不支持该参数，必须跳过避免报错。
       // v1.7.33：gpt-image-2 的 input_fidelity 已 disabled（默认即高保真），传入会报错，
       // 故仅对 1/1.5 系传参（兼容带前缀的中转模型名，只看结尾）。
-      if (/gpt-image-1(?:\.5)?$/i.test((model || "").trim())) {
+      // v1.7.109：input_fidelity=high 对全部 gpt-image 系（1/1.5/2/2.5，含带前缀与快照名如
+      // gpt-image-2-2026-04-21、gpt-image-2.5-sunburst/flare）都发，仅 gpt-image-1-mini 不支持（跳过）。
+      // 官方指南称 gpt-image-2「默认即高保真、可省略」，但官方 cookbook 仍在其上显式设 high，且 OpenAPI spec 写明
+      // 「gpt-image-1 与 1.5 及之后模型均支持」——显式发 high 既不报错，又把身份保真钉死，是 OpenAI 锁脸最关键的一档。
+      // 个别第三方中转若严格拒绝未知参数，把该中转模型名加进下方排除正则即可。
+      if (/gpt-image/i.test((model || "").trim()) && !/mini/i.test((model || "").trim())) {
         form.set("input_fidelity", "high");
       }
       for (const ref of refImages) {

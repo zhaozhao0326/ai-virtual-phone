@@ -3811,8 +3811,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const chars = loadCharacters();
         const photoSettings = loadImageGenerationSettings();
         const charRefs = photoSettings.characterReferences ?? {};
-        // v1.7.108：NAI 的锁脸参考图要 1024x1536 级别，768 放大后脸会糊、锁不住
-        const refMaxSize = photoSettings.provider === "novelai" ? 1024 : 768;
+        // v1.7.109：锁脸参考图统一 1024 上限（NAI 另有 pad 到官方尺寸；OpenAI 1024 脸细节够、又不撑爆 Vercel 4.5MB 请求体）
+        const refMaxSize = 1024;
 
         const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null; hasReference?: boolean }[] = [];
         for (const id of selectedIds) {

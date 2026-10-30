@@ -136,8 +136,8 @@ export async function normalizeReferenceImageForEdit(
  */
 async function compressReferenceImageForUpload(
   dataUrl: string,
-  maxDim = 768,
-  quality = 0.82,
+  maxDim = 1024,
+  quality = 0.85,
 ): Promise<string> {
   if (typeof document === "undefined") return dataUrl;
   // 已经够小 → 不压（避免无谓画质损失）

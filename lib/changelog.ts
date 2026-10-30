@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.108";
+export const APP_VERSION = "1.7.109";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.109",
+    date: "2026-10-30",
+    title: "修 OpenAI 兼容锁脸（gpt-image-2/2.5）+ 整体画质提升",
+    highlights: [
+      "真根因（OpenAI 链路）：用户一直用 gpt-image-2/2.5、从不用 1，而锁脸参数 input_fidelity=high 旧代码只在模型名匹配 gpt-image-1/1.5 时才发 → 2/2.5 根本没发，身份保真没钉死",
+      "关键 bug：参与者外观裁决指令 participantAppearance（「五官长相以参考图为准、文字与参考图冲突时以参考图优先」）旧逻辑只在 participants 为空时才注入，而文字生图前端永远带 participants → 这段锁脸裁决被静默丢弃，模型改按角色卡文字外观另画一张脸 = 表现成「脸锁不住、出来的是参考图风格而非本人」。现已改为始终注入",
+      "input_fidelity=high 现对全部 gpt-image 系（1/1.5/2/2.5，含 gpt-image-2-2026-04-21、gpt-image-2.5-sunburst/flare 等快照名）都发，仅 gpt-image-1-mini 跳过（OpenAPI spec 写明 1.5 及之后模型均支持，官方 cookbook 也在 gpt-image-2 上显式设 high）",
+      "锁脸提示词增强：明确「Do NOT redesign or alter the person's face, hairstyle, eyes, or identity — keep the exact same person」",
+      "画质提升：锁脸参考图统一 1024 上限（原 768，脸部细节被磨掉导致锁不住）；OpenAI 默认 quality 由 auto 提到 high（直接改善清晰度）；auto 风格预设升级为带体积光/专业调色/8k 的高级电影感描述",
+      "注意：第三方中转若严格拒绝未知参数，把该中转模型名加进 input_fidelity 排除正则即可；本次改动不触碰 NAI 链路（v1.7.108 已修对）",
+    ],
+  },
   {
     version: "1.7.108",
     date: "2026-10-30",

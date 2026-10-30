@@ -643,7 +643,7 @@ export const DEFAULT_IMAGE_GENERATION_SETTINGS: ImageGenerationSettings = {
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-image-2",
     size: "1024x1536",
-    quality: "auto",
+    quality: "high",
     extraPrompt: "",
     openaiStylePreset: "auto",
     openaiPresets: [],
