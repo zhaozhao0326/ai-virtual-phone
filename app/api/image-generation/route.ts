@@ -338,6 +338,32 @@ async function translateToEnglish(text: string): Promise<string> {
     return text;
 }
 
+// ── NAI character_reference 的 char_caption：必须是英文外观描述 ──
+// v1.7.107：旧实现把「苏程晓（女生，银白短发…）」整段中文塞进 char_caption，
+// NAI 分词器不认中文 → caption 等于没写，锁脸只能靠裸图，脸随缘。
+// 这里翻成英文、去掉中文人名（名字对模型无意义，只挤占 caption 权重）、截断防止过长。
+async function buildNaiCharCaption(raw: string): Promise<string> {
+    const text = (raw || "").trim();
+    if (!text) return "";
+    let out = text;
+    if (containsCJK(text)) {
+        try {
+            out = await translateToEnglish(text);
+        } catch {
+            out = text;
+        }
+    }
+    // 翻译失败仍含中文：只保留英文片段，中文残留对 NAI 纯属噪音
+    if (containsCJK(out)) {
+        out = out.replace(/[一-鿿぀-ヿ㐀-䶿豈-﫿ｦ-ﾟ]+/g, " ");
+    }
+    return out
+        .replace(/\s+/g, " ")
+        .replace(/\s*,\s*/g, ", ")
+        .replace(/^[,\s]+|[,\s]+$/g, "")
+        .slice(0, 140);
+}
+
 export async function runNovelAIImageGeneration(input: ImageGenerationRequest): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
     const naiKey = input.novelaiKey?.trim();
@@ -391,18 +417,29 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
             const refParticipants = knownRefs
                 ? (input.participants || []).filter((p) => p.hasReference === true)
                 : (input.participants || []).slice(0, dataUrls.length);
+            // v1.7.107：caption 改英文外观标签（只翻 anchor，不带中文人名）
+            const rawCaptions = charKeys.map((_, i) => (refParticipants[i]?.anchor || "").trim());
+            const translatedCaptions = await Promise.all(rawCaptions.map((c) => buildNaiCharCaption(c)));
             charKeys.forEach((k, i) => {
-                const p = refParticipants[i];
-                charCaption[k] = p ? `${p.name}${p.anchor ? "（" + p.anchor + "）" : ""}` : "";
+                charCaption[k] = translatedCaptions[i] || "";
             });
+            // ── v1.7.107 锁脸参数校准（用户报「锁脸失败 + 出来的是参考图那个风格」）──
+            // 官方参数的语义是分开的：
+            //   · strength  = 整体视觉线索（画风、配色、表情角度、姿势）对参考图的模仿强度
+            //   · fidelity  = 脸部/角色外观与参考图的保真度
+            //   · type      = "character" 只取角色外观 / "character&style" 连画风一起取（默认值！）
+            // 旧值 strength:1 + fidelity:0.75 + 不传 type（默认 character&style）=
+            //   「整体极度像参考图、连画风一起搬」，但脸只算中等保真 → 正是用户看到的现象。
+            // 新值：只要角色、不要画风；整体模仿降到中低（姿势/背景跟文字走）；脸部保真拉高。
             naiCharRef = {
                 char_caption: charCaption,
                 char_guidance: 1,
                 char_blend: false,
                 use_coords: false,
                 images: dataUrls,
-                strength: 1,
-                fidelity: 0.75,
+                type: "character",
+                strength: 0.55,
+                fidelity: 0.92,
             };
             // 自动把锚点写进提示词，确保锁脸真正生效（用户写场景/名字也能锁）
             if (!finalPrompt.includes("{char1}")) {
@@ -496,7 +533,7 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
 
     // ── 诊断日志（Vercel Dashboard → Functions → Logs 可查看）──
     const diag = {
-      _codeVersion: "v20",  // v20=分段翻译(英文画师串/权重/{charN}锚点不再被机翻毁) + 质量标签开关接通
+      _codeVersion: "v21",  // v21=锁脸参数校准(type/strength/fidelity) + char_caption 英文化
       ts: new Date().toISOString(),
       model: input.novelaiModel || "nai-diffusion-4-5-full",
       size: `${width}x${height}`,
@@ -512,6 +549,18 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
       paramsV: 3,
       hasCJK,
       translated: hasCJK ? finalUserPrompt !== rawPrompt : undefined,
+      charRef: naiCharRef
+        ? {
+            count: (naiCharRef.images as string[]).length,
+            type: naiCharRef.type,
+            strength: naiCharRef.strength,
+            fidelity: naiCharRef.fidelity,
+            captions: naiCharRef.char_caption,
+          }
+        : null,
+      // character_reference 只有 V4.5 模型支持；选了别的模型时参考图会被服务端静默忽略，
+      // 表现就是「人设文字画谁就是谁，锁脸完全不起作用」——打条警告方便排查。
+      charRefSupported: /4-5/.test(input.novelaiModel || "nai-diffusion-4-5-full"),
     };
     console.log("[NAI-DIAG] request:", JSON.stringify(diag));
 

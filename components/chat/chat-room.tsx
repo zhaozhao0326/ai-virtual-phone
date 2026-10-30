@@ -3882,9 +3882,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const appearanceText = specList.length
             ? `画面中的人物设定：${specList.map((s) => s.anchor ? `${s.name}（${s.anchor}）` : s.name).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
             : "";
-        // v1.5.11：明确告知 API "人设的性别/外貌优先级 > 锁脸参考图"，防止参考图反推覆盖人设
+        // v1.5.11 立过「人设 > 参考图」以防参考图反推把性别带偏，但旧措辞写成了
+        // 「参考图仅用于贴合画质与风格」——这把锁脸直接降级成风格参考，模型于是照人设文字另画一张脸。
+        // v1.7.107 改成按维度裁决：性别/年龄/体型看人设，五官长相（脸型、眼睛、鼻子、轮廓）必须来自参考图。
         const appearancePrompt = appearanceText
-            ? `${appearanceText}\n\n重要：若锁脸参考图与上述人设的性别或外貌特征冲突，以上述人设为准，参考图仅用于贴合画质与风格，不改变人物的性别、年龄段与核心特征。`
+            ? `${appearanceText}\n\n重要：按维度裁决——人物的性别、年龄段、体型以上述人设为准；但五官长相（脸型、眼睛、鼻子、嘴唇、面部轮廓）必须严格来自提供的参考图，这是本人的脸，不是风格参考。参考图只用于脸部特征，画面的姿势、背景、衣着仍以文字描述为准。`
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };

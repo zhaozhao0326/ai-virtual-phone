@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.106";
+export const APP_VERSION = "1.7.107";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,19 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.107",
+    date: "2026-10-30",
+    title: "修文字生图「锁脸失败、出来的是参考图那个画风」",
+    highlights: [
+      "根因（NAI 链路）：character_reference 的三个参数语义是分开的——strength 管「整体视觉线索（画风/配色/表情角度/姿势）有多像参考图」，fidelity 管「脸有多像本人」，type 决定要不要连画风一起抄（默认 character&style 就是连画风抄）",
+      "旧值 strength:1（拉满）+ fidelity:0.75（只是默认档）+ 不传 type（默认连画风）= 整体极度像参考图、画风被搬过来，但本人的脸只有中等保真 → 正是「生成的是参考图那个风格，锁不住真正的脸」",
+      "新值：type 显式设为 character（只要角色、不要画风），strength 1 → 0.55（姿势/背景交还给文字描述），fidelity 0.75 → 0.92（脸部保真拉高）",
+      "附带修复：char_caption 之前把整段中文（名字+中文外貌）直接塞给 NAI，而 NAI 分词器不认中文 → caption 等于没写。现在翻成英文外观描述、去掉中文人名、限长 140 字符",
+      "顺带修掉一句自相矛盾的提示词：旧文案「参考图仅用于贴合画质与风格」把锁脸降级成风格参考，改成按维度裁决——性别/年龄/体型看人设，五官长相必须来自参考图",
+      "诊断增强：NAI 请求日志新增 charRef 摘要（type/strength/fidelity/captions）与 charRefSupported（character_reference 仅 V4.5 模型支持，选错模型会被服务端静默忽略）",
+    ],
+  },
   {
     version: "1.7.106",
     date: "2026-10-29",
