@@ -172,6 +172,47 @@ function imageExtension(mimeType: string): string {
   return subtype.replace("jpeg", "jpg");
 }
 
+/**
+ * NovelAI V4.5 Character Reference 对参考图有硬性尺寸要求：
+ * 只接受 1024x1536 / 1536x1024 / 1472x1472，多余区域用黑边补齐。
+ * 旧流程把图压到最长边 768 直接发过去——尺寸不合规 + 脸部细节被磨掉，锁脸自然锁不住。
+ * 这里等比缩放到目标框内、居中、黑底补齐。
+ */
+async function padReferenceImageForNai(dataUrl: string): Promise<string> {
+  if (typeof document === "undefined") return dataUrl;
+  try {
+    const image = await loadDataUrlImage(dataUrl);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!width || !height) return dataUrl;
+    const ratio = width / height;
+    const [targetW, targetH] = ratio > 1.2
+      ? [1536, 1024]
+      : ratio < 0.83
+        ? [1024, 1536]
+        : [1472, 1472];
+    const scale = Math.min(targetW / width, targetH / height);
+    const drawW = Math.max(1, Math.round(width * scale));
+    const drawH = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const context = canvas.getContext("2d");
+    if (!context) return dataUrl;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, targetW, targetH);
+    context.drawImage(image, Math.round((targetW - drawW) / 2), Math.round((targetH - drawH) / 2), drawW, drawH);
+    let out = canvas.toDataURL("image/jpeg", 0.88);
+    // 单张超过 ~600KB 就降质重编，防止 4 张累加撞 Vercel 4.5MB 请求体上限
+    if (out.length > 600 * 1024) out = canvas.toDataURL("image/jpeg", 0.7);
+    return out;
+  } catch {
+    return dataUrl;
+  }
+}
+
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl
     .trim()
@@ -1100,6 +1141,26 @@ export async function generateImageFromConfiguredApi(params: {
 
     throwIfAborted(params.signal);
     console.log("[IMG-SVC] NAI 开始请求服务端中转", { promptLen: description.length, model: nai.model });
+    // v1.7.108：NAI 走官方 Director Reference 锁脸，参考图必须是 1024x1536 / 1536x1024 / 1472x1472
+    // 且黑边补齐。这里用「未压缩的原图」重新 pad，避免 768px 压缩后的糊图拉低锁脸效果。
+    const naiReferenceImages = await (async () => {
+      const out: string[] = [];
+      const seen = new Set<string>();
+      const push = async (value?: string | null) => {
+        const s = typeof value === "string" ? value.trim() : "";
+        if (!s.startsWith("data:image/") || seen.has(s)) return;
+        const padded = await padReferenceImageForNai(s);
+        if (seen.has(padded)) return;
+        seen.add(padded);
+        out.push(padded);
+      };
+      await push(referenceImageDataUrl);              // ① 角色自己的锁脸图优先（裁脸后未压缩）
+      for (const r of params.referenceImages ?? []) {
+        await push(r);                                 // ② 参与者（用户等）的脸
+      }
+      return out.slice(0, 4);
+    })();
+    throwIfAborted(params.signal);
     // 走服务端中转：浏览器只连我们自己 Vercel 服务器（国内合法），
     // 由 Vercel 海外服务器调 image.novelai.net（正确域名），
     // 解决浏览器 CORS + 境外网络双重拦截。
@@ -1107,7 +1168,7 @@ export async function generateImageFromConfiguredApi(params: {
       settings,
       prompt: description,
       participantAppearance: params.participantAppearance,
-      referenceImages: mergedReferenceImages,
+      referenceImages: naiReferenceImages,
       participants: params.participants,
       sceneBackground: params.sceneBackground,
       sceneLighting: params.sceneLighting,

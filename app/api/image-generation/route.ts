@@ -338,6 +338,17 @@ async function translateToEnglish(text: string): Promise<string> {
     return text;
 }
 
+// ── NAI V4.5 官方 Character Reference（Director Reference）请求结构 ──
+// 五个数组长度必须一致；descriptions[i].caption.base_caption 用 "character"（只取人）
+// 或 "character&style"（连画风一起取）。
+type NaiDirectorReference = {
+    images: string[];
+    descriptions: Array<{ caption: { base_caption: string; char_captions: unknown[] }; legacy_uc: boolean }>;
+    infoExtracted: number[];
+    strengths: number[];
+    fidelities: number[];
+};
+
 // ── NAI character_reference 的 char_caption：必须是英文外观描述 ──
 // v1.7.107：旧实现把「苏程晓（女生，银白短发…）」整段中文塞进 char_caption，
 // NAI 分词器不认中文 → caption 等于没写，锁脸只能靠裸图，脸随缘。
@@ -400,16 +411,27 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
       finalPrompt = `${finalPrompt} ${input.novelaiNsfwSuffix.trim()}`;
     }
 
-    // ── 参考图锁脸预处理（NAI V4.5 character_reference + 锚点注入）──
+    // ── 参考图锁脸预处理（NAI V4.5 Director Reference + 锚点注入）──
     // NAI 锁脸靠锚点 token {charN}，不是人物名字。必须注入锚点，否则写名字锁不住脸。
-    let naiCharRef: Record<string, unknown> | null = null;
+    //
+    // ⚠️ v1.7.108 根因修复：旧实现发的是 `character_reference` 对象，而**这个字段在 NovelAI API 里
+    // 根本不存在**（官方 OpenAPI image.novelai.net/docs/doc.json 里没有它），只会被服务端静默忽略
+    // ——所以「锁脸」从上线起就从未生效过，用户看到的「像参考图」只是巧合。
+    // 官方 Character Reference 对应的是一组平行的 director_reference_* 字段：
+    //   director_reference_images                    base64 图（要求 1024x1536 / 1536x1024 / 1472x1472，黑边补齐）
+    //   director_reference_descriptions              [{ caption: { base_caption: "character"|"character&style", char_captions: [] }, legacy_uc: false }]
+    //   director_reference_information_extracted     0-1
+    //   director_reference_strength_values           0-1（整体强度：姿势/构图对参考图的模仿）
+    //   director_reference_secondary_strength_values 0-1（fidelity：脸有多像本人）
+    let naiCharRef: NaiDirectorReference | null = null;
+    /** v4_prompt.caption.char_captions：{charN} 必须在这里有对应条目，否则锚点是死 token */
+    let naiCharCaptions: Array<{ char_caption: string; centers: Array<{ x: number; y: number }> }> = [];
     if (input.referenceImages?.length) {
         const dataUrls = (input.referenceImages as string[])
             .filter((d) => typeof d === "string" && d.startsWith("data:"))
             .slice(0, 4);
         if (dataUrls.length) {
             const charKeys = dataUrls.map((_, i) => `char${i + 1}`);
-            const charCaption: Record<string, string> = {};
             // v1.5.12：每张参考图的 caption 写对应人物名+锚点，帮 NAI 精确理解"charN=谁"
             // v1.7.31 锁脸错位修复：caption 按「有参考图的参与者序列」对齐 dataUrls 顺序，
             // 而非按 participants 原始索引——缺图者不再挤占，char1 一定对应第一张参考图的主人。
@@ -418,11 +440,18 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
                 ? (input.participants || []).filter((p) => p.hasReference === true)
                 : (input.participants || []).slice(0, dataUrls.length);
             // v1.7.107：caption 改英文外观标签（只翻 anchor，不带中文人名）
-            const rawCaptions = charKeys.map((_, i) => (refParticipants[i]?.anchor || "").trim());
-            const translatedCaptions = await Promise.all(rawCaptions.map((c) => buildNaiCharCaption(c)));
-            charKeys.forEach((k, i) => {
-                charCaption[k] = translatedCaptions[i] || "";
+            // v1.7.108：只有「有参考图的人」数量与图数严格相等时才用 anchor 对齐，
+            // 否则用中性 caption——宁可少给信息，也不能把 A 的脸配上 B 的外貌描述。
+            // 另外只取 anchor 的第一段（性别/人数），**不写发型发色等细节**：
+            // 那些细节来自角色卡，常和锁脸照片对不上，写进 caption 会和参考图打架，
+            // 模型于是按文字重画一张脸——正是「锁不住」的另一种表现。
+            const captionAligned = refParticipants.length === dataUrls.length;
+            const rawCaptions = charKeys.map((_, i) => {
+                if (!captionAligned) return "";
+                const anchor = (refParticipants[i]?.anchor || "").trim();
+                return anchor.split(/[，,;；]/)[0]?.trim() || "";
             });
+            const translatedCaptions = await Promise.all(rawCaptions.map((c) => buildNaiCharCaption(c)));
             // ── v1.7.107 锁脸参数校准（用户报「锁脸失败 + 出来的是参考图那个风格」）──
             // 官方参数的语义是分开的：
             //   · strength  = 整体视觉线索（画风、配色、表情角度、姿势）对参考图的模仿强度
@@ -432,21 +461,30 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
             //   「整体极度像参考图、连画风一起搬」，但脸只算中等保真 → 正是用户看到的现象。
             // 新值：只要角色、不要画风；整体模仿降到中低（姿势/背景跟文字走）；脸部保真拉高。
             naiCharRef = {
-                char_caption: charCaption,
-                char_guidance: 1,
-                char_blend: false,
-                use_coords: false,
-                images: dataUrls,
-                type: "character",
-                strength: 0.55,
-                fidelity: 0.92,
+                // 官方要的是纯 base64（不带 data:image/...;base64, 前缀），带前缀会被判为非法图
+                images: dataUrls.map((d) => d.replace(/^data:[^;]+;base64,/, "")),
+                // base_caption 用 "character" = 只取角色外观、**不搬画风**（"character&style" 会连画风一起抄）
+                descriptions: dataUrls.map(() => ({
+                    caption: { base_caption: "character", char_captions: [] },
+                    legacy_uc: false,
+                })),
+                infoExtracted: dataUrls.map(() => 1),
+                // strength 0.7：角色特征迁移要够强脸才像；fidelity 0.95：脸保真拉满
+                strengths: dataUrls.map(() => 0.7),
+                fidelities: dataUrls.map(() => 0.95),
             };
+            // 每张参考图在 v4_prompt 里都要有一条 char_caption，{charN} 才认得它；
+            // 空数组会让 {char1} 变成死 token（这也是旧版「锚点写了却没锁上」的原因之一）。
+            naiCharCaptions = translatedCaptions.map((cap, i) => ({
+                char_caption: cap || "1person",
+                centers: [{ x: (i + 1) / (translatedCaptions.length + 1), y: 0.5 }],
+            }));
             // 自动把锚点写进提示词，确保锁脸真正生效（用户写场景/名字也能锁）
             if (!finalPrompt.includes("{char1}")) {
                 const anchors = charKeys.map((k) => `{${k}}`).join(" ");
                 finalPrompt = `${finalPrompt} ${anchors}`.trim();
             }
-            console.log("[NAI-PROMPT] character_reference 注入数量:", dataUrls.length, "锚点:", charKeys.join(","));
+            console.log("[NAI-PROMPT] director_reference 注入数量:", dataUrls.length, "锚点:", charKeys.join(","), "captions:", JSON.stringify(translatedCaptions));
         }
     }
 
@@ -515,14 +553,26 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
       v4_prompt: {
         use_coords: false,
         use_order: true,
-        caption: { base_caption: finalPrompt, char_captions: [] },
+        // v1.7.108：char_captions 必须与提示词里的 {charN} 一一对应，空数组会让锚点变成死 token
+        caption: { base_caption: finalPrompt, char_captions: naiCharCaptions },
       },
       // ⚠️ 不发送ucPreset！SDK只在客户端用它拼接negative_prompt标签，不传给NAI API
     };
 
-    // ── 参考图锁脸（NAI V4.5 对象格式；锚点已在上方注入提示词）──
-    if (naiCharRef) {
-        (parameters as Record<string, unknown>).character_reference = naiCharRef;
+    // ── 参考图锁脸（NAI V4.5 官方 Director Reference；锚点已在上方注入提示词）──
+    // v1.7.108：旧代码挂的 `character_reference` 是**不存在的字段**，被服务端静默丢弃 → 锁脸从未生效。
+    // 官方 OpenAPI 只认这 5 个平行数组，长度必须一致，否则整个请求会被拒。
+    // director_reference_* 仅 V4.5 支持：选了 V4/V3 时硬发过去会被拒，这里按模型放行。
+    const charRefModelSupported = /4-5/.test(input.novelaiModel || "nai-diffusion-4-5-full");
+    if (naiCharRef && charRefModelSupported) {
+        const p = parameters as Record<string, unknown>;
+        p.director_reference_images = naiCharRef.images;
+        p.director_reference_descriptions = naiCharRef.descriptions;
+        p.director_reference_information_extracted = naiCharRef.infoExtracted;
+        p.director_reference_strength_values = naiCharRef.strengths;
+        p.director_reference_secondary_strength_values = naiCharRef.fidelities;
+    } else if (naiCharRef) {
+        console.log("[NAI-PROMPT] 当前模型不支持 Character Reference，已跳过参考图:", input.novelaiModel);
     }
     const body = JSON.stringify({
       input: finalPrompt,
@@ -533,7 +583,7 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
 
     // ── 诊断日志（Vercel Dashboard → Functions → Logs 可查看）──
     const diag = {
-      _codeVersion: "v21",  // v21=锁脸参数校准(type/strength/fidelity) + char_caption 英文化
+      _codeVersion: "v22",  // v22=改用官方 director_reference_* 锁脸字段 + 填充 char_captions
       ts: new Date().toISOString(),
       model: input.novelaiModel || "nai-diffusion-4-5-full",
       size: `${width}x${height}`,
@@ -552,13 +602,13 @@ export async function runNovelAIImageGeneration(input: ImageGenerationRequest): 
       charRef: naiCharRef
         ? {
             count: (naiCharRef.images as string[]).length,
-            type: naiCharRef.type,
-            strength: naiCharRef.strength,
-            fidelity: naiCharRef.fidelity,
-            captions: naiCharRef.char_caption,
+            mode: "director_reference",
+            strength: naiCharRef.strengths,
+            fidelity: naiCharRef.fidelities,
+            captions: naiCharCaptions.map((c) => c.char_caption),
           }
         : null,
-      // character_reference 只有 V4.5 模型支持；选了别的模型时参考图会被服务端静默忽略，
+      // director_reference_* 只有 V4.5 模型支持；选了别的模型时参考图会被服务端忽略，
       // 表现就是「人设文字画谁就是谁，锁脸完全不起作用」——打条警告方便排查。
       charRefSupported: /4-5/.test(input.novelaiModel || "nai-diffusion-4-5-full"),
     };

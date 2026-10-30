@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.107";
+export const APP_VERSION = "1.7.108";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,22 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.108",
+    date: "2026-10-30",
+    title: "修「锁脸从来没生效过」——NAI 的锁脸字段根本不存在",
+    highlights: [
+      "真根因：上一版改的 character_reference 对象，在 NovelAI 官方 API 里**根本不存在这个字段**（官方 OpenAPI 文档里查不到），服务器会静默丢弃未知字段 → 锁脸从功能上线起就从未真正生效，之前看到的「有点像」只是巧合",
+      "官方 Character Reference 实际是一组平行字段：director_reference_images / _descriptions / _information_extracted / _strength_values / _secondary_strength_values（后者=fidelity），五个数组长度必须一致",
+      "descriptions 的 base_caption 设为 character（只取角色、不搬画风）；strength 0.7、fidelity 0.95（脸保真拉满）",
+      "第二个致命 bug：v4_prompt.caption.char_captions 一直是空数组，而提示词里却塞了 {char1} 锚点 → 锚点是死 token。现在按参考图逐张填充对应条目",
+      "第三个坑：官方要的是纯 base64，我们发的是 data:image/... 前缀的 data URL，会判为非法图，已剥离前缀",
+      "第四个坑：参考图尺寸官方要求 1024x1536 / 1536x1024 / 1472x1472 并黑边补齐，我们原来压到 768px 直接发 → 尺寸不合规+脸部细节被磨掉。现在按原图比例 pad 到标准尺寸再发，且用未压缩原图",
+      "char_caption 只保留性别/人数这类中性词，不再写发型发色——那些来自角色卡，常和锁脸照对不上，写进去会和参考图打架、让模型按文字重画一张脸",
+      "参考图数量与「有图的人」对不上时改用中性 caption，避免 A 的脸配上 B 的外貌描述",
+      "仅 V4.5 模型支持这套字段，选 V4/V3 时自动跳过并打日志，不再把整个请求弄挂",
+    ],
+  },
   {
     version: "1.7.107",
     date: "2026-10-30",

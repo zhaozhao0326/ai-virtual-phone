@@ -3809,7 +3809,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         if (!prompt.trim() || selectedIds.length === 0) return null;
         const u = resolveUserIdentity();
         const chars = loadCharacters();
-        const charRefs = loadImageGenerationSettings().characterReferences ?? {};
+        const photoSettings = loadImageGenerationSettings();
+        const charRefs = photoSettings.characterReferences ?? {};
+        // v1.7.108：NAI 的锁脸参考图要 1024x1536 级别，768 放大后脸会糊、锁不住
+        const refMaxSize = photoSettings.provider === "novelai" ? 1024 : 768;
 
         const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null; hasReference?: boolean }[] = [];
         for (const id of selectedIds) {
@@ -3875,7 +3878,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const cropped = (s.id === "user" && u?.faceCrop)
                 ? await normalizeReferenceImageForEdit(raw, u.faceCrop)
                 : raw;
-            const compressed = await compressImageDataUrlForChat(cropped, 768);
+            const compressed = await compressImageDataUrlForChat(cropped, refMaxSize);
             if (compressed) refImages.push(compressed);
         }
 
@@ -3886,7 +3889,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // 「参考图仅用于贴合画质与风格」——这把锁脸直接降级成风格参考，模型于是照人设文字另画一张脸。
         // v1.7.107 改成按维度裁决：性别/年龄/体型看人设，五官长相（脸型、眼睛、鼻子、轮廓）必须来自参考图。
         const appearancePrompt = appearanceText
-            ? `${appearanceText}\n\n重要：按维度裁决——人物的性别、年龄段、体型以上述人设为准；但五官长相（脸型、眼睛、鼻子、嘴唇、面部轮廓）必须严格来自提供的参考图，这是本人的脸，不是风格参考。参考图只用于脸部特征，画面的姿势、背景、衣着仍以文字描述为准。`
+            ? `${appearanceText}\n\n重要：按维度裁决——人物的性别、年龄段、体型以上述人设为准；但五官长相（脸型、眼睛、鼻子、嘴唇、面部轮廓）以及发型发色必须严格来自提供的参考图，这是本人的脸，不是风格参考；文字里关于长相/发型发色的描述与参考图冲突时，以参考图为准。参考图只用于人物本身，画面的姿势、背景、衣着仍以文字描述为准。`
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
