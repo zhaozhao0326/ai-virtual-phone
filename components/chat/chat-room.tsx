@@ -1,8 +1,9 @@
 "use client";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, resolveOfflineParticipantChanges } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, updateOfflineFrameIncludeSelf, resolveOfflineParticipantChanges } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
+import { appendCheckPhoneUserPhoto, USER_CLASSIC_FRAMES_ALBUM_ID, USER_CLASSIC_FRAMES_ALBUM_TITLE } from "@/lib/checkphone-user-photos";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
 import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, MEETING_INVITE_TAG_RE, parseMeetingInvite, type ParsedMeetingInvite, type ParsedMessagePart } from "@/lib/rich-message-parser";
 import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
@@ -57,7 +58,7 @@ import { cancelBailoutKey } from "@/lib/push-bailout-client";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { addFriendRequest, getPendingFriendRequests, dispatchFriendRequestUpdated } from "@/lib/friend-request-storage";
 import type { UserIdentity } from "@/components/settings/user-identity";
-import { AlertCircle, Blocks, Bookmark, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { AlertCircle, Blocks, Bookmark, Camera, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
 import { setDebugChatState } from "@/lib/debug-store";
 import { SessionCustomCSS } from "@/components/ui/session-custom-css";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -1021,6 +1022,9 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onStopGeneration: () => void;
     onCaptureFrame: () => void;
     isCapturingFrame: boolean;
+    includeSelfInFrame: boolean;
+    onToggleIncludeSelf: () => void;
+    showFrameSelfToggle: boolean;
 }>(function OfflineTextInputBar({
     isOfflineGenerating,
     isSpectator,
@@ -1033,6 +1037,9 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onStopGeneration,
     onCaptureFrame,
     isCapturingFrame,
+    includeSelfInFrame,
+    onToggleIncludeSelf,
+    showFrameSelfToggle,
 }, ref) {
     const [inputText, setInputText] = useState("");
     const inputTextRef = useRef("");
@@ -1149,12 +1156,12 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                 </button>
                 <button
                     type="button"
-                    onClick={onCaptureFrame}
+                    onClick={() => onCaptureFrame()}
                     disabled={isCapturingFrame || isOfflineGenerating || isSpectator}
                     className="ui-bare-btn text-[var(--c-text)]"
                     style={(isCapturingFrame || isSpectator) ? { opacity: isSpectator ? 0.35 : 0.6 } : undefined}
-                    aria-label="生成当下经典画面"
-                    title={isCapturingFrame ? "正在定格这一帧…" : "生成当下经典画面（把此刻剧情定格成一张图）"}
+                    aria-label="定格最新这一条"
+                    title={isCapturingFrame ? "正在定格这一帧…" : "定格最新这一条（只总结最后一条回复）"}
                 >
                     {isCapturingFrame ? (
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="chat-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
@@ -1162,6 +1169,17 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
                     )}
                 </button>
+                {showFrameSelfToggle && (
+                    <button
+                        type="button"
+                        onClick={onToggleIncludeSelf}
+                        disabled={isCapturingFrame || isOfflineGenerating}
+                        className={`chat-frame-self-toggle${includeSelfInFrame ? " is-on" : ""}`}
+                        title={includeSelfInFrame ? "定格时会把你画进画面（点一下只定格角色们）" : "定格时只画角色们（点一下把自己也画进去）"}
+                    >
+                        {includeSelfInFrame ? "含你" : "无你"}
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={() => { if (isOfflineGenerating) onStopGeneration(); else handleSubmit(); }}
@@ -1237,6 +1255,17 @@ function dataUrlToBlob(dataUrl: string): Blob | null {
     }
 }
 
+/** 生图是否被内容安全审核拦下（OpenAI：moderation_blocked / rejected by the safety system）。
+ *  这不是网络/额度/token 问题，而是画面描述被判为不宜生成——处理方式是「把镜头拉远」而不是重试原样。 */
+function isModerationBlocked(error: unknown): boolean {
+    const m = (error instanceof Error ? error.message : String(error)).toLowerCase();
+    return m.includes("moderation")
+        || m.includes("safety system")
+        || m.includes("safety_violation")
+        || m.includes("safety_violations")
+        || m.includes("rejected by the safety");
+}
+
 export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [liveCSS, setLiveCSS] = useState(session.customCSS || "");
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1259,6 +1288,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [offlineMode, setOfflineMode] = useState(false);
     // 线下「在场角色」本地镜像：props.session 不可变，这里维护在场集合，写回 storage 同步
     const [offlineParticipants, setOfflineParticipants] = useState<string[]>(() => getOfflineParticipants(session));
+    // 用户真实肖像（锁脸图/头像）是否存在，决定「把自己画进画面」开关是否有意义
+    const userPortraitIdentity = useMemo(() => resolveUserIdentity(), []);
+    const hasUserPortrait = !!(userPortraitIdentity?.faceLockUrl?.trim() || userPortraitIdentity?.avatarUrl?.trim());
+    // 线下「定格经典画面」是否把自己也画进画面：默认跟随旧行为（有肖像就进镜），可在工具栏临时切换并落盘
+    const [includeSelfInFrame, setIncludeSelfInFrame] = useState<boolean>(() => session.offlineFrameIncludeSelf ?? true);
+    const applyFrameIncludeSelf = useCallback((value: boolean) => {
+        setIncludeSelfInFrame(value);
+        updateOfflineFrameIncludeSelf(session.id, value);
+    }, [session.id]);
     const [showOfflineInviteMenu, setShowOfflineInviteMenu] = useState(false);
     // 邀请候选池：按「跟当前线下主角色」的关联度分三档——有明确关系的 → 同世界的 → 其他。
     // 有关系的人排最前并带关系标签，避免一打开就是一堆跟主角色毫无关系的人。
@@ -4032,25 +4070,30 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const charName = character?.name?.trim() || (session.isGroup ? (session.groupName || "对方") : "对方");
         const userName = u?.name?.trim() || "你";
 
-        // ① 组装剧情片段作为导演上下文：
-        //    - 未指定 turn（输入框按钮）：取最近 8 轮；
-        //    - 指定 turn（长按某条"定格这一帧"）：以该条为中心、前后各取 2 轮，兼顾情境连贯。
-        const idx = targetTurnId ? offlineTurns.findIndex((t) => t.id === targetTurnId) : -1;
-        const recent = idx >= 0
-            ? offlineTurns.slice(Math.max(0, idx - 2), idx + 3)
-            : offlineTurns.slice(-8);
+        // ① 组装剧情片段作为导演上下文：**只取被点的那一条**（不做多轮汇总，省 token 也避免跑偏）。
+        //    - 传了 targetTurnId（每条下面 / 长按菜单）：就取那一条；
+        //    - 没传（底部工具栏按钮）：取"最后一条有角色回复的记录"，同样只有一条。
         const stripTags = (s: string): string =>
             s.replace(/\[状态栏\][\s\S]*?\[\/状态栏\]/g, "")
              .replace(/\[相册\][\s\S]*?\[\/相册\]/g, "")
              .replace(/\s+/g, " ")
              .trim();
-        const transcript = recent.map((t) => {
-            const isTarget = !!targetTurnId && t.id === targetTurnId;
-            const uText = stripTags(t.userContent || "").slice(0, 600);
-            const aText = stripTags(t.assistantContent || "").slice(0, 600);
-            const head = isTarget ? "◆ 用户指定定格 ◆ " : "";
-            return `${head}你（${userName}）：${uText}\n${charName}：${aText}`;
-        }).filter((s) => s.replace(/\s/g, "").length > 0).join("\n\n");
+        const pickTurn = (): ChatOfflineTurn | undefined => {
+            if (targetTurnId) return offlineTurns.find((t) => t.id === targetTurnId);
+            for (let i = offlineTurns.length - 1; i >= 0; i -= 1) {
+                if (stripTags(offlineTurns[i].assistantContent || "")) return offlineTurns[i];
+            }
+            return undefined;
+        };
+        const targetTurn = pickTurn();
+        if (!targetTurn) {
+            showChatToast("这一条还没有可定格的剧情内容。");
+            return;
+        }
+        const transcript = [
+            `你（${userName}）：${stripTags(targetTurn.userContent || "").slice(0, 700)}`,
+            `${charName}：${stripTags(targetTurn.assistantContent || "").slice(0, 900)}`,
+        ].join("\n");
         if (!transcript.trim()) {
             showChatToast("这段剧情还没有可定格的内容。");
             return;
@@ -4071,25 +4114,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         setIsCapturingFrame(true);
         try {
-            const focusInstruction = targetTurnId
-                ? "记录中已用「◆ 用户指定定格 ◆」标出的那一条，是用户特别想定格的瞬间——请**紧紧围绕那一条**所营造的情境来构图（它前后文只作连贯参考，不要另选别的瞬间）。"
-                : "请从中挑出「最值得纪念、最有画面感的一帧瞬间」（重点参考最后一条角色回复所营造的情境，但不必死抠那一句），";
             const directorSystem = [
-                "你是电影分镜导演，也是这段「线下剧情」的旁观者。下面是用户与角色之间几轮互动的对话记录。",
-                focusInstruction,
-                "写一段用于 AI 生图的电影感提示词（中文）。",
+                "你是电影分镜导演。下面是一条「线下剧情」的片段（用户与角色的一问一答）。",
+                "请就这一条，写一段用于 AI 生图的电影感画面描述（中文）。",
                 "",
                 "要求：",
-                "- 只描写：构图与镜头（远景/中景/特写等）、光线与色调、氛围与情绪、人物姿态与动作、环境场景、服装风格、画面质感。",
+                "- 只描写：构图与镜头（远景/中景/特写等）、光线与色调、氛围与情绪、人物姿态、环境场景、服装风格、画面质感。",
                 "- 绝对不要描写人物五官、脸型、发型、发色等具体长相——这些由参考图锁定，生图时会自动贴合本人。",
-                "- 用「" + userName + "」「" + charName + "」代指人物，不要编造真实姓名以外的新名字。",
-                "- 画面应是那一瞬间的定格，有故事感与余味，避免摆拍感。",
+                "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
+                "- 画面是那一瞬间的定格，有故事感与余味，避免摆拍感。",
+                "- 保持镜头得体克制：不要描写亲吻、肌肤相贴、身体接触细节、裸露或血腥暴力；",
+                "  情绪张力优先用光影明暗、景深、距离感（如远景剪影、手部特写、背影、环境空镜）来表达。",
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 120 字以内。",
             ].join("\n");
 
-            const userContent = targetTurnId
-                ? `【剧情片段（已标记你想定格的那一条）】\n${transcript}\n\n请围绕标记「◆ 用户指定定格 ◆」的那一条，写一段电影感生图提示词。`
-                : `【最近剧情记录】\n${transcript}\n\n请为其中最有纪念意义的一帧，写一段电影感生图提示词。`;
+            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词。`;
 
             const summaryRes = await simpleLLMCall(
                 apiConfig,
@@ -4102,40 +4141,80 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             if (summaryRes.error || !summaryRes.content?.trim()) {
                 throw new Error(summaryRes.error || "AI 没能总结出这一帧，请重试。");
             }
-            const framePrompt = summaryRes.content.trim();
+            let framePrompt = summaryRes.content.trim();
 
-            // ② 在场角色 + （若有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
+            // ② 在场角色 + （若开关开启且有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
             const baseCast = offlineParticipants.includes(session.contactId)
                 ? [...offlineParticipants]
                 : [session.contactId, ...offlineParticipants];
             const castIds = [...baseCast];
-            if (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim()) castIds.push("user");
+            if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
 
-            const dataUrl = await handleTextPhotoGenerate(framePrompt, castIds);
+            // 生图：被内容安全审核拦下时，不原样重试，而是把镜头拉远（中远景/背影/剪影/环境空镜）再试一次。
+            // 这是「让画面更克制」，不是绕审核；多数亲密/贴身构图在远景下就能正常出图。
+            let dataUrl: string | null = null;
+            let autoRestrained = false;
+            try {
+                dataUrl = await handleTextPhotoGenerate(framePrompt, castIds);
+            } catch (photoError) {
+                if (!isModerationBlocked(photoError)) throw photoError;
+                const restrainedPrompt = `${framePrompt}；镜头拉远为中远景，人物侧背身或剪影，以环境、光影与留白承载情绪，不表现肢体接触动作`;
+                dataUrl = await handleTextPhotoGenerate(restrainedPrompt, castIds);
+                if (dataUrl) {
+                    autoRestrained = true;
+                    framePrompt = `${framePrompt}（已自动改为远景构图）`;
+                }
+            }
             if (!dataUrl) throw new Error("生图返回为空，请重试。");
 
-            // ③ 存 IndexedDB，追加一条带图离线记录（永不清空），并弹窗预览
+            // ③ 存 IndexedDB，把图**挂回被点的那一条**（不新增时间线记录），同一条再定格就换最新一帧
             const blob = dataUrlToBlob(dataUrl);
             const assetId = blob ? await saveChatImageToIndexedDB(blob) : null;
-            const saved = appendChatOfflineTurn({
-                sessionId: session.id,
-                userContent: "",
-                assistantContent: "〔经典画面 · 已定格这一刻〕",
-                summary: framePrompt,
-                summaryTag: "frame",
-                imageAssetId: assetId ?? undefined,
+            if (!assetId) throw new Error("画面储存失败，请重试。");
+            const updated = updateChatOfflineTurn(session.id, targetTurn.id, {
+                imageAssetId: assetId,
+                framePrompt,
             });
-            setOfflineTurns((prev) => [...prev, saved]);
+            if (updated) {
+                setOfflineTurns((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+            }
             setFramePreview({ dataUrl, prompt: framePrompt });
+            if (autoRestrained) {
+                showChatToast("原构图被生图安全审核拦下，已自动换成远景/氛围构图重新生成。", 3600);
+            }
+
+            // ④ 同步进「查手机·相册」的真实照片层（与 LLM 模拟相册解耦，刷新不会被冲掉）
+            if (assetId) {
+                const now = new Date();
+                appendCheckPhoneUserPhoto({
+                    id: `frame_${now.getTime()}_${Math.random().toString(36).slice(2, 8)}`,
+                    characterId: session.contactId,
+                    assetId,
+                    albumId: USER_CLASSIC_FRAMES_ALBUM_ID,
+                    albumTitle: USER_CLASSIC_FRAMES_ALBUM_TITLE,
+                    title: framePrompt.slice(0, 24) || "线下定格",
+                    description: framePrompt,
+                    shotAtLabel: now.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+                    locationLabel: "线下时光",
+                    tone: "mist",
+                    createdAt: now.toISOString(),
+                });
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            showChatToast(`生成经典画面失败：${message}`, 4000);
+            // 生图服务的内容安全审核：不是网络、额度或 token 问题——是画面描述被判定为不宜生成。
+            // 前面已自动试过一次远景构图，仍失败才走到这里，给一句人话而不是原始 JSON。
+            if (isModerationBlocked(error)) {
+                showChatToast("这一帧连续被生图服务的安全审核拦下了。换一条剧情、或隔一会儿再试；也可以先把手动「含你」关掉。", 5600);
+            } else {
+                showChatToast(`生成经典画面失败：${message.slice(0, 200)}`, 4000);
+            }
         } finally {
             setIsCapturingFrame(false);
         }
     }, [
         isCapturingFrame, isOfflineGenerating, offlineTurns, offlineParticipants,
-        character, session, handleTextPhotoGenerate,
+        includeSelfInFrame, character, session, handleTextPhotoGenerate,
     ]);
 
     const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {
@@ -6619,9 +6698,22 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     {turn.imageAssetId && (
                                         <OfflineTurnImage
                                             assetId={turn.imageAssetId}
-                                            onOpen={(src) => setFramePreview({ dataUrl: src, prompt: turn.summary || "经典画面" })}
+                                            onOpen={(src) => setFramePreview({ dataUrl: src, prompt: turn.framePrompt || "经典画面" })}
                                         />
                                     )}
+                                    {/* 每条线下回复下面都留一个「定格这一帧」：只围绕这一条总结出图，不吃多轮上下文 */}
+                                    <button
+                                        type="button"
+                                        className="chat-offline-frame-btn"
+                                        disabled={isCapturingFrame || isOfflineGenerating || !!session.isSpectator}
+                                        onClick={(e) => { e.stopPropagation(); void handleCaptureOfflineFrame(turn.id); }}
+                                        title="把这一条剧情定格成一张图（只总结这一条）"
+                                    >
+                                        {isCapturingFrame
+                                            ? <Loader2 size={12} strokeWidth={2.2} className="chat-spin" />
+                                            : <Camera size={12} strokeWidth={2.2} />}
+                                        <span>{isCapturingFrame ? "定格中…" : turn.imageAssetId ? "重新定格" : "定格这一帧"}</span>
+                                    </button>
                                     {/* 线下状态栏：一个小标签，点开是浮层（浮在聊天记录上方，看完关掉），不占版面。
                                         摘要与状态栏合并在这一个浮层里：摘要照旧进短期记忆，只是不再单独渲染一行折叠块。
                                         未启用状态栏时没有 [状态栏] 原文，标签退化成「摘要」。 */}
@@ -7209,6 +7301,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     onStopGeneration={clearOfflineGeneration}
                     onCaptureFrame={handleCaptureOfflineFrame}
                     isCapturingFrame={isCapturingFrame}
+                    includeSelfInFrame={includeSelfInFrame}
+                    onToggleIncludeSelf={() => applyFrameIncludeSelf(!includeSelfInFrame)}
+                    showFrameSelfToggle={hasUserPortrait}
                 />
             ) : (
             <ChatTextInputBar

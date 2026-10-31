@@ -15,6 +15,13 @@ import type {
 } from "@/lib/checkphone-config";
 import { generateCheckPhonePhotos } from "@/lib/checkphone-engine";
 import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/checkphone-storage";
+import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
+import {
+  USER_CLASSIC_FRAMES_ALBUM_ID,
+  USER_CLASSIC_FRAMES_ALBUM_TITLE,
+  loadCheckPhoneUserPhotos,
+  type CheckPhoneUserPhoto,
+} from "@/lib/checkphone-user-photos";
 
 type CheckPhonePhotosPageProps = {
   character: Character;
@@ -33,6 +40,24 @@ function PhotoPreviewIcon({ icon, large = false }: { icon: string; large?: boole
   );
 }
 
+/** 线下「定格」产生的真实照片：从 IndexedDB 懒加载，直接铺满相册格位。 */
+function RealPhoto({ assetId, large = false }: { assetId: string; large?: boolean }) {
+  const [src, setSrc] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getChatImageFromIndexedDB(assetId).then((dataUrl) => {
+      if (!cancelled && dataUrl) setSrc(dataUrl);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
+  if (!src) {
+    return <div className={`cp-photo-real-loading ${large ? "is-large" : ""}`} aria-hidden="true" />;
+  }
+  return <img className="cp-photo-real-img" src={src} alt="" loading="lazy" />;
+}
+
 export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPageProps) {
   const [snapshot, setSnapshot] = useState<CheckPhoneSnapshot<CheckPhonePhotosPayload> | null>(null);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
@@ -43,6 +68,8 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
   const [error, setError] = useState<string | null>(null);
   const [debugRawOutput, setDebugRawOutput] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  // 用户在线下「定格经典画面」生成的真实照片（独立于 LLM 模拟相册，刷新不会被冲掉）
+  const [userPhotos, setUserPhotos] = useState<CheckPhoneUserPhoto[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,8 +82,10 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
     setHomeSection("featured");
     (async () => {
       const cached = await loadPhoneSnapshot<CheckPhonePhotosPayload>(character.id, "photos");
+      const ups = loadCheckPhoneUserPhotos(character.id);
       if (cancelled) return;
       setSnapshot(cached);
+      setUserPhotos(ups);
       setLoaded(true);
     })();
     return () => {
@@ -98,6 +127,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
     }
     setError(nextError ?? null);
     setDebugRawOutput(nextDebugRawOutput ?? null);
+    setUserPhotos(loadCheckPhoneUserPhotos(character.id));
     setLoading(false);
     setLoaded(true);
   }
@@ -116,8 +146,44 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
   }
 
   const payload = snapshot?.payload ?? null;
-  const albums = payload?.albums ?? [];
-  const photos = payload?.photos ?? [];
+  const baseAlbums = useMemo<CheckPhonePhotoAlbum[]>(() => payload?.albums ?? [], [payload]);
+  const basePhotos = useMemo<CheckPhonePhotoItem[]>(() => payload?.photos ?? [], [payload]);
+
+  // 线下「定格经典画面」生成的真实照片：独立成一本相簿，合并进相册展示。
+  // 与 LLM 模拟相册解耦——刷新相册只会重生成模拟内容，这里的图不会被冲掉。
+  const userPhotoItems = useMemo<CheckPhonePhotoItem[]>(
+    () => userPhotos.map((p) => ({
+      id: p.id,
+      albumId: p.albumId || USER_CLASSIC_FRAMES_ALBUM_ID,
+      title: p.title,
+      shotAtLabel: p.shotAtLabel,
+      locationLabel: p.locationLabel,
+      description: p.description,
+      tone: p.tone,
+      previewIcon: "🖼",
+      imageAssetId: p.assetId,
+    })),
+    [userPhotos],
+  );
+  const userAlbum = useMemo<CheckPhonePhotoAlbum | null>(
+    () => (userPhotos.length === 0 ? null : {
+      id: USER_CLASSIC_FRAMES_ALBUM_ID,
+      title: USER_CLASSIC_FRAMES_ALBUM_TITLE,
+      coverPhotoId: userPhotoItems[0]?.id ?? "",
+      count: userPhotos.length,
+      updatedLabel: userPhotos[0]?.shotAtLabel || "刚刚",
+      moodLabel: "线下时光里被你亲手定格的瞬间",
+    }),
+    [userPhotos, userPhotoItems],
+  );
+  const albums = useMemo(
+    () => (userAlbum ? [userAlbum, ...baseAlbums] : baseAlbums),
+    [userAlbum, baseAlbums],
+  );
+  const photos = useMemo(
+    () => (userPhotoItems.length ? [...userPhotoItems, ...basePhotos] : basePhotos),
+    [userPhotoItems, basePhotos],
+  );
   const featuredPhoto = useMemo(
     () => photos.find((photo) => photo.id === payload?.featuredPhotoId) ?? photos[0] ?? null,
     [photos, payload?.featuredPhotoId],
@@ -202,7 +268,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
       <div className="cp-photos-body">
         {!loaded && <div className="cp-photos-status">Reading frames...</div>}
 
-        {loaded && !payload && !loading && (
+        {loaded && !payload && userPhotos.length === 0 && !loading && (
           <div className="cp-photos-status cp-empty-copy">
             <p>暂无照片内容</p>
             <span className="cp-photos-hint">点刷新同步相簿和最近照片</span>
@@ -211,7 +277,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
 
         {error ? <CheckPhoneDebugErrorCard error={error} debugRawOutput={debugRawOutput} /> : null}
 
-        {payload && !selectedAlbum && !selectedPhoto && (
+        {(payload || userPhotos.length > 0) && !selectedAlbum && !selectedPhoto && (
           <div className="cp-photos-scroll">
             <section className="cp-photo-overview-hero">
               <span className="cp-photo-overview-kicker">MOMENTS</span>
@@ -240,8 +306,10 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
 
             {homeSection === "featured" && featuredPhoto && (
               <section className="cp-photo-feature">
-                <div className={`cp-photo-feature-frame ${getToneClass(featuredPhoto.tone)}`}>
-                  <PhotoPreviewIcon icon={featuredPhoto.previewIcon} large />
+                <div className={`cp-photo-feature-frame ${getToneClass(featuredPhoto.tone)} ${featuredPhoto.imageAssetId ? "is-real" : ""}`}>
+                  {featuredPhoto.imageAssetId
+                    ? <RealPhoto assetId={featuredPhoto.imageAssetId} large />
+                    : <PhotoPreviewIcon icon={featuredPhoto.previewIcon} large />}
                   <div className="cp-photo-feature-caption">
                     <span>{featuredPhoto.shotAtLabel}</span>
                     <h3><CheckPhoneBilingualText text={featuredPhoto.title} tone="photos" /></h3>
@@ -258,10 +326,12 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
                       <button
                         key={photo.id}
                         type="button"
-                        className={`cp-photo-mini-card ${getToneClass(photo.tone)}`}
+                        className={`cp-photo-mini-card ${getToneClass(photo.tone)} ${photo.imageAssetId ? "is-real" : ""}`}
                         onClick={() => setSelectedPhotoId(photo.id)}
                       >
-                        <PhotoPreviewIcon icon={photo.previewIcon} />
+                        {photo.imageAssetId
+                          ? <RealPhoto assetId={photo.imageAssetId} />
+                          : <PhotoPreviewIcon icon={photo.previewIcon} />}
                         <span><CheckPhoneBilingualText text={photo.title} tone="photos" /></span>
                       </button>
                     ))}
@@ -307,10 +377,12 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
                     <button
                       key={photo.id}
                       type="button"
-                      className={`cp-photo-grid-item ${getToneClass(photo.tone)} ${index === 0 ? "is-large" : ""}`}
+                      className={`cp-photo-grid-item ${getToneClass(photo.tone)} ${index === 0 ? "is-large" : ""} ${photo.imageAssetId ? "is-real" : ""}`}
                       onClick={() => setSelectedPhotoId(photo.id)}
                     >
-                      <PhotoPreviewIcon icon={photo.previewIcon} />
+                      {photo.imageAssetId
+                        ? <RealPhoto assetId={photo.imageAssetId} large={index === 0} />
+                        : <PhotoPreviewIcon icon={photo.previewIcon} />}
                       <span><CheckPhoneBilingualText text={photo.title} tone="photos" /></span>
                     </button>
                   ))}
@@ -320,7 +392,7 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
           </div>
         )}
 
-        {payload && selectedAlbum && !selectedPhoto && (
+        {(payload || userPhotos.length > 0) && selectedAlbum && !selectedPhoto && (
           <div className="cp-photos-scroll">
             <section className="cp-photo-album-hero">
               <div className="cp-photo-section-title">相簿详情</div>
@@ -336,10 +408,12 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
                 <button
                   key={photo.id}
                   type="button"
-                  className={`cp-photo-grid-item ${getToneClass(photo.tone)}`}
+                  className={`cp-photo-grid-item ${getToneClass(photo.tone)} ${photo.imageAssetId ? "is-real" : ""}`}
                   onClick={() => setSelectedPhotoId(photo.id)}
                 >
-                  <PhotoPreviewIcon icon={photo.previewIcon} />
+                  {photo.imageAssetId
+                    ? <RealPhoto assetId={photo.imageAssetId} />
+                    : <PhotoPreviewIcon icon={photo.previewIcon} />}
                   <span><CheckPhoneBilingualText text={photo.title} tone="photos" /></span>
                 </button>
               ))}
@@ -347,11 +421,13 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
           </div>
         )}
 
-        {payload && selectedPhoto && (
+        {(payload || userPhotos.length > 0) && selectedPhoto && (
           <div className="cp-photos-scroll">
             <article className="cp-photo-detail">
-              <div className={`cp-photo-detail-frame ${getToneClass(selectedPhoto.tone)}`}>
-                <PhotoPreviewIcon icon={selectedPhoto.previewIcon} large />
+              <div className={`cp-photo-detail-frame ${getToneClass(selectedPhoto.tone)} ${selectedPhoto.imageAssetId ? "is-real" : ""}`}>
+                {selectedPhoto.imageAssetId
+                  ? <RealPhoto assetId={selectedPhoto.imageAssetId} large />
+                  : <PhotoPreviewIcon icon={selectedPhoto.previewIcon} large />}
               </div>
               <div className="cp-photo-detail-meta">
                 <div className="cp-photo-detail-kicker">{selectedPhoto.shotAtLabel}</div>

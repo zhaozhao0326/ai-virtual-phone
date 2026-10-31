@@ -1364,6 +1364,37 @@
   opacity: 0.65;
 }
 
+/* 每条线下回复下面的「定格这一帧」：低调小按钮，hover/active 才亮起来，不抢正文 */
+.chat-offline-frame-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--c-icon);
+  font-size: calc(11.5px * var(--app-text-scale, 1));
+  line-height: 1.4;
+  font-weight: 600;
+  opacity: 0.55;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+.chat-offline-frame-btn:hover:not(:disabled) {
+  opacity: 1;
+  background: color-mix(in srgb, var(--c-page-body-bg) 60%, transparent);
+}
+.chat-offline-frame-btn:active:not(:disabled) {
+  opacity: 1;
+  transform: scale(0.97);
+}
+.chat-offline-frame-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 /* 线下「经典画面」：定格图在离线记录里的展示 */
 .chat-offline-frame-img {
   display: block;
@@ -1391,6 +1422,27 @@
 }
 @keyframes chat-spin-rotate {
   to { transform: rotate(360deg); }
+}
+
+/* 线下输入栏「含你 / 无你」开关（定格经典画面时是否把自己画进画面） */
+.chat-frame-self-toggle {
+  min-width: 38px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c-line, #ddd) 70%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--c-text) 62%, transparent);
+  font-size: calc(12px * var(--app-text-scale, 1));
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.chat-frame-self-toggle.is-on {
+  border-color: #ffcf6b;
+  color: #ffcf6b;
+  background: color-mix(in srgb, #ffcf6b 14%, transparent);
 }
 
 .chat-status-sheet {

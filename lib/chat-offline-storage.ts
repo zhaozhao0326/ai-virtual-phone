@@ -20,6 +20,8 @@ export type ChatOfflineTurn = {
     /** 线下「经典画面」：用户点「生成当下经典画面」后，AI 把这一刻定格成的图。
      *  只存 IndexedDB 资源 id（不存巨大 base64），渲染时再懒加载；与锁脸参考图同套机制。 */
     imageAssetId?: string;
+    /** 定格这一帧时导演写出的画面提示词（仅用于展示/下载命名，不参与剧情摘要）。 */
+    framePrompt?: string;
     createdAt: string;
 };
 
@@ -70,6 +72,7 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
         rawText: typeof item.rawText === "string" ? item.rawText : undefined,
         statusRaw: typeof item.statusRaw === "string" ? item.statusRaw : undefined,
         imageAssetId: typeof item.imageAssetId === "string" ? item.imageAssetId : undefined,
+        framePrompt: typeof item.framePrompt === "string" ? item.framePrompt : undefined,
         createdAt: item.createdAt,
     };
 }
@@ -110,6 +113,7 @@ export function appendChatOfflineTurn(input: {
     reasoningText?: string;
     statusRaw?: string;
     imageAssetId?: string;
+    framePrompt?: string;
 }): ChatOfflineTurn {
     const turn: ChatOfflineTurn = {
         id: createTurnId(),
@@ -122,6 +126,7 @@ export function appendChatOfflineTurn(input: {
         reasoningText: input.reasoningText,
         statusRaw: input.statusRaw,
         imageAssetId: input.imageAssetId,
+        framePrompt: input.framePrompt,
         createdAt: new Date().toISOString(),
     };
     saveChatOfflineTurns(input.sessionId, [...loadChatOfflineTurns(input.sessionId), turn]);
@@ -131,7 +136,7 @@ export function appendChatOfflineTurn(input: {
 export function updateChatOfflineTurn(
     sessionId: string,
     turnId: string,
-    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "statusRaw">>,
+    patch: Partial<Pick<ChatOfflineTurn, "userContent" | "assistantContent" | "summary" | "summaryTag" | "rawText" | "reasoningText" | "statusRaw" | "imageAssetId" | "framePrompt">>,
 ): ChatOfflineTurn | null {
     let updated: ChatOfflineTurn | null = null;
     const turns = loadChatOfflineTurns(sessionId).map((turn) => {

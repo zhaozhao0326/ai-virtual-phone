@@ -66,6 +66,9 @@ export type ChatSession = {
     /** 线下场景「在场角色」集合（characterId 数组）：单人线下默认仅主角色，多人线下临时加入其他角色。
      *  不填则回退到主角色（群则回退到 participantIds）。用于「单人↔多人线下」灵活转换。 */
     offlineParticipants?: string[];
+    /** 线下「定格经典画面」时是否把自己（用户）也画进画面：默认 undefined=跟随旧行为（有锁脸图/头像就进镜）。
+     *  设为 false 可即使你设了锁脸图，也只定格角色们、不把自己画进去。 */
+    offlineFrameIncludeSelf?: boolean;
     groupVideoBackgrounds?: Record<string, string>; // characterId|"self" → image ID
     // Group admin fields ("self" = the user)
     groupOwnerId?: string; // "self" | characterId; legacy groups default to "self", spectator groups to first member
@@ -1129,6 +1132,15 @@ export function removeOfflineParticipant(sessionId: string, characterId: string)
     if (idx < 0) return;
     const base = (sessions[idx].offlineParticipants || []).filter(id => id !== characterId);
     sessions[idx] = { ...sessions[idx], offlineParticipants: base };
+    saveChatSessions(sessions);
+}
+
+/** 设定线下「定格经典画面」是否把自己画进画面（null 表示恢复默认跟随旧行为）。 */
+export function updateOfflineFrameIncludeSelf(sessionId: string, value: boolean): void {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx < 0) return;
+    sessions[idx] = { ...sessions[idx], offlineFrameIncludeSelf: value };
     saveChatSessions(sessions);
 }
 

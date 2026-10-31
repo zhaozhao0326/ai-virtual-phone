@@ -5041,6 +5041,35 @@
   pointer-events: none;
 }
 
+/* 线下「定格经典画面」的真实照片：铺满格位，且不受模拟相册的黑白滤镜影响（要看见真实色彩） */
+.cp-photo-feature-frame.is-real,
+.cp-photo-mini-card.is-real,
+.cp-photo-grid-item.is-real,
+.cp-photo-detail-frame.is-real {
+  filter: none;
+  background: #0d0d0f;
+}
+.cp-photo-real-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  display: block;
+}
+.cp-photo-real-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.06);
+  animation: cp-real-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cp-real-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
 .cp-photo-preview-icon--large {
   font-size: calc(80px*var(--app-text-scale,1));
 }

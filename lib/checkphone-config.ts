@@ -133,6 +133,8 @@ export type CheckPhonePhotoItem = {
   description: string;
   tone: CheckPhonePhotoTone;
   previewIcon: string;
+  /** 真实生成的「经典画面」图：IndexedDB 资源 id（与线下时间线共用同一套图床）。存在时相册优先显示真实图片而非 emoji 占位。 */
+  imageAssetId?: string;
 };
 
 export type CheckPhonePhotosPayload = {
