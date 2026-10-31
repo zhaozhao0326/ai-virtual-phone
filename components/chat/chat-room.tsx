@@ -4136,12 +4136,22 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     { role: "system", content: directorSystem },
                     { role: "user", content: userContent },
                 ],
-                { temperature: 0.7, max_tokens: 400 },
+                { temperature: 0.7, max_tokens: 600 },
             );
+            let framePrompt: string;
             if (summaryRes.error || !summaryRes.content?.trim()) {
-                throw new Error(summaryRes.error || "AI 没能总结出这一帧，请重试。");
+                // 导演总结没拿到内容（常见：绑定的模型是推理模型把额度吃光只留 reasoning_content、
+                // 或该接口非流式调用不吐正文）。不硬挂——改用剧情文本直接拼一帧提示词兜底，
+                // 保证按钮永远出得了图；真实报错打到控制台，方便定位是哪条 API 配置的问题。
+                const aExcerpt = stripTags(targetTurn.assistantContent || "").slice(0, 100);
+                const uExcerpt = stripTags(targetTurn.userContent || "").slice(0, 60);
+                const sceneSeed = aExcerpt || uExcerpt || "当下这一刻的相处";
+                framePrompt = `电影感定格一帧：${charName} 与 ${userName} 在「${sceneSeed}」这一刻的瞬间。中景构图，暖色侧光，氛围温柔克制而有故事感，人物姿态自然，环境细节真实，胶片质感，8k 电影感。`;
+                showChatToast("AI 总结这帧没成功（你的接口返回空），已改用剧情文本直接出图。", 4200);
+                console.warn("[定格] 导演总结失败，走文本兜底：", summaryRes.error);
+            } else {
+                framePrompt = summaryRes.content.trim();
             }
-            let framePrompt = summaryRes.content.trim();
 
             // ② 在场角色 + （若开关开启且有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
             const baseCast = offlineParticipants.includes(session.contactId)

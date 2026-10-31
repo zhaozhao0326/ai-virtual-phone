@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.113";
+export const APP_VERSION = "1.7.114";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.114",
+    date: "2026-11-01",
+    title: "定格功能不再因「导演总结返回空」而整体失败",
+    highlights: [
+      "修了一个真 bug：之前导演总结那步若接口返回空正文（典型是绑定的模型是推理模型把额度吃光、或该接口非流式调用不吐正文，报「LLM 返回了空内容 / finishReason=未返回」），整个定格按钮会直接 throw 挂掉——这就是你之前看到的「token 未返回」那一串提示、且怎么点都不成功的根因",
+      "现在改为：总结失败不再硬挂，自动用「这一条剧情文本」直接拼一帧电影感提示词兜底出图，按钮永远出得了图；同时把真实报错打到控制台方便定位是哪条 API 配置的问题",
+      "导演总结的 max_tokens 从 400 提到 600，降低被推理模型截断的概率",
+      "兜底路径的提示词同样遵守克制约束（不描五官/不写亲吻裸露），被安全审控拦下时仍走远景重试",
+    ],
+  },
   {
     version: "1.7.113",
     date: "2026-11-01",
