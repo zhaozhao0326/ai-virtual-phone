@@ -4022,7 +4022,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     // 流程：① 让 AI 当导演，把最近剧情总结成电影感生图提示词（中立、不描五官，脸走锁脸参考图）
     //       ② 复用 handleTextPhotoGenerate 的锁脸生图管线出图
     //       ③ 存进 IndexedDB，作为一条带图记录收进这段线下时光（永不丢）
-    const handleCaptureOfflineFrame = useCallback(async () => {
+    const handleCaptureOfflineFrame = useCallback(async (targetTurnId?: string) => {
         if (isCapturingFrame || isOfflineGenerating) return;
         if (offlineTurns.length === 0) {
             showChatToast("先有一段线下剧情，再定格这一帧～");
@@ -4032,17 +4032,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const charName = character?.name?.trim() || (session.isGroup ? (session.groupName || "对方") : "对方");
         const userName = u?.name?.trim() || "你";
 
-        // ① 组装最近若干轮剧情作为导演上下文（用离线 turn 原始文本，限长防爆 token）
-        const recent = offlineTurns.slice(-8);
+        // ① 组装剧情片段作为导演上下文：
+        //    - 未指定 turn（输入框按钮）：取最近 8 轮；
+        //    - 指定 turn（长按某条"定格这一帧"）：以该条为中心、前后各取 2 轮，兼顾情境连贯。
+        const idx = targetTurnId ? offlineTurns.findIndex((t) => t.id === targetTurnId) : -1;
+        const recent = idx >= 0
+            ? offlineTurns.slice(Math.max(0, idx - 2), idx + 3)
+            : offlineTurns.slice(-8);
         const stripTags = (s: string): string =>
             s.replace(/\[状态栏\][\s\S]*?\[\/状态栏\]/g, "")
              .replace(/\[相册\][\s\S]*?\[\/相册\]/g, "")
              .replace(/\s+/g, " ")
              .trim();
         const transcript = recent.map((t) => {
+            const isTarget = !!targetTurnId && t.id === targetTurnId;
             const uText = stripTags(t.userContent || "").slice(0, 600);
             const aText = stripTags(t.assistantContent || "").slice(0, 600);
-            return `你（${userName}）：${uText}\n${charName}：${aText}`;
+            const head = isTarget ? "◆ 用户指定定格 ◆ " : "";
+            return `${head}你（${userName}）：${uText}\n${charName}：${aText}`;
         }).filter((s) => s.replace(/\s/g, "").length > 0).join("\n\n");
         if (!transcript.trim()) {
             showChatToast("这段剧情还没有可定格的内容。");
@@ -4064,9 +4071,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         setIsCapturingFrame(true);
         try {
+            const focusInstruction = targetTurnId
+                ? "记录中已用「◆ 用户指定定格 ◆」标出的那一条，是用户特别想定格的瞬间——请**紧紧围绕那一条**所营造的情境来构图（它前后文只作连贯参考，不要另选别的瞬间）。"
+                : "请从中挑出「最值得纪念、最有画面感的一帧瞬间」（重点参考最后一条角色回复所营造的情境，但不必死抠那一句），";
             const directorSystem = [
-                "你是电影分镜导演，也是这段「线下剧情」的旁观者。下面是用户与角色之间最近几轮互动的对话记录。",
-                "请从中挑出「最值得纪念、最有画面感的一帧瞬间」（重点参考最后一条角色回复所营造的情境，但不必死抠那一句），",
+                "你是电影分镜导演，也是这段「线下剧情」的旁观者。下面是用户与角色之间几轮互动的对话记录。",
+                focusInstruction,
                 "写一段用于 AI 生图的电影感提示词（中文）。",
                 "",
                 "要求：",
@@ -4077,11 +4087,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 120 字以内。",
             ].join("\n");
 
+            const userContent = targetTurnId
+                ? `【剧情片段（已标记你想定格的那一条）】\n${transcript}\n\n请围绕标记「◆ 用户指定定格 ◆」的那一条，写一段电影感生图提示词。`
+                : `【最近剧情记录】\n${transcript}\n\n请为其中最有纪念意义的一帧，写一段电影感生图提示词。`;
+
             const summaryRes = await simpleLLMCall(
                 apiConfig,
                 [
                     { role: "system", content: directorSystem },
-                    { role: "user", content: `【最近剧情记录】\n${transcript}\n\n请为其中最有纪念意义的一帧，写一段电影感生图提示词。` },
+                    { role: "user", content: userContent },
                 ],
                 { temperature: 0.7, max_tokens: 400 },
             );
@@ -5649,6 +5663,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 <div className="flex">
                     <button onClick={() => handleOfflineDeleteTurn(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除</button>
                     <button onClick={() => handleOfflineDeleteTurnsFrom(turn.id)} className="ctx-menu-btn ctx-menu-btn-danger">删除以下</button>
+                </div>
+                <div className="flex">
+                    <button
+                        className="ctx-menu-btn ctx-menu-btn-frame"
+                        onClick={() => { setActiveOfflineTarget(null); void handleCaptureOfflineFrame(turn.id); }}
+                    >定格这一帧</button>
                 </div>
                 <div data-menu-triangle className="ctx-menu-triangle absolute -top-[6px] w-0 h-0" />
             </div>

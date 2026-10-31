@@ -1563,6 +1563,13 @@
 .ctx-menu-btn-danger {
   color: var(--c-danger);
 }
+.ctx-menu-btn-frame {
+  color: #ffcf6b;
+  font-weight: 600;
+}
+.ctx-menu-btn-frame:hover {
+  color: #ffe1a3;
+}
 .ctx-menu-btn:not(:last-of-type) {
   border-right: 1px solid rgba(255,255,255,0.1);
 }
