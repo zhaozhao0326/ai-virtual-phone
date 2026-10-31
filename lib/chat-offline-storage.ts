@@ -17,6 +17,9 @@ export type ChatOfflineTurn = {
     /** 线下状态栏：[状态栏]...[/状态栏] 块的原文（未启用状态栏时为空）。
      *  单独存，渲染时交给 CustomStatusFrame，正文里不出现。 */
     statusRaw?: string;
+    /** 线下「经典画面」：用户点「生成当下经典画面」后，AI 把这一刻定格成的图。
+     *  只存 IndexedDB 资源 id（不存巨大 base64），渲染时再懒加载；与锁脸参考图同套机制。 */
+    imageAssetId?: string;
     createdAt: string;
 };
 
@@ -66,6 +69,7 @@ function normalizeTurn(value: unknown): ChatOfflineTurn | null {
         summaryTag: typeof item.summaryTag === "string" && item.summaryTag.trim() ? item.summaryTag.trim() : "summary",
         rawText: typeof item.rawText === "string" ? item.rawText : undefined,
         statusRaw: typeof item.statusRaw === "string" ? item.statusRaw : undefined,
+        imageAssetId: typeof item.imageAssetId === "string" ? item.imageAssetId : undefined,
         createdAt: item.createdAt,
     };
 }
@@ -105,6 +109,7 @@ export function appendChatOfflineTurn(input: {
     rawText?: string;
     reasoningText?: string;
     statusRaw?: string;
+    imageAssetId?: string;
 }): ChatOfflineTurn {
     const turn: ChatOfflineTurn = {
         id: createTurnId(),
@@ -116,6 +121,7 @@ export function appendChatOfflineTurn(input: {
         rawText: input.rawText,
         reasoningText: input.reasoningText,
         statusRaw: input.statusRaw,
+        imageAssetId: input.imageAssetId,
         createdAt: new Date().toISOString(),
     };
     saveChatOfflineTurns(input.sessionId, [...loadChatOfflineTurns(input.sessionId), turn]);

@@ -45,7 +45,7 @@ import { TransferTargetModal } from "./transfer-target-modal";
 import { GiftPickerModal } from "./gift-picker-modal";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import { deleteWeixinCloudMessagesFromCloud } from "@/lib/weixin-cloud-sync";
-import { loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
+import { loadApiConfigs, loadBindingConfig, loadRegexes, resolveBinding, resolveUserIdentity, resolveWorldIdForGroup } from "@/lib/settings-storage";
 import { generateGroupChatCompletion, generateGroupOfflineChatCompletion, parseGroupChatResponse, buildEditableGroupRoundText } from "@/lib/group-chat-engine";
 import { appendChatOfflineTurn, deleteChatOfflineTurn, deleteChatOfflineTurnsFrom, loadChatOfflineTurns, parseOfflineResponse, saveChatOfflineTurns, updateChatOfflineTurn, type ChatOfflineTurn } from "@/lib/chat-offline-storage";
 import { recordOfflineSceneToMemory } from "@/lib/chat-offline-memory";
@@ -78,9 +78,10 @@ import {
     generateAndApplyChatGeneratedImage,
     isPendingChatGeneratedImageMessage,
 } from "@/lib/generated-image-retry";
-import { generateImageFromConfiguredApi, normalizeReferenceImageForEdit } from "@/lib/image-generation-service";
+import { generateImageFromConfiguredApi, normalizeReferenceImageForEdit, generatedImageFilename } from "@/lib/image-generation-service";
 import { loadImageGenerationSettings } from "@/lib/settings-storage";
-import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
+import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "@/lib/chat-asset-storage";
+import { simpleLLMCall } from "@/lib/api-helpers";
 import { TextPhotoModal, type TextPhotoParticipant } from "./rich-input-modals";
 import { scrollElementWithinContainer } from "@/lib/dom-scroll";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
@@ -988,6 +989,26 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     );
 }));
 
+// 离线「经典画面」：按 assetId 从 IndexedDB 懒加载并显示。离线记录永不清空，
+// 所以这张定格图会一直留在这段线下时光里。
+function OfflineTurnImage({ assetId, onOpen }: { assetId: string; onOpen?: (src: string) => void }) {
+    const [src, setSrc] = useState<string | null>(null);
+    useEffect(() => {
+        let alive = true;
+        getChatImageFromIndexedDB(assetId).then((d) => { if (alive && d) setSrc(d); });
+        return () => { alive = false; };
+    }, [assetId]);
+    if (!src) return <div className="chat-offline-frame-loading">画面加载中…</div>;
+    return (
+        <img
+            className="chat-offline-frame-img"
+            src={src}
+            alt="经典画面"
+            onClick={() => onOpen?.(src)}
+        />
+    );
+}
+
 const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     isOfflineGenerating: boolean;
     isSpectator: boolean;
@@ -998,6 +1019,8 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onToggleEmojiPanel: () => void;
     onSendText: (text: string) => boolean;
     onStopGeneration: () => void;
+    onCaptureFrame: () => void;
+    isCapturingFrame: boolean;
 }>(function OfflineTextInputBar({
     isOfflineGenerating,
     isSpectator,
@@ -1008,6 +1031,8 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     onToggleEmojiPanel,
     onSendText,
     onStopGeneration,
+    onCaptureFrame,
+    isCapturingFrame,
 }, ref) {
     const [inputText, setInputText] = useState("");
     const inputTextRef = useRef("");
@@ -1124,6 +1149,21 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                 </button>
                 <button
                     type="button"
+                    onClick={onCaptureFrame}
+                    disabled={isCapturingFrame || isOfflineGenerating || isSpectator}
+                    className="ui-bare-btn text-[var(--c-text)]"
+                    style={(isCapturingFrame || isSpectator) ? { opacity: isSpectator ? 0.35 : 0.6 } : undefined}
+                    aria-label="生成当下经典画面"
+                    title={isCapturingFrame ? "正在定格这一帧…" : "生成当下经典画面（把此刻剧情定格成一张图）"}
+                >
+                    {isCapturingFrame ? (
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="chat-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
+                    ) : (
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+                    )}
+                </button>
+                <button
+                    type="button"
                     onClick={() => { if (isOfflineGenerating) onStopGeneration(); else handleSubmit(); }}
                     disabled={!isOfflineGenerating && !isSpectator && !inputText.trim()}
                     className="ui-bare-btn text-[var(--c-text)]"
@@ -1178,6 +1218,23 @@ function compressImageDataUrlForChat(dataUrl: string, maxSize = 768): Promise<st
             resolve(null);
         }
     });
+}
+
+// 把 data URL 转成 Blob（用于把生成的「经典画面」存进 IndexedDB，离线记录只存资源 id）。
+function dataUrlToBlob(dataUrl: string): Blob | null {
+    try {
+        const idx = dataUrl.indexOf(",");
+        if (idx < 0) return null;
+        const meta = dataUrl.slice(0, idx);
+        const b64 = dataUrl.slice(idx + 1);
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || "image/png";
+        const bin = atob(b64);
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        return new Blob([arr], { type: mime });
+    } catch {
+        return null;
+    }
 }
 
 export function ChatRoom({ session, onBack }: ChatRoomProps) {
@@ -1310,6 +1367,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     }, [offlineParticipants]);
     const [theaterMode, setTheaterMode] = useState(() => kvGet(CHAT_THEATER_MODE_PREFIX + session.id) === "1");
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
+    // 线下「生成经典画面」：定格中态 + 生成后的预览（灯箱）。点按钮才触发，非后台自动。
+    const [isCapturingFrame, setIsCapturingFrame] = useState(false);
+    const [framePreview, setFramePreview] = useState<{ dataUrl: string; prompt: string } | null>(null);
     // 线下状态栏：同一时刻只展开一条，且只在展开时才挂载沙盒 iframe（避免长历史里一堆 iframe 空跑）
     // 线下状态栏浮层：存点击那一刻的快照（状态栏原文 / 渲染 HTML / 摘要），null = 关闭。
     // 做成浮层而不是行内展开，聊天记录不再被撑长；沙盒 iframe 只在浮层打开时才挂载。
@@ -3958,6 +4018,112 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     }, []);
 
+    // 线下「生成经典画面」：把当前这段线下剧情的某一帧定格成一张图（手动按钮触发，非后台自动）。
+    // 流程：① 让 AI 当导演，把最近剧情总结成电影感生图提示词（中立、不描五官，脸走锁脸参考图）
+    //       ② 复用 handleTextPhotoGenerate 的锁脸生图管线出图
+    //       ③ 存进 IndexedDB，作为一条带图记录收进这段线下时光（永不丢）
+    const handleCaptureOfflineFrame = useCallback(async () => {
+        if (isCapturingFrame || isOfflineGenerating) return;
+        if (offlineTurns.length === 0) {
+            showChatToast("先有一段线下剧情，再定格这一帧～");
+            return;
+        }
+        const u = resolveUserIdentity();
+        const charName = character?.name?.trim() || (session.isGroup ? (session.groupName || "对方") : "对方");
+        const userName = u?.name?.trim() || "你";
+
+        // ① 组装最近若干轮剧情作为导演上下文（用离线 turn 原始文本，限长防爆 token）
+        const recent = offlineTurns.slice(-8);
+        const stripTags = (s: string): string =>
+            s.replace(/\[状态栏\][\s\S]*?\[\/状态栏\]/g, "")
+             .replace(/\[相册\][\s\S]*?\[\/相册\]/g, "")
+             .replace(/\s+/g, " ")
+             .trim();
+        const transcript = recent.map((t) => {
+            const uText = stripTags(t.userContent || "").slice(0, 600);
+            const aText = stripTags(t.assistantContent || "").slice(0, 600);
+            return `你（${userName}）：${uText}\n${charName}：${aText}`;
+        }).filter((s) => s.replace(/\s/g, "").length > 0).join("\n\n");
+        if (!transcript.trim()) {
+            showChatToast("这段剧情还没有可定格的内容。");
+            return;
+        }
+
+        // 拿角色绑定的 API 配置（与简量人设/appearance 同理：结构化任务不走角色扮演预设）
+        const bindings = loadBindingConfig();
+        const slot = resolveBinding(bindings, session.contactId, session.isGroup ? "group_chat" : "chat");
+        if (!slot.apiConfigId) {
+            showChatToast("尚未绑定 API 配置，无法生成经典画面。");
+            return;
+        }
+        const apiConfig = loadApiConfigs().find((c) => c.id === slot.apiConfigId);
+        if (!apiConfig) {
+            showChatToast("绑定的 API 配置不存在。");
+            return;
+        }
+
+        setIsCapturingFrame(true);
+        try {
+            const directorSystem = [
+                "你是电影分镜导演，也是这段「线下剧情」的旁观者。下面是用户与角色之间最近几轮互动的对话记录。",
+                "请从中挑出「最值得纪念、最有画面感的一帧瞬间」（重点参考最后一条角色回复所营造的情境，但不必死抠那一句），",
+                "写一段用于 AI 生图的电影感提示词（中文）。",
+                "",
+                "要求：",
+                "- 只描写：构图与镜头（远景/中景/特写等）、光线与色调、氛围与情绪、人物姿态与动作、环境场景、服装风格、画面质感。",
+                "- 绝对不要描写人物五官、脸型、发型、发色等具体长相——这些由参考图锁定，生图时会自动贴合本人。",
+                "- 用「" + userName + "」「" + charName + "」代指人物，不要编造真实姓名以外的新名字。",
+                "- 画面应是那一瞬间的定格，有故事感与余味，避免摆拍感。",
+                "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 120 字以内。",
+            ].join("\n");
+
+            const summaryRes = await simpleLLMCall(
+                apiConfig,
+                [
+                    { role: "system", content: directorSystem },
+                    { role: "user", content: `【最近剧情记录】\n${transcript}\n\n请为其中最有纪念意义的一帧，写一段电影感生图提示词。` },
+                ],
+                { temperature: 0.7, max_tokens: 400 },
+            );
+            if (summaryRes.error || !summaryRes.content?.trim()) {
+                throw new Error(summaryRes.error || "AI 没能总结出这一帧，请重试。");
+            }
+            const framePrompt = summaryRes.content.trim();
+
+            // ② 在场角色 + （若有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
+            const baseCast = offlineParticipants.includes(session.contactId)
+                ? [...offlineParticipants]
+                : [session.contactId, ...offlineParticipants];
+            const castIds = [...baseCast];
+            if (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim()) castIds.push("user");
+
+            const dataUrl = await handleTextPhotoGenerate(framePrompt, castIds);
+            if (!dataUrl) throw new Error("生图返回为空，请重试。");
+
+            // ③ 存 IndexedDB，追加一条带图离线记录（永不清空），并弹窗预览
+            const blob = dataUrlToBlob(dataUrl);
+            const assetId = blob ? await saveChatImageToIndexedDB(blob) : null;
+            const saved = appendChatOfflineTurn({
+                sessionId: session.id,
+                userContent: "",
+                assistantContent: "〔经典画面 · 已定格这一刻〕",
+                summary: framePrompt,
+                summaryTag: "frame",
+                imageAssetId: assetId ?? undefined,
+            });
+            setOfflineTurns((prev) => [...prev, saved]);
+            setFramePreview({ dataUrl, prompt: framePrompt });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            showChatToast(`生成经典画面失败：${message}`, 4000);
+        } finally {
+            setIsCapturingFrame(false);
+        }
+    }, [
+        isCapturingFrame, isOfflineGenerating, offlineTurns, offlineParticipants,
+        character, session, handleTextPhotoGenerate,
+    ]);
+
     const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {
         setRichModal(null);
         sendRichMessage("image", { label: prompt }, "", dataUrl);
@@ -6429,6 +6595,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             defaultExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                         />
                                     </div>
+                                    {/* 线下「经典画面」：这条离线记录定格的图（存 IndexedDB，永不清空） */}
+                                    {turn.imageAssetId && (
+                                        <OfflineTurnImage
+                                            assetId={turn.imageAssetId}
+                                            onOpen={(src) => setFramePreview({ dataUrl: src, prompt: turn.summary || "经典画面" })}
+                                        />
+                                    )}
                                     {/* 线下状态栏：一个小标签，点开是浮层（浮在聊天记录上方，看完关掉），不占版面。
                                         摘要与状态栏合并在这一个浮层里：摘要照旧进短期记忆，只是不再单独渲染一行折叠块。
                                         未启用状态栏时没有 [状态栏] 原文，标签退化成「摘要」。 */}
@@ -7014,6 +7187,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     onToggleEmojiPanel={() => { setShowEmojiPanel(!showEmojiPanel); setShowStickerPanel(false); setShowPlusMenu(false); }}
                     onSendText={handleOfflineSend}
                     onStopGeneration={clearOfflineGeneration}
+                    onCaptureFrame={handleCaptureOfflineFrame}
+                    isCapturingFrame={isCapturingFrame}
                 />
             ) : (
             <ChatTextInputBar
@@ -7405,6 +7580,53 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     <BilingualTextBlock text={statusSheet.summary} mode="markdown" defaultExpanded />
                                 </div>
                             )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 线下「经典画面」预览：生成成功后弹出，可查看大图 / 下载；这张图已收进线下时光 */}
+            {framePreview && (
+                <div
+                    className="modal-overlay"
+                    data-ui="modal"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="经典画面"
+                    onClick={() => setFramePreview(null)}
+                >
+                    <div className="modal-sheet frame-preview-sheet" onClick={(e) => e.stopPropagation()}>
+                        <div className="frame-preview-handle" />
+                        <div className="frame-preview-header">
+                            <span className="frame-preview-title">经典画面</span>
+                            <button
+                                type="button"
+                                className="frame-preview-close"
+                                onClick={() => setFramePreview(null)}
+                                aria-label="关闭"
+                            >
+                                <X size={18} strokeWidth={2} />
+                            </button>
+                        </div>
+                        <div className="frame-preview-body">
+                            <img className="frame-preview-img" src={framePreview.dataUrl} alt="经典画面" />
+                            <div className="frame-preview-prompt">{framePreview.prompt}</div>
+                        </div>
+                        <div className="frame-preview-actions">
+                            <a
+                                className="ui-btn ui-btn-primary"
+                                href={framePreview.dataUrl}
+                                download={generatedImageFilename(framePreview.prompt)}
+                            >
+                                下载这张图
+                            </a>
+                            <button
+                                type="button"
+                                className="ui-btn"
+                                onClick={() => setFramePreview(null)}
+                            >
+                                收进这段线下时光
+                            </button>
                         </div>
                     </div>
                 </div>

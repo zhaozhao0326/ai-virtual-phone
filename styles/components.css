@@ -32,6 +32,75 @@
   animation: modalSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* 线下「经典画面」预览弹窗 */
+.frame-preview-sheet {
+  height: auto;
+  max-height: 88%;
+  padding: 8px 0 calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.frame-preview-handle {
+  align-self: center;
+  width: 38px;
+  height: 4px;
+  margin: 2px 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-line, #ccc) 70%, transparent);
+}
+.frame-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 8px;
+}
+.frame-preview-title {
+  font-size: calc(15px * var(--app-text-scale, 1));
+  font-weight: 700;
+  color: var(--c-text);
+}
+.frame-preview-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c-page-body-bg) 55%, transparent);
+  color: var(--c-icon);
+  cursor: pointer;
+}
+.frame-preview-body {
+  padding: 0 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.frame-preview-img {
+  width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--c-page-body-bg) 60%, transparent);
+}
+.frame-preview-prompt {
+  font-size: calc(13px * var(--app-text-scale, 1));
+  line-height: 1.6;
+  color: var(--c-text);
+  opacity: 0.85;
+  white-space: pre-wrap;
+}
+.frame-preview-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px 0;
+}
+.frame-preview-actions .ui-btn {
+  flex: 1;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .modal-dialog {
   width: 80%;
   max-width: 300px;

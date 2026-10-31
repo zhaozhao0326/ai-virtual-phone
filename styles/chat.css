@@ -1364,6 +1364,35 @@
   opacity: 0.65;
 }
 
+/* 线下「经典画面」：定格图在离线记录里的展示 */
+.chat-offline-frame-img {
+  display: block;
+  max-width: 78%;
+  max-height: 320px;
+  margin: 8px 0 2px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c-line, #ddd) 60%, transparent);
+  cursor: zoom-in;
+  object-fit: cover;
+}
+.chat-offline-frame-loading {
+  margin: 8px 0 2px;
+  padding: 18px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--c-page-body-bg) 55%, transparent);
+  color: var(--c-text);
+  opacity: 0.7;
+  font-size: calc(12px * var(--app-text-scale, 1));
+}
+/* 生成中按钮的转圈 */
+.chat-spin {
+  animation: chat-spin-rotate 0.9s linear infinite;
+  transform-origin: center;
+}
+@keyframes chat-spin-rotate {
+  to { transform: rotate(360deg); }
+}
+
 .chat-status-sheet {
   height: min(76%, 680px);
   padding: 8px 0 calc(12px + env(safe-area-inset-bottom, 0px));
