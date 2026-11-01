@@ -4136,7 +4136,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     { role: "system", content: directorSystem },
                     { role: "user", content: userContent },
                 ],
-                { temperature: 0.7, max_tokens: 600 },
+                { temperature: 0.7, max_tokens: 600, disableThinking: true },
             );
             let framePrompt: string;
             if (summaryRes.error || !summaryRes.content?.trim()) {

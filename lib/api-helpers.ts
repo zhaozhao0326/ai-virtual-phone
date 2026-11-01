@@ -98,7 +98,7 @@ export function isNativeGoogleApi(config: ApiConfig): boolean {
 export async function simpleLLMCall(
     config: ApiConfig,
     messages: { role: string; content: string }[],
-    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal; purpose?: string; characterName?: string },
+    options?: { temperature?: number; max_tokens?: number; signal?: AbortSignal; purpose?: string; characterName?: string; disableThinking?: boolean },
 ): Promise<{ content: string | null; error?: string; finishReason?: string; wasTruncated?: boolean }> {
     const baseUrl = determineBaseUrl(config);
     if (!baseUrl || !config.apiKey) {
@@ -143,6 +143,10 @@ export async function simpleLLMCall(
                 generationConfig: {
                     temperature,
                     ...(max_tokens ? { maxOutputTokens: max_tokens } : {}),
+                    // 思考模型（gemini-flash 系）默认开启 thinking，会把小 token 预算全花在
+                    // 推理上、可见正文被挤空（表现为 simpleLLMCall 返回空内容）。短总结类调用
+                    // 不需要深度思考，显式关掉 thinking 既能保证吐正文，也省 token。
+                    ...(options?.disableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
                 },
             });
         } else {

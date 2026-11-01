@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.114";
+export const APP_VERSION = "1.7.115";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.115",
+    date: "2026-11-01",
+    title: "修两处：语音串粤语 + Gemini 思考模型吐不出总结",
+    highlights: [
+      "【语音 bug 修复】之前说普通话的角色偶尔被播成粤语：根因是 Minimax TTS 的语言自动识别是「无条件覆盖」你的显式选择——只要那句台词碰巧带粤语字/词/繁体就被强制粤语，你选了普通话、关了自动识别也拦不住。现在改为：只有方案里选「自动识别」时才按文本检测；显式选普通话/粤语就直接尊重，不再被悄悄覆盖。",
+      "【Gemini 思考模型】你聊天绑定的是 gemini3.8flash（思考模型）。定格的「导演总结」那步走的是 simpleLLMCall 的 Gemini 分支，它原本没有关 thinking，思考把小 token 预算吃光 → 正文返回空（就是之前「token 未返回」的一类）。现在给 simpleLLMCall 加了 disableThinking 选项，定格总结调用时会注入 thinkingConfig:{thinkingBudget:0}，保证直接吐正文、不再空。",
+      "定格总结仍有 v1.7.114 的文本兜底：万一你的 endpoint 不支持关思考导致还是空，依旧能按剧情文本出图，不会硬挂。",
+    ],
+  },
   {
     version: "1.7.114",
     date: "2026-11-01",

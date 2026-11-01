@@ -151,9 +151,15 @@ async function synthesizeMinimax(text: string, config: VoiceApiConfig, emotion?:
     if (normalizedEmotion && MINIMAX_EMOTIONS.has(normalizedEmotion)) {
         voiceSetting.emotion = normalizedEmotion;
     }
-    // 按文本内容自动检测语言（粤语/普通话/日/韩/英），优先于配置里固定的 languageBoost，
-    // 解决"角色混说粤语和普通话时语音被固定成一种"的问题
-    const languageBoost = detectMinimaxLanguageBoost(text) || config.languageBoost || undefined;
+    // 语言 boost 取值规则（修复「明明选了普通话却播粤语」的 bug）：
+    //   - 用户在方案里显式选了「普通话(Chinese)」或「粤语(Chinese,Yue)」→ 直接尊重，不再跑文本自动识别覆盖。
+    //     之前 detectMinimaxLanguageBoost 是无条件执行的，只要台词里碰巧带粤语字/词/繁体就被强制粤语，
+    //     导致选了普通话的角色偶尔（命中粤语特征的那几句）被识别成粤语——用户关了自动识别也拦不住。
+    //   - 只有选「自动识别(auto)」或未设置时，才按文本特征检测（粤语/日/韩/英），其余交回配置默认。
+    const explicitBoost = config.languageBoost && config.languageBoost !== "auto"
+        ? config.languageBoost
+        : undefined;
+    const languageBoost = explicitBoost || detectMinimaxLanguageBoost(text) || undefined;
 
     const response = await fetchWithTimeout(`${baseUrl}/t2a_v2`, {
         method: "POST",
