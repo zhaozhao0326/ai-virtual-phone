@@ -248,10 +248,12 @@ interface TextPhotoModalProps {
     onGenerate: (prompt: string, selectedIds: string[]) => Promise<string | null>;
     /** 拿到 data URL 后由父组件把图作为用户消息发出 */
     onSend: (prompt: string, dataUrl: string) => void;
+    /** 不发送、只把这张图存进相册（保存的是已生成的图，不会重新生成） */
+    onSave?: (prompt: string, dataUrl: string, selectedIds: string[]) => Promise<void>;
     onClose: () => void;
 }
 
-export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSend, onClose }: TextPhotoModalProps) {
+export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSend, onSave, onClose }: TextPhotoModalProps) {
     const [text, setText] = useState("");
     const [selected, setSelected] = useState<Record<string, boolean>>(() => {
         const init: Record<string, boolean> = {};
@@ -261,11 +263,15 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
     });
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [savedHint, setSavedHint] = useState<string | null>(null);
     const [errorText, setErrorText] = useState<string | null>(null);
 
     const selectedIds = Object.keys(selected).filter((id) => selected[id]);
     const selectedCount = selectedIds.length;
     const canAct = text.trim().length > 0 && selectedCount > 0 && selectedCount <= 4 && !busy;
+    // 已经出过图时，即使改了提示词也允许把当前这张存下来。
+    const canSave = (!!previewUrl || canAct) && !saving;
 
     const toggle = (id: string) => {
         setSelected((prev) => {
@@ -298,6 +304,7 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
             const url = await onGenerate(trimmed, selectedIds);
             if (url) {
                 setPreviewUrl(url);
+                setSavedHint(null);
                 return url;
             }
             setErrorText("生图失败，请检查生图配置或稍后重试");
@@ -315,6 +322,28 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
     const handleSend = async () => {
         const url = previewUrl || await runGenerate();
         if (url) onSend(text.trim(), url);
+    };
+    // 保存：优先存「当前预览」的这一张，没有预览才现生成。
+    // 不会把图发进聊天，只落进相册，所以可以反复保存不同版本。
+    const handleSave = async () => {
+        if (saving || busy) return;
+        if (!onSave) {
+            setErrorText("当前版本不支持保存，请稍后重试");
+            return;
+        }
+        setSaving(true);
+        setErrorText(null);
+        setSavedHint(null);
+        try {
+            const url = previewUrl || await runGenerate();
+            if (!url) return;
+            await onSave(text.trim(), url, selectedIds);
+            setSavedHint("已保存到相册（没有发送）");
+        } catch (err) {
+            setErrorText(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSaving(false);
+        }
     };
 
     return (
@@ -404,6 +433,9 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                 {errorText && (
                     <span className="ts-11 text-[var(--c-danger)] w-full text-center">{errorText}</span>
                 )}
+                {savedHint && (
+                    <span className="ts-11 text-[var(--c-icon)] w-full text-center">{savedHint}</span>
+                )}
 
                 <div className="flex gap-3 w-full mt-1">
                     <button
@@ -412,6 +444,14 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                         disabled={!canAct}
                         className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1"
                     >+ 生成</button>
+                </div>
+                <div className="flex gap-3 w-full">
+                    <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={!canSave}
+                        className="ui-btn ui-btn-ghost ui-btn-bordered-ghost flex-1"
+                    >{saving ? "保存中..." : "保存"}</button>
                     <button
                         type="button"
                         onClick={handleSend}

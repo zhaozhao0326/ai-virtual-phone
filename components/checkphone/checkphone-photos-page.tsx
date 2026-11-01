@@ -18,8 +18,9 @@ import { clearPhoneSnapshot, loadPhoneSnapshot, savePhoneSnapshot } from "@/lib/
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import {
   USER_CLASSIC_FRAMES_ALBUM_ID,
-  USER_CLASSIC_FRAMES_ALBUM_TITLE,
+  USER_TEXT_PHOTO_ALBUM_ID,
   loadCheckPhoneUserPhotos,
+  resolveUserAlbumTitle,
   type CheckPhoneUserPhoto,
 } from "@/lib/checkphone-user-photos";
 
@@ -165,20 +166,35 @@ export function CheckPhonePhotosPage({ character, onBack }: CheckPhonePhotosPage
     })),
     [userPhotos],
   );
-  const userAlbum = useMemo<CheckPhonePhotoAlbum | null>(
-    () => (userPhotos.length === 0 ? null : {
-      id: USER_CLASSIC_FRAMES_ALBUM_ID,
-      title: USER_CLASSIC_FRAMES_ALBUM_TITLE,
-      coverPhotoId: userPhotoItems[0]?.id ?? "",
-      count: userPhotos.length,
-      updatedLabel: userPhotos[0]?.shotAtLabel || "刚刚",
-      moodLabel: "线下时光里被你亲手定格的瞬间",
-    }),
-    [userPhotos, userPhotoItems],
-  );
+  // 用户真实照片可能来自不同来源（线下定格 / 聊天生图手动保存），按 albumId 各自成册。
+  const userAlbums = useMemo<CheckPhonePhotoAlbum[]>(() => {
+    if (userPhotos.length === 0) return [];
+    const groups = new Map<string, CheckPhoneUserPhoto[]>();
+    for (const photo of userPhotos) {
+      const albumId = photo.albumId || USER_CLASSIC_FRAMES_ALBUM_ID;
+      const bucket = groups.get(albumId);
+      if (bucket) bucket.push(photo);
+      else groups.set(albumId, [photo]);
+    }
+    const itemsById = new Map(userPhotoItems.map((item) => [item.id, item]));
+    return Array.from(groups.entries()).map(([albumId, groupPhotos]) => {
+      const sorted = [...groupPhotos].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      const cover = sorted.map((p) => itemsById.get(p.id)).find(Boolean);
+      return {
+        id: albumId,
+        title: resolveUserAlbumTitle(albumId, sorted[0]?.albumTitle),
+        coverPhotoId: cover?.id ?? "",
+        count: sorted.length,
+        updatedLabel: sorted[0]?.shotAtLabel || "刚刚",
+        moodLabel: albumId === USER_TEXT_PHOTO_ALBUM_ID
+          ? "在聊天里生成、没有发出去的那些画面"
+          : "线下时光里被你亲手定格的瞬间",
+      };
+    });
+  }, [userPhotos, userPhotoItems]);
   const albums = useMemo(
-    () => (userAlbum ? [userAlbum, ...baseAlbums] : baseAlbums),
-    [userAlbum, baseAlbums],
+    () => (userAlbums.length ? [...userAlbums, ...baseAlbums] : baseAlbums),
+    [userAlbums, baseAlbums],
   );
   const photos = useMemo(
     () => (userPhotoItems.length ? [...userPhotoItems, ...basePhotos] : basePhotos),

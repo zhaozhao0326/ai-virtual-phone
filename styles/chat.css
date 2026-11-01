@@ -1395,6 +1395,41 @@
   cursor: default;
 }
 
+/* 定格生成中的骨架占位（v1.7.116）：只出现在被点的那一条下面。
+   生图要几十秒，给一块有呼吸感的占位，比空等或只转个小圈更让人安心。 */
+.chat-offline-frame-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 78%;
+  max-width: 260px;
+  min-height: 150px;
+  margin: 8px 0 2px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed color-mix(in srgb, var(--c-icon) 30%, transparent);
+  background:
+    linear-gradient(
+      100deg,
+      color-mix(in srgb, var(--c-page-body-bg) 70%, transparent) 20%,
+      color-mix(in srgb, var(--c-page-body-bg) 88%, #fff 12%) 45%,
+      color-mix(in srgb, var(--c-page-body-bg) 70%, transparent) 70%
+    );
+  background-size: 280% 100%;
+  color: var(--c-icon);
+  font-size: calc(11.5px * var(--app-text-scale, 1));
+  font-weight: 600;
+  opacity: 0.75;
+  animation: chat-offline-frame-shimmer 1.9s ease-in-out infinite;
+}
+@keyframes chat-offline-frame-shimmer {
+  0% { background-position: 130% 0; }
+  100% { background-position: -30% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-offline-frame-skeleton { animation: none; }
+}
+
 /* 线下「经典画面」：定格图在离线记录里的展示 */
 .chat-offline-frame-img {
   display: block;

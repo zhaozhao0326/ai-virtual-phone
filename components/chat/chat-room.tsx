@@ -3,7 +3,7 @@
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, updateOfflineFrameIncludeSelf, resolveOfflineParticipantChanges } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
-import { appendCheckPhoneUserPhoto, USER_CLASSIC_FRAMES_ALBUM_ID, USER_CLASSIC_FRAMES_ALBUM_TITLE } from "@/lib/checkphone-user-photos";
+import { appendCheckPhoneUserPhoto, USER_CLASSIC_FRAMES_ALBUM_ID, USER_CLASSIC_FRAMES_ALBUM_TITLE, USER_TEXT_PHOTO_ALBUM_ID, USER_TEXT_PHOTO_ALBUM_TITLE } from "@/lib/checkphone-user-photos";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
 import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDATE_TAG_RE, MEETING_INVITE_TAG_RE, parseMeetingInvite, type ParsedMeetingInvite, type ParsedMessagePart } from "@/lib/rich-message-parser";
 import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
@@ -312,6 +312,50 @@ const CHAT_THEATER_MODE_PREFIX = "chat-theater-mode:";
 const GENERATING_LOCK_TTL_MS = 5 * 60 * 1000;
 const OFFLINE_INITIAL_LOAD = 10;
 const OFFLINE_LOAD_MORE_COUNT = 10;
+
+// v1.7.116：线下「定格这一帧」的固定摄影规格。
+// 为什么要有这层：AI 导演总结只是一段文字描述，模型（尤其 gpt-image 走 /images/edits 带参考图时）
+// 会默认套用参考图那种「两人并排正脸、一起看镜头」的合影构图——这就是「明明是搂着聊天，出来像摆拍」的根因。
+// 这段规格是确定性执行的硬约束（不依赖导演是否写全），只作用于定格，不影响角色发图/自拍（自拍本来就该看镜头）。
+//
+// 为什么故意写成英文：这段会和中文描述一起进 /api/image-generation，服务端会把**含中文的片段**逐段机翻，
+// 「越肩视角」「焦平面」这类摄影术语一翻就废，构图约束等于白写。纯英文片段服务端原样保留不翻译，
+// 所以英文既最准、又省掉十几次翻译请求（生图前少等好几秒）。前置的半角逗号确保它和中文描述分成两段。
+const OFFLINE_FRAME_SPEC_COMMON = [
+    ", cinematic film still, candid photographic moment rather than a posed group photo; ",
+    "NOBODY looks at the camera, no front-facing symmetrical lineup, every gaze falls on the other person, on their own hands, or on something inside the scene; ",
+    "light comes from the upper side of the frame (window light or a warm lamp, 3200-4200K), clear light-to-shadow contrast, a cool rim light along one edge, small catchlights in the eyes; ",
+    "realistic skin with subtle specular highlights, hair edges catching the light, natural fabric folds, hands and fingers rendered naturally and anatomically correct, believable bedding, textiles and props; ",
+    "35mm cinema lens, shallow depth of field with soft bokeh, fine film grain, professional color grading, full framing with nobody cropped, ultra detailed, 8k",
+].join("");
+// 双人：重点是「朝向彼此」与前后层次，专门反制并排正脸。
+const OFFLINE_FRAME_SPEC_TWO = [
+    ", camera at a three-quarter over-the-shoulder angle slightly from the side, one person in the near foreground softly out of focus and the other in the focal plane, clear front-to-back layering; ",
+    "their bodies angled toward each other, never standing side by side facing the lens; the physical relationship shown honestly (an arm around the shoulder or waist, leaning into the crook of a neck, looking down at the person in the arms)",
+].join("");
+// 单人：没有第二个人时，用环境和视线方向补足画面层次。
+const OFFLINE_FRAME_SPEC_SOLO = [
+    ", camera at a slight three-quarter angle, the person placed on a rule-of-thirds line with the body turned half away, gaze directed at one specific thing inside the scene (the window, what is in their hand, the doorway), a layer of soft foreground bokeh",
+].join("");
+// 亲密姿态（搂抱/依偎/躺在一起）：改从侧后方 45 度越肩拍。
+// 这类剧情正面拍必然退化成「并排合影」；越肩机位能让「谁搂着谁、谁在看谁」一眼看清。
+const OFFLINE_FRAME_SPEC_INTIMATE = [
+    ", camera from behind the shoulder at about 45 degrees: the nearer person is seen over the back of their shoulder with only the profile of the face showing, the other person is held in the embrace facing deeper into the frame and tilting their head up to look at him, both profiles and the line of sight clearly readable; ",
+    "the intimate pose rendered as described in the story, one arm wrapped around the other from behind, chin near the top of the other's head, the other leaning in naturally instead of stiffly",
+].join("");
+// 三人及以上（群聊线下）：同样的反摆拍约束，但措辞不能再写「一人在前景、另一人在焦平面」。
+const OFFLINE_FRAME_SPEC_GROUP = [
+    ", camera at a three-quarter angle with clear front-to-back layering, people placed across the frame at different depths instead of lining up shoulder to shoulder, each one focused on what is happening in the scene rather than posing for the lens, the nearest figure softly out of focus in the foreground",
+].join("");
+// 动作关键词：命中即切「越肩亲密机位」。只在双人时生效（单人走 solo，三人以上走 group）。
+const OFFLINE_FRAME_INTIMATE_RE = /(搂|抱住|抱紧|抱着|拥抱|揽|拥在|靠在|靠进|靠向|依偎|怀里|怀中|躺在|躺进|枕|贴在|贴进|相依|膝上|腿上)/;
+function buildOfflineFrameSpec(mode: "solo" | "pair" | "intimate" | "group"): string {
+    const body = mode === "solo" ? OFFLINE_FRAME_SPEC_SOLO
+        : mode === "intimate" ? OFFLINE_FRAME_SPEC_INTIMATE
+            : mode === "group" ? OFFLINE_FRAME_SPEC_GROUP
+                : OFFLINE_FRAME_SPEC_TWO;
+    return `${OFFLINE_FRAME_SPEC_COMMON}${body}`;
+}
 
 type PendingNativeToolCall = {
     id: string;
@@ -1407,6 +1451,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [offlineTurns, setOfflineTurns] = useState<ChatOfflineTurn[]>([]);
     // 线下「生成经典画面」：定格中态 + 生成后的预览（灯箱）。点按钮才触发，非后台自动。
     const [isCapturingFrame, setIsCapturingFrame] = useState(false);
+    // v1.7.116：记录「正在定格的是哪一条」，好让只有被点的那条显示骨架占位，
+    // 而不是所有条目一起转圈（生图要几十秒，用户得看清是哪一帧在画）。
+    const [capturingTurnId, setCapturingTurnId] = useState<string | null>(null);
     const [framePreview, setFramePreview] = useState<{ dataUrl: string; prompt: string } | null>(null);
     // 线下状态栏：同一时刻只展开一条，且只在展开时才挂载沙盒 iframe（避免长历史里一堆 iframe 空跑）
     // 线下状态栏浮层：存点击那一刻的快照（状态栏原文 / 渲染 HTML / 摘要），null = 关闭。
@@ -4113,22 +4160,30 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
 
         setIsCapturingFrame(true);
+        setCapturingTurnId(targetTurn.id);
         try {
             const directorSystem = [
-                "你是电影分镜导演。下面是一条「线下剧情」的片段（用户与角色的一问一答）。",
+                "你是电影分镜导演，同时负责摄影指导。下面是一条「线下剧情」的片段（用户与角色的一问一答）。",
                 "请就这一条，写一段用于 AI 生图的电影感画面描述（中文）。",
                 "",
-                "要求：",
-                "- 只描写：构图与镜头（远景/中景/特写等）、光线与色调、氛围与情绪、人物姿态、环境场景、服装风格、画面质感。",
+                "必须逐项写清楚（这是这段描述能被画对的关键）：",
+                "1. 机位与景别：镜头在哪个角度、什么景别，谁在前景、谁在后一层。",
+                "2. 身体位置与动作：两人的相对位置、身体朝向、正在做的具体动作（谁搂着谁、手放在哪、谁靠近谁），要能从文字里一眼看出他们的关系姿态。",
+                "3. 视线：谁在看谁、看的是对方的脸还是别处；所有人都不看镜头，这是抓拍不是合影。",
+                "4. 光线：主光来自哪个方向、什么颜色温度、明暗对比怎样，边缘光落在哪一侧。",
+                "5. 场景与细节：环境里具体的物件、材质、布料褶皱、空气中的浮尘或光斑。",
+                "6. 服装与配饰：两人各穿什么、什么颜色与材质、衣料随着姿势怎么起褶皱（家居服、睡衣、外套都按剧情写实）。",
+                "7. 氛围：这一刻的情绪，用构图、距离和光影表达。",
+                "",
+                "写作要求：",
                 "- 绝对不要描写人物五官、脸型、发型、发色等具体长相——这些由参考图锁定，生图时会自动贴合本人。",
                 "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
-                "- 画面是那一瞬间的定格，有故事感与余味，避免摆拍感。",
-                "- 保持镜头得体克制：不要描写亲吻、肌肤相贴、身体接触细节、裸露或血腥暴力；",
-                "  情绪张力优先用光影明暗、景深、距离感（如远景剪影、手部特写、背影、环境空镜）来表达。",
-                "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 120 字以内。",
+                "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
+                "- 保持得体克制：不写亲吻、肌肤相贴的细节、裸露或血腥暴力；拥抱、揽肩、倚靠、对视这类日常相处动作可以正常写。",
+                "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
             ].join("\n");
 
-            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词。`;
+            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和两人此刻的身体动作写明白，再写光影、场景与氛围。`;
 
             const summaryRes = await simpleLLMCall(
                 apiConfig,
@@ -4146,12 +4201,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const aExcerpt = stripTags(targetTurn.assistantContent || "").slice(0, 100);
                 const uExcerpt = stripTags(targetTurn.userContent || "").slice(0, 60);
                 const sceneSeed = aExcerpt || uExcerpt || "当下这一刻的相处";
-                framePrompt = `电影感定格一帧：${charName} 与 ${userName} 在「${sceneSeed}」这一刻的瞬间。中景构图，暖色侧光，氛围温柔克制而有故事感，人物姿态自然，环境细节真实，胶片质感，8k 电影感。`;
+                framePrompt = `电影感定格一帧：侧前方过肩机位，${charName} 与 ${userName} 正处在「${sceneSeed}」这一刻——两人的身体朝向彼此，姿态自然贴合，谁也没有看镜头；环境光从侧上方落下，明暗过渡柔和，背景有真实的生活物件与浅景深虚化，胶片质感。`;
                 showChatToast("AI 总结这帧没成功（你的接口返回空），已改用剧情文本直接出图。", 4200);
                 console.warn("[定格] 导演总结失败，走文本兜底：", summaryRes.error);
             } else {
                 framePrompt = summaryRes.content.trim();
             }
+
+            // 导演偶尔会顺手写「两人看向镜头」——这与抓拍语义相反，会把画面拉回合影摆拍。
+            // 这里做确定性清洗（不改动描述其余部分），比在 system 里反复叮嘱更可靠。
+            framePrompt = framePrompt
+                .replace(/(?:两人|二人|双方|他们|她们|彼此|一起)?\s*(?:都)?\s*(?:直视|看向|望向|凝视|注视|面向|对着|朝向)\s*(?:着)?\s*(?:镜头|摄像机|相机|前方)/g, "目光落在彼此身上")
+                .replace(/正面(?:朝向|面对|冲向)(?:镜头|相机)/g, "侧身相对")
+                .replace(/(?:看|望)向(?:镜头|相机)/g, "望向对方")
+                .replace(/\s+/g, " ")
+                .trim();
 
             // ② 在场角色 + （若开关开启且有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
             const baseCast = offlineParticipants.includes(session.contactId)
@@ -4160,15 +4224,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const castIds = [...baseCast];
             if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
 
+            // 生图：把「摄影规格」硬约束拼在描述后面（中文，服务端会分段翻成英文）。
+            // 这段决定机位/视线/光影/细节，压住模型默认的「正面合影」倾向；
+            // 并且按这一条剧情里有没有搂抱/依偎动作，切换成越肩机位（关系姿态才看得清）。
+            const poseMode: "solo" | "pair" | "intimate" | "group" = castIds.length <= 1
+                ? "solo"
+                : castIds.length === 2
+                    ? (OFFLINE_FRAME_INTIMATE_RE.test(framePrompt) ? "intimate" : "pair")
+                    : "group";
+            const shootPrompt = `${framePrompt}。${buildOfflineFrameSpec(poseMode)}`;
             // 生图：被内容安全审核拦下时，不原样重试，而是把镜头拉远（中远景/背影/剪影/环境空镜）再试一次。
             // 这是「让画面更克制」，不是绕审核；多数亲密/贴身构图在远景下就能正常出图。
             let dataUrl: string | null = null;
             let autoRestrained = false;
             try {
-                dataUrl = await handleTextPhotoGenerate(framePrompt, castIds);
+                dataUrl = await handleTextPhotoGenerate(shootPrompt, castIds);
             } catch (photoError) {
                 if (!isModerationBlocked(photoError)) throw photoError;
-                const restrainedPrompt = `${framePrompt}；镜头拉远为中远景，人物侧背身或剪影，以环境、光影与留白承载情绪，不表现肢体接触动作`;
+                const restrainedPrompt = `${framePrompt}；改为中远景，镜头从侧后方拍摄两人的背影或剪影，人物朝向彼此而不面对镜头，以环境、光影与留白承载情绪`;
                 dataUrl = await handleTextPhotoGenerate(restrainedPrompt, castIds);
                 if (dataUrl) {
                     autoRestrained = true;
@@ -4221,6 +4294,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             }
         } finally {
             setIsCapturingFrame(false);
+            setCapturingTurnId(null);
         }
     }, [
         isCapturingFrame, isOfflineGenerating, offlineTurns, offlineParticipants,
@@ -4231,6 +4305,41 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setRichModal(null);
         sendRichMessage("image", { label: prompt }, "", dataUrl);
     }, [sendRichMessage]);
+
+    // 「生图」弹窗里的「保存」：只落进相册，不往聊天里发消息。
+    // 相册是按角色存的，所以单聊存当前角色；群聊存所选的第一个真实角色（相册本身没有「群」这一层）。
+    const handleTextPhotoSave = useCallback(async (prompt: string, dataUrl: string, selectedIds: string[]) => {
+        const blob = dataUrlToBlob(dataUrl);
+        if (!blob) throw new Error("图片数据解析失败，请重新生成后再保存");
+        const assetId = await saveChatImageToIndexedDB(blob);
+        if (!assetId) throw new Error("图片写入本地图库失败，请重试");
+
+        const chars = loadCharacters();
+        const hasChar = (id: string | null | undefined): id is string => !!id && chars.some((c) => c.id === id);
+        let targetId: string | null = null;
+        if (!session.isGroup && hasChar(session.contactId)) targetId = session.contactId;
+        if (!targetId) targetId = selectedIds.find((id) => hasChar(id)) ?? null;
+        if (!targetId) targetId = (session.participantIds ?? []).find((id) => hasChar(id)) ?? null;
+        if (!targetId && hasChar(session.contactId)) targetId = session.contactId;
+        if (!targetId) throw new Error("这里没有可保存到的角色相册");
+
+        const now = new Date();
+        const caption = prompt.trim() || "生图";
+        appendCheckPhoneUserPhoto({
+            id: `text_photo_${now.getTime()}_${Math.random().toString(36).slice(2, 8)}`,
+            characterId: targetId,
+            assetId,
+            albumId: USER_TEXT_PHOTO_ALBUM_ID,
+            albumTitle: USER_TEXT_PHOTO_ALBUM_TITLE,
+            title: caption.slice(0, 24),
+            description: caption,
+            shotAtLabel: now.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+            locationLabel: "手机相册",
+            tone: "mist",
+            createdAt: now.toISOString(),
+        });
+        showChatToast("已保存到相册 · 我的生图（不会发进聊天）");
+    }, [session.contactId, session.isGroup, session.participantIds, showChatToast]);
 
     const sendSystemInstruction = (content: string): boolean => {
         if (isGenerating) {
@@ -6711,6 +6820,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             onOpen={(src) => setFramePreview({ dataUrl: src, prompt: turn.framePrompt || "经典画面" })}
                                         />
                                     )}
+                                    {/* 生成中的骨架占位：只出现在被点的那一条下面，让人知道「这一帧正在画」。
+                                        生图通常 20-60 秒，空等没有任何反馈会让人以为按钮没反应。 */}
+                                    {isCapturingFrame && capturingTurnId === turn.id && !turn.imageAssetId && (
+                                        <div className="chat-offline-frame-skeleton" aria-hidden>
+                                            <Camera size={16} strokeWidth={2} />
+                                            <span>正在把这一刻画下来…</span>
+                                        </div>
+                                    )}
                                     {/* 每条线下回复下面都留一个「定格这一帧」：只围绕这一条总结出图，不吃多轮上下文 */}
                                     <button
                                         type="button"
@@ -6719,10 +6836,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         onClick={(e) => { e.stopPropagation(); void handleCaptureOfflineFrame(turn.id); }}
                                         title="把这一条剧情定格成一张图（只总结这一条）"
                                     >
-                                        {isCapturingFrame
+                                        {isCapturingFrame && capturingTurnId === turn.id
                                             ? <Loader2 size={12} strokeWidth={2.2} className="chat-spin" />
                                             : <Camera size={12} strokeWidth={2.2} />}
-                                        <span>{isCapturingFrame ? "定格中…" : turn.imageAssetId ? "重新定格" : "定格这一帧"}</span>
+                                        <span>
+                                            {isCapturingFrame && capturingTurnId === turn.id
+                                                ? (turn.imageAssetId ? "重新画这一帧…" : "定格中…")
+                                                : turn.imageAssetId ? "重新定格" : "定格这一帧"}
+                                        </span>
                                     </button>
                                     {/* 线下状态栏：一个小标签，点开是浮层（浮在聊天记录上方，看完关掉），不占版面。
                                         摘要与状态栏合并在这一个浮层里：摘要照旧进短期记忆，只是不再单独渲染一行折叠块。
@@ -7480,6 +7601,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     defaultSelected={textPhotoDefaultSelected}
                     onGenerate={handleTextPhotoGenerate}
                     onSend={handleTextPhotoSend}
+                    onSave={handleTextPhotoSave}
                     onClose={() => setRichModal(null)}
                 />
             )}

@@ -10,6 +10,21 @@ registerDynamicPrefix(PREFIX);
 export const USER_CLASSIC_FRAMES_ALBUM_ID = "user-classic-frames";
 export const USER_CLASSIC_FRAMES_ALBUM_TITLE = "经典画面·线下定格";
 
+// 聊天里「生图」时手动点「保存」存下来的图：不发送进聊天，只落进相册的独立相簿。
+export const USER_TEXT_PHOTO_ALBUM_ID = "user-text-photo";
+export const USER_TEXT_PHOTO_ALBUM_TITLE = "我的生图";
+
+const USER_ALBUM_TITLES: Record<string, string> = {
+  [USER_CLASSIC_FRAMES_ALBUM_ID]: USER_CLASSIC_FRAMES_ALBUM_TITLE,
+  [USER_TEXT_PHOTO_ALBUM_ID]: USER_TEXT_PHOTO_ALBUM_TITLE,
+};
+
+/** 用户真实照片的相簿标题：优先用已知映射，其次用照片上记录的 albumTitle，最后兜底。 */
+export function resolveUserAlbumTitle(albumId?: string, fallback?: string): string {
+  if (!albumId) return USER_CLASSIC_FRAMES_ALBUM_TITLE;
+  return USER_ALBUM_TITLES[albumId] || fallback?.trim() || "我的照片";
+}
+
 export type CheckPhoneUserPhoto = {
   id: string;
   characterId: string;
