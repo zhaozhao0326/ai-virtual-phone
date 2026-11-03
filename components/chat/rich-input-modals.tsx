@@ -269,7 +269,8 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
 
     const selectedIds = Object.keys(selected).filter((id) => selected[id]);
     const selectedCount = selectedIds.length;
-    const canAct = text.trim().length > 0 && selectedCount > 0 && selectedCount <= 4 && !busy;
+    // v1.7.118：允许 0 人（纯场景）。不再强制至少选 1 位，这样「只写场景、不要人」能直接生成。
+    const canAct = text.trim().length > 0 && selectedCount <= 4 && !busy;
     // 已经出过图时，即使改了提示词也允许把当前这张存下来。
     const canSave = (!!previewUrl || canAct) && !saving;
 
@@ -290,10 +291,6 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
     const runGenerate = async (): Promise<string | null> => {
         const trimmed = text.trim();
         if (!trimmed || busy) return null;
-        if (selectedCount === 0) {
-            setErrorText("请至少选择 1 位画面人物");
-            return null;
-        }
         if (selectedCount > 4) {
             setErrorText("画面人物最多 4 人");
             return null;
@@ -361,7 +358,7 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                     style={{ resize: "none" }}
                 />
 
-                <label className="ts-12 text-[var(--c-icon)] w-full mt-1">画面人物（最多 4 人）</label>
+                <label className="ts-12 text-[var(--c-icon)] w-full mt-1">画面人物（最多 4 人，全不选 = 纯场景、画面里没有人）</label>
                 <div className="w-full flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
                     {participants.length === 0 && (
                         <span className="ts-12 text-[var(--c-icon)] py-2 text-center">没有可选人物</span>

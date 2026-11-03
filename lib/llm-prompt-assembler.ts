@@ -1104,11 +1104,10 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            // detail: "auto" 对 base64 data URL 走 high-res 分块（OpenAI 文档约定）：
-            // 之前写死 "low" 让 AI 只看到 512×512 的糊图，把菜照当自拍/脖子
-            // （角色 prompt 又假设用户发自拍，AI 强行套"领口""旁边的人"）。
-            // "auto" 对 base64 强制走精细识别路径，能正确分辨"菜 vs 人"。
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "auto" } });
+            // detail 用 "high"：对官方 OpenAI 走高清分块；第三方 OpenAI 兼容中转大多只
+            // 认 low/high 字面，"auto" 常被忽略或整张图丢掉 —— 这会直接让角色"完全看不见"
+            // 用户发的图（只收到"发了一张照片"文字）。写死 high 最稳妥。
+            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "high" } });
             finalPayload.push({
                 role: b.role,
                 content: parts,
@@ -2255,11 +2254,10 @@ export function assembleGroupPromptPayload(input: GroupAssemblerInput): LLMMessa
             // Vision message: build multi-part content with image (never merged)
             const parts: LLMContentPart[] = [];
             if (processedText) parts.push({ type: "text", text: processedText });
-            // detail: "auto" 对 base64 data URL 走 high-res 分块（OpenAI 文档约定）：
-            // 之前写死 "low" 让 AI 只看到 512×512 的糊图，把菜照当自拍/脖子
-            // （角色 prompt 又假设用户发自拍，AI 强行套"领口""旁边的人"）。
-            // "auto" 对 base64 强制走精细识别路径，能正确分辨"菜 vs 人"。
-            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "auto" } });
+            // detail 用 "high"：对官方 OpenAI 走高清分块；第三方 OpenAI 兼容中转大多只
+            // 认 low/high 字面，"auto" 常被忽略或整张图丢掉 —— 这会直接让角色"完全看不见"
+            // 用户发的图（只收到"发了一张照片"文字）。写死 high 最稳妥。
+            parts.push({ type: "image_url", image_url: { url: b.imageUrl, detail: "high" } });
             finalPayload.push({
                 role: b.role,
                 content: parts,

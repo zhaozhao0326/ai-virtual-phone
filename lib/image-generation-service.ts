@@ -740,8 +740,13 @@ async function generateImageDirect(params: {
     const faceRule = refList.length > 1
       ? "LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images."
       : "LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image.";
+    // v1.7.118：人物数量硬约束（与服务端路由对齐）。直连/代理走这条通道时不会重建结构化提示词，
+    // 所以这里直接按「参考图张数 = 被锁脸人数」钉死：最终画面里只有这些被参考的人，不得多出任何人。
+    const personConstraint = refList.length > 1
+      ? ` The final image must contain ONLY these ${refList.length} referenced people and nobody else — do not add bystanders, duplicates, or any extra individuals.`
+      : ` The final image must contain ONLY this single referenced person and nobody else — do not add any additional people, bystanders, or duplicates.`;
     const appearanceNote = params.participantAppearance?.trim() ? ` ${params.participantAppearance.trim()}` : "";
-    const refInstruction = `${faceRule} Where the text description of a person's face, hairstyle or hair colour conflicts with the reference image, the reference image WINS — do not redesign the face.${appearanceNote} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: `;
+    const refInstruction = `${faceRule} Where the text description of a person's face, hairstyle or hair colour conflicts with the reference image, the reference image WINS — do not redesign the face.${appearanceNote}${personConstraint} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: `;
     form.set("prompt", refInstruction + prompt);
     if (settings.size && settings.size !== "auto") form.set("size", settings.size);
     if (settings.quality && settings.quality !== "auto") form.set("quality", settings.quality);

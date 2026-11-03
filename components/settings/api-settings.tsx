@@ -70,7 +70,7 @@ export function ApiSettings() {
             apiKey: "",
             defaultModel: "",
             enableNativeTools: true,
-            enableImageRecognition: false,
+            enableImageRecognition: true,
             enableImageGeneration: false,
             preventEmptyGenerateRambling: true,
         };

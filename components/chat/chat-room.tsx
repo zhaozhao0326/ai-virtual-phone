@@ -3951,7 +3951,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     }, [textPhotoParticipants, textPhotoParticipantIds]);
 
     const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[]): Promise<string | null> => {
-        if (!prompt.trim() || selectedIds.length === 0) return null;
+        if (!prompt.trim()) return null;
         const u = resolveUserIdentity();
         const chars = loadCharacters();
         const photoSettings = loadImageGenerationSettings();
@@ -3998,7 +3998,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 });
             }
         }
-        if (specList.length === 0) return null;
+
+        // v1.7.118：允许「全不选」= 纯场景生图（画面里没有人）。
+        // specList 为空时下方参考图/外观/参与者均自然退化成空，requestBody 不带 participants/referenceImages，
+        // 服务端会按「无人」钉死「不要凭空加人」。因此这里不再因 specList 为空而 return null。
 
         // v1.7.33：参考图锁脸不再限流——gpt-image-2 对多参考图支持良好（用户实测），
         // 与「角色发图」链路一致：勾选的人有参考图就全量锁脸；无图者不传图，

@@ -211,6 +211,7 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
     // 用户原文优先：这是画面主体，必须排在最前、作为主导指令，避免被场景/角色背景盖掉
     if (input.prompt?.trim()) parts.push(input.prompt.trim());
     // 参与者（谁在画面里），仅作身份锚定，不抢主体
+    let participantCount = 0;
     if (input.participants?.length) {
         // {charN} 锚点是 NAI 专属语法，OAI/Google 不认，注入反而污染提示词 → 仅 NAI 注入。
         // 参与者与 referenceImages 同序（前端 specList 顺序 = refImages 顺序）。
@@ -230,6 +231,7 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             const anchor = (p.anchor || "").trim();
             const action = (p.action || "").trim();
             if (!name && !anchor && !action) return;
+            participantCount += 1;
             // hasRef 必须同时满足「标记有图」且「确实收到了图」，否则图丢了会连外貌描述一起丢
             const hasRef = (knownRefs ? p.hasReference === true : Boolean(refList[idx])) && refCount > 0;
             // 有参考图 → anchor 只留性别词（长相交给参考图）；没图 → 保留完整外观做文字兜底
@@ -239,6 +241,23 @@ function buildStructuredChinesePrompt(input: ImageGenerationRequest): string {
             if (action) clause += ` ${action}`;
             parts.push(clause);
         });
+    }
+    // v1.7.118：人物数量硬约束 —— 根治「选 1 人却出 2 人」「纯场景却冒出人物」两类漂移。
+    // 「画面里有没有人」只看三处信号：显式 participants、参与者参考图、单角色锁脸图。
+    // 角色发图 / 朋友圈走 characterId 锁脸（referenceImageDataUrl 非空），本就有人，绝不误加「不要人」。
+    const hasPeopleInFrame =
+        participantCount > 0 ||
+        (input.referenceImages?.length ?? 0) > 0 ||
+        Boolean(input.referenceImageDataUrl?.trim());
+    if (hasPeopleInFrame) {
+        if (participantCount > 0) {
+            parts.push(
+                `重要：画面里只能出现上述这 ${participantCount} 位人物，不要额外添加任何其他人物、旁观者或路人，也不要重复或复制已存在的人物`
+            );
+        }
+    } else {
+        // 真正无人（聊天生图全不选 + 无参考图）：强制纯场景，禁止模型凭空加人。
+        parts.push("重要：画面中不要出现任何人物，只呈现纯粹的场景、环境或物体，不要凭空加入任何人");
     }
     // 场景/光线仅作“背景参考”，明确降级，避免盖过用户主体描述
     if (input.sceneBackground?.trim()) parts.push(`背景参考：${input.sceneBackground.trim()}`);
@@ -923,9 +942,15 @@ export async function runImageGeneration(input: ImageGenerationRequest): Promise
       const bleed = allowMoodBleed
         ? " You MAY also borrow the reference image's photographic mood, lighting, color grade, and lens feel to enrich the atmosphere, as long as the face stays locked to the reference."
         : "";
+      // v1.7.118：人物数量硬约束（英文，锁脸指令层直接钉死）。
+      // 带参考图时模型偶尔会顺手加一个伴舞/路人或把同一个人复制一份，
+      // 表现为「选 1 人出 2 人」。这里显式要求「最终画面里只有这些被参考的人，不得多出任何人」。
+      const personConstraint = refCount > 1
+        ? ` The final image must contain ONLY these ${refCount} referenced people and nobody else — do not add bystanders, duplicates, or any extra individuals.`
+        : ` The final image must contain ONLY this single referenced person and nobody else — do not add any additional people, bystanders, or duplicates.`;
       const refNote = refCount > 1
-        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.${bleed}`
-        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Do NOT redesign or alter the person's face, hairstyle, eyes, or identity — keep the exact same person.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.${bleed}`;
+        ? `LOCK and faithfully reproduce each person's exact facial features and identity from the provided reference images.${orderHint} Then compose them into ONE coherent, brand-new scene that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference images. Do NOT paste the reference images side-by-side as a collage.${bleed}${personConstraint}`
+        : `LOCK and faithfully reproduce the person's exact facial features and identity from the provided reference image. Do NOT redesign or alter the person's face, hairstyle, eyes, or identity — keep the exact same person.${orderHint} Generate ONE brand-new image that strictly follows the description below. The background, pose, and outfits must follow the description, NOT the reference image.${bleed}${personConstraint}`;
       finalPrompt = `${refNote} Description: ${finalPrompt}`;
     }
     console.log("[OAI-PROMPT] final:", {
