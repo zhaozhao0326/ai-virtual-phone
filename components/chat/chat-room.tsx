@@ -4706,12 +4706,40 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     });
                                     setMessages(prev => [...prev, invMsg]);
                                     text = "";
-                                } else {
-                                    // 有包裹块但没抽到字段：仅剥离，不建卡
-                                    text = stripped;
-                                }
+                            } else {
+                                // 有包裹块但没抽到字段：仅剥离，不建卡
+                                text = stripped;
                             }
-                            const reasoningText = pendingReasoning;
+                        } else if (!offlineMode && !session.isGroup && character?.meetingInviteEnabled === true) {
+                            // 兜底：角色光说"发张邀请卡"却没吐出 [邀请见面] 块（软约束偶尔失效），
+                            // 这里按叙述意图合成一张卡片弹出来，保证"说发就真发"，不再反复打扰用户。
+                            const intent = text.match(/发\s*[一]?\s*张\s*(?:见面)?\s*(?:邀[请约]|约会)?\s*卡|发\s*[一]?\s*张\s*(?:邀请|见面|约会)/i);
+                            if (intent) {
+                                const strippedNarration = text.replace(intent[0], "").replace(/[~～。，,！!？?\s]+$/g, "").trim();
+                                const invMsg = pushChatMessage({
+                                    sessionId: session.id,
+                                    role: "assistant",
+                                    content: "",
+                                    mediaType: "meeting_invite",
+                                    mediaData: {
+                                        meetingInviteStatus: "pending",
+                                        meetingInviteCharacterId: session.contactId,
+                                        meetingInviteCharacterName: character?.name || "",
+                                        meetingInviteRaw: "",
+                                        meetingInviteTitle: `${character?.name || "TA"}想见你一面`,
+                                        meetingInviteDescription: strippedNarration
+                                            ? "角色发来了线下见面邀请，点「接受邀请」就能进入这次见面的剧情。"
+                                            : "想和你线下见个面，点「接受邀请」进入剧情。",
+                                        meetingInviteAcceptResponse: "",
+                                        meetingInviteDeclineResponse: "",
+                                    },
+                                });
+                                setMessages(prev => [...prev, invMsg]);
+                                // 保留角色原本的叙述（去掉"发张卡"那句），让上下文连贯；没有则只留卡片
+                                text = strippedNarration;
+                            }
+                        }
+                        const reasoningText = pendingReasoning;
                             pendingReasoning = undefined;
                             lastSendResult = await splitAndSaveAIMessages(text, { ...options, ...generationGuard, reasoningText });
                         }
