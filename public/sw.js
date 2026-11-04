@@ -1,4 +1,4 @@
-const CACHE_VERSION = "ai-phone-pwa-v60";
+const CACHE_VERSION = "ai-phone-pwa-v61";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 

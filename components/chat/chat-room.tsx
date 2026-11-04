@@ -325,7 +325,11 @@ const OFFLINE_FRAME_SPEC_COMMON = [
     ", cinematic film still, candid photographic moment rather than a posed group photo; ",
     "NOBODY looks at the camera, no front-facing symmetrical lineup, every gaze falls on the other person, on their own hands, or on something inside the scene; ",
     "light comes from the upper side of the frame (window light or a warm lamp, 3200-4200K), clear light-to-shadow contrast, a cool rim light along one edge, small catchlights in the eyes; ",
-    "realistic skin with subtle specular highlights, hair edges catching the light, natural fabric folds, hands and fingers rendered naturally and anatomically correct, believable bedding, textiles and props; ",
+    "realistic skin with subtle specular highlights, hair edges catching the light, natural fabric folds, believable bedding, textiles and props; ",
+    // v1.7.138：手部单独一层硬约束。原先只有一句「手和手指自然、解剖正确」，压不住「抓脸/捏下颌/探入发间」
+    // 这类多关节手势——模型会画成「五指当梳子」（拇指不对立）、手指根部粘连拉长、手腕悬空接不上前臂、
+    // 手比脸还大。这一层的每一条都对应一种实测失败模式。
+    "hands must be anatomically exact: exactly five digits on each hand, the thumb clearly opposed and visible on the opposite side of whatever the hand holds, grips or cups; fingers must not merge, elongate, duplicate or bend backwards; a hand must never be larger than the face it touches, and every wrist must connect visibly to a forearm — no disembodied, floating or extra hand; keep hands relaxed and slightly curled instead of splayed with all fingers spread wide; if a hand is mostly hidden by bedding, fabric or another body, draw only the visible part rather than inventing a whole hand; ",
     // v1.7.135：遮挡 + 解剖铁律。原先只写了「手和手指要自然正确」，没约束「被遮挡物的形状」，
     // 模型会把「裹在被子里只露头」画成一坨有肩线/胸廓的变形身体（用户实测的典型失败）。
     // 这段是纯约束、不动机位与光影，所以不会改变已经满意的构图风格。
@@ -4220,7 +4224,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "",
                 "必须逐项写清楚（这是这段描述能被画对的关键）：",
                 "1. 机位与景别：镜头在哪个角度、什么景别，谁在前景、谁在后一层。",
-                "2. 身体位置与动作：两人的相对位置、身体朝向、正在做的具体动作（谁搂着谁、手放在哪、谁靠近谁），要能从文字里一眼看出他们的关系姿态。",
+                "2. 身体位置与动作：两人的相对位置、身体朝向、正在做的具体动作（谁搂着谁、谁靠近谁），要能从文字里一眼看出他们的关系姿态。手部只写「哪只手大致放在哪个位置」（例如「他一只手扶着她的脸颊」），不要细分手指的动作与角度。",
                 "3. 视线：谁在看谁、看的是对方的脸还是别处；所有人都不看镜头，这是抓拍不是合影。",
                 "4. 光线：主光来自哪个方向、什么颜色温度、明暗对比怎样，边缘光落在哪一侧。",
                 "5. 场景与细节：环境里具体的物件、材质、布料褶皱、空气中的浮尘或光斑。",
@@ -4231,6 +4235,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "- 绝对不要描写人物五官、脸型等具体长相——脸由参考图锁定，生图时会自动贴合本人。但发型与发色要按【这一条剧情里实际写到的】来画：如果角色在对话里提到自己换了发型或发色（比如剪短、剪了、烫卷、染了什么颜色、弄了头发、换了新发型），就照剧情里描述的当下模样写进画面，不要套用角色卡里没提到的旧模样，也不要凭空编造。",
                 "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
                 "- 当角色被被子、毯子或宽松衣物包裹时，只描写织物的柔软褶皱与包裹出的蓬松轮廓，绝不要描写被遮住的身体轮廓（不要写肩线、胸廓、腰线或躯干形状），被遮住的部位就让它在布料里自然隐没；",
+                "- 手部接触写得越复杂，画面越容易把手画错（多指、断指、手接不上手臂都是这么来的）：能写「手扶着她的脸颊」「一只手揽着腰」就不要写「手指探入发间捏住下颌」「张开的五指按在……」这类多关节手势；也不要让手挡住对方大半张脸。",
                 "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
                 "- 描写尺度放宽、自然就好：可以写亲吻（轻吻、吻额头/脸颊、双唇相贴这类亲密但非暴露的动作）、拥抱、依偎、肌肤自然相贴、居家松弛的穿着（如男生赤裸上身或仅着睡裤的居家状态、肩颈与手臂自然裸露）；只要不是直白的性行为、暴露的性器官描绘或血腥暴力，都可以如实写进画面。用光影、距离与构图承载情绪，而非直白刻画私处。",
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",

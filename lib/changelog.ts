@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.137";
+export const APP_VERSION = "1.7.138";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.138",
+    date: "2026-11-04",
+    title: "生图手部解剖约束强化",
+    highlights: [
+      "生图规格新增手部解剖硬约束：五指精确、拇指对立可见、手指不粘连/不拉长/不重复、手不得大于所触碰的脸、手腕必须可见地连到前臂（杜绝悬空手）。",
+      "线下定格的分镜导演不再细写复杂手势，只写「哪只手大致放在哪」，减少多关节手势导致的手部错画。",
+      "线上发图（角色主动发图 / 朋友圈）同步应用同一手部约束。",
+    ],
+  },
   {
     version: "1.7.137",
     date: "2026-11-04",
