@@ -3950,7 +3950,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         return ids.slice(0, 2);
     }, [textPhotoParticipants, textPhotoParticipantIds]);
 
-    const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[]): Promise<string | null> => {
+    const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[], hairOverride?: Record<string, string>): Promise<string | null> => {
         if (!prompt.trim()) return null;
         const u = resolveUserIdentity();
         const chars = loadCharacters();
@@ -4072,7 +4072,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if (gotRefIds.has(s.id)) {
                     // 带参考图的人：性别 + 角色卡里的发型（若写了新发型就透传），其余长相交给参考图
                     const g = pickGenderOnly(s.anchor);
-                    const hair = pickHairText(s.anchor);
+                    const hair = (hairOverride && hairOverride[s.id]) || pickHairText(s.anchor);
                     const bits = [g, hair].filter(Boolean);
                     return bits.length ? `${s.name}（${bits.join("，")}）` : s.name;
                 }
@@ -4249,6 +4249,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             // 剧情里若提到发型/发色变化，把明确提示拼进描述，确保定格画面跟得上剧情（而非沿用锁脸照旧发型）。
             const hairHint = extractHairHints(transcript);
             if (hairHint) framePrompt = `${framePrompt}${hairHint}`;
+            // 同时把角色卡里的旧发型从锁脸裁定里顶掉，明确「以本场景剧情描述中的发型为准」，避免旧发型与剧情新发型打架。
+            const storyHairOverride = hairHint ? { [session.contactId]: "以本场景剧情描述中的发型为准" } : undefined;
 
             // ② 在场角色 + （若开关开启且有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
             const baseCast = offlineParticipants.includes(session.contactId)
@@ -4275,7 +4277,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             } catch (photoError) {
                 if (!isModerationBlocked(photoError)) throw photoError;
                 const restrainedPrompt = `${framePrompt}；改为中远景，镜头从侧后方拍摄两人的背影或剪影，人物朝向彼此而不面对镜头，以环境、光影与留白承载情绪`;
-                dataUrl = await handleTextPhotoGenerate(restrainedPrompt, castIds);
+                dataUrl = await handleTextPhotoGenerate(restrainedPrompt, castIds, storyHairOverride);
                 if (dataUrl) {
                     autoRestrained = true;
                     framePrompt = `${framePrompt}（已自动改为远景构图）`;
