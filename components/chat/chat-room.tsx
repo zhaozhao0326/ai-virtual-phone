@@ -4122,14 +4122,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     }, []);
 
-    // 线下定格：从剧情片段抽取「发型/发色变化」线索，提醒生图按新发型画（避免锁脸照旧发型盖掉剧情里的新发型）。
-    const extractHairHints = (t: string): string | null => {
-        const changeCue = /(剪短|剪了|剪个|染(成|了|发)|烫(卷|了)|换(了)?发型|新发型|弄了头发|把头发|头发剪|头发染|头发烫|剃(了|光)|理了发|做了头发|改了发型)/i;
-        if (!changeCue.test(t)) return null;
+    // 线下定格：从剧情片段抽「发型/发色变化」线索，让定格画面跟住剧情里的新发型（覆盖角色卡旧发型）。
+    // 只认明确的换发型动作词（strongCue），避免「把头发别到耳后」「抚摸长发」误触发、把旧发型错剥掉；
+    // 弱信号（变成/成了）必须同句带发型词才算换发型，进一步降误触发。
+    const detectStoryHair = (t: string): string | null => {
+        const strongCue = /(剪短|剪了|剪个|染(成|了|发)?|烫(卷|了)?|新发型|新造型|换(了|了个)?发型|换(了|了个)?造型|弄(了)?(头发|发型)|头发剪|头发染|头发烫|剃(了|光)|理(了|个)?发|做(了)?头发|改了发型|接发|假发|扎(了)?起(了)?|盘(了)?起(了)?|编(了)?起(了)?)/i;
+        const weakCue = /(变成|成了)/i;
+        const hairRe = /(长发|短发|及肩|及腰|齐耳|齐肩|过肩|中长发|长直|卷发|直发|波浪卷|大波浪|羊毛卷|马尾|丸子头|双马尾|波波头|寸头|光头|大背头|中分|偏分|刘海|空气刘海|辫子|麻花辫|编发|盘发|披肩|及背|公主切|挂耳染|挑染|渐变)(?:发)?|(?:黑|金|棕|褐|红|紫|蓝|粉|银|白|栗|亚麻|奶奶灰)(?:色)?(?:发|头发|发色)/i;
         const sentences = t.split(/[。！？!?\n]/).map((s) => s.trim()).filter(Boolean);
-        const hits = sentences.filter((s) => changeCue.test(s) || /(长发|短发|及肩|及腰|马尾|丸子头|双马尾|卷发|直发|刘海|寸头|光头|辫子|编发|金发|棕发|褐发|黑发|红发|紫发|蓝发|粉发|银发|白发|发色|头发)/i.test(s));
-        if (!hits.length) return "（注意：这段对话里提到了发型/发色变化，画面里人物的发型发色请按对话中描述的新模样来画，不要沿用旧参考图的样子）";
-        return `（注意：这段对话提到发型/发色变化，画面请按此画：${hits.slice(0, 3).join("；")}）`;
+        const isHairChange = (s: string): boolean => strongCue.test(s) || (weakCue.test(s) && hairRe.test(s));
+        if (!sentences.some(isHairChange)) return null;
+        const hits = sentences.filter((s) => isHairChange(s) || hairRe.test(s));
+        if (!hits.length) return "（本场景发型以剧情描述为准，不要沿用旧参考图的样子）";
+        return `（本场景发型以剧情描述为准：${hits.slice(0, 3).join("；")}）`;
     };
 
     // 线下「生成经典画面」：把当前这段线下剧情的某一帧定格成一张图（手动按钮触发，非后台自动）。
@@ -4247,7 +4252,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 .trim();
 
             // 剧情里若提到发型/发色变化，把明确提示拼进描述，确保定格画面跟得上剧情（而非沿用锁脸照旧发型）。
-            const hairHint = extractHairHints(transcript);
+            const hairHint = detectStoryHair(transcript);
             if (hairHint) framePrompt = `${framePrompt}${hairHint}`;
             // 同时把角色卡里的旧发型从锁脸裁定里顶掉，明确「以本场景剧情描述中的发型为准」，避免旧发型与剧情新发型打架。
             const storyHairOverride = hairHint ? { [session.contactId]: "以本场景剧情描述中的发型为准" } : undefined;
