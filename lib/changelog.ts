@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.135";
+export const APP_VERSION = "1.7.136";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.136",
+    date: "2026-11-04",
+    title: "线下定格遮挡/解剖约束补强（修复裹被变形身体）",
+    highlights: [
+      "导演提示词新增铁律：角色被被子/毯子/宽松衣物包裹时，只描写织物褶皱与包裹体积，绝不要描写被遮住的身体轮廓（肩线、胸廓、腰线、躯干形状），让被遮部位在布料里自然隐没。",
+      "修复审核重试路径（首绘被安全审核拦下走远景重试）原本漏挂摄影规格的漏洞——该路径现也拼上 OFFLINE_FRAME_SPEC_COMMON，保留遮挡/解剖/光影约束，不再丢掉。",
+      "离线定格遮挡/解剖双重保障：导演不写矛盾指令 + 固定英文规格强制「被裹身体不得透出变形躯干、不得露肩胸腰线、不得多手/漂浮肢体」。",
+    ],
+  },
   {
     version: "1.7.135",
     date: "2026-11-04",

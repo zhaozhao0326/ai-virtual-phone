@@ -4230,6 +4230,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "写作要求：",
                 "- 绝对不要描写人物五官、脸型等具体长相——脸由参考图锁定，生图时会自动贴合本人。但发型与发色要按【这一条剧情里实际写到的】来画：如果角色在对话里提到自己换了发型或发色（比如剪短、剪了、烫卷、染了什么颜色、弄了头发、换了新发型），就照剧情里描述的当下模样写进画面，不要套用角色卡里没提到的旧模样，也不要凭空编造。",
                 "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
+                "- 当角色被被子、毯子或宽松衣物包裹时，只描写织物的柔软褶皱与包裹出的蓬松轮廓，绝不要描写被遮住的身体轮廓（不要写肩线、胸廓、腰线或躯干形状），被遮住的部位就让它在布料里自然隐没；",
                 "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
                 "- 描写尺度放宽、自然就好：可以写亲吻（轻吻、吻额头/脸颊、双唇相贴这类亲密但非暴露的动作）、拥抱、依偎、肌肤自然相贴、居家松弛的穿着（如男生赤裸上身或仅着睡裤的居家状态、肩颈与手臂自然裸露）；只要不是直白的性行为、暴露的性器官描绘或血腥暴力，都可以如实写进画面。用光影、距离与构图承载情绪，而非直白刻画私处。",
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
@@ -4314,7 +4315,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 dataUrl = await handleTextPhotoGenerate(shootPrompt, castIds, storyHairOverride);
             } catch (photoError) {
                 if (!isModerationBlocked(photoError)) throw photoError;
-                const restrainedPrompt = `${framePrompt}；改为中远景，镜头从侧后方拍摄两人的背影或剪影，人物朝向彼此而不面对镜头，以环境、光影与留白承载情绪`;
+                const restrainedPrompt = `${framePrompt}；改为中远景，镜头从侧后方拍摄两人的背影或剪影，人物朝向彼此而不面对镜头，以环境、光影与留白承载情绪${OFFLINE_FRAME_SPEC_COMMON}`;
                 dataUrl = await handleTextPhotoGenerate(restrainedPrompt, castIds, storyHairOverride);
                 if (dataUrl) {
                     autoRestrained = true;
