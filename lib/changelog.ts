@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.139";
+export const APP_VERSION = "1.7.140";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.140",
+    date: "2026-11-04",
+    title: "生图描述加一层确定性手姿兜底",
+    highlights: [
+      "在描述送进生图接口前，用确定性替换把高风险的多关节手姿（手指探入发间、捏住下颌、张开的五指、手指扣腰腕、指尖描摹）改写成安全手姿（手掌贴脸颊、拇指落下颌一侧、手放松微屈、手揽腰）。",
+      "只精确匹配高风险说法，正常的「扶脸颊」「握了握手」等描写不会被改。线下定格与线上发图（角色主动发图 / 朋友圈）均已应用。",
+    ],
+  },
   {
     version: "1.7.139",
     date: "2026-11-04",

@@ -9,6 +9,7 @@ import { parseAIResponse, CREATE_GROUP_TAG_RE, ADD_FRIEND_TAG_RE, SCHEDULE_UPDAT
 import { applyScheduleUpdateForCharacter } from "@/lib/calendar-storage";
 import { isKnownStickerLabel } from "@/lib/sticker-data";
 import { translateReasoningText } from "@/lib/reasoning-translate";
+import { sanitizeHandGestures } from "@/lib/image-frame-spec";
 import { MessageBubble, MediaDetailModal, prewarmStickerCache, BilingualTextBlock, isStandaloneHtmlPreviewContent, normalizeTextBubbleContent } from "./message-bubble";
 import { GeneratedImageErrorDialog } from "./generated-image-error-dialog";
 import { PhotoInputModal, VoiceRecordModal, RedPacketModal, LocationInputModal, SystemInstructionModal } from "./rich-input-modals";
@@ -4289,6 +4290,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 .replace(/(?:看|望)向(?:镜头|相机)/g, "望向对方")
                 .replace(/\s+/g, " ")
                 .trim();
+            // v1.7.140：确定性手姿兜底——导演即使照抄了「手指探入发间」「捏住下颌」这类多关节手势，
+            // 也在送图前改写成安全手姿（只精确锚定高风险说法，不误伤正常描写）。
+            framePrompt = sanitizeHandGestures(framePrompt);
 
             // 剧情里若提到发型/发色变化，把明确提示拼进描述，确保定格画面跟得上剧情（而非沿用锁脸照旧发型）。
             const hairHint = detectStoryHair(transcript);

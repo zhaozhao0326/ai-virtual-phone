@@ -16,3 +16,34 @@ export const ONLINE_FRAME_QUALITY_SPEC = [
     "when a body is wrapped in a quilt, blanket, duvet or loose clothing, the fabric must read as fabric — soft thick folds and a believable bundle shape — the covered body must NOT show through as a bulging or distorted torso, no shoulder line, chest shape or waist silhouette poking out of the wrapping; only the head and the skin the scene actually exposes are visible, and the visible parts must join up into one anatomically plausible body; ",
     "35mm cinema lens, shallow depth of field with soft bokeh, fine film grain, professional color grading, ultra detailed, 8k",
 ].join("");
+
+// ── 确定性手姿兜底（v1.7.140）──────────────────────────────────────────────
+// 说明：导演/角色模型即使被要求「不要细写手势」，仍可能照抄剧情里的多关节手姿
+// （「手指探入她散乱墨发」「捏住下颌」「张开的五指」），而这类手势正是图像模型最容易画坏的
+// （五指当梳子、指根粘连、手腕断开）。这一层是**确定性**的：在描述送进生图接口前，用精确锚定的
+// 短语把高风险手姿改写成安全手姿。
+//
+// 为什么用精确锚定而不是通配：避免误伤正常描写——例如「攥紧拳头」「手指探入口袋」
+// 「扶着脸颊」都不在匹配范围内，不会被改。只有明确指向「多关节抓握脸部/头发/腰腕」的说法才会被替换。
+const HAND_GESTURE_REWRITES: Array<[RegExp, string]> = [
+    // 手指探/伸/插进头发（含「探入她散乱墨发」这类中间有修饰的说法）
+    [/手指[伸探插][入进](?:她|他)?(?:的)?[^，。；！？]{0,6}(?:发间|发丝|发髻|头发|墨发|鬓角|发尾)/g, "手掌贴着她的头侧"],
+    // 捏/扣/掐住下颌或下巴
+    [/[捏扣掐]住(?:她|他)?(?:的)?(?:下颌|下巴)/g, "手掌轻贴她的脸颊"],
+    // 张开的五指（拆成三种宾语不同的写法，替换后句子仍通顺）
+    [/张开的五指|五指张开|五指大张|十指大张/g, "放松微屈的手"],
+    [/五指按在/g, "手轻放在"],
+    [/五指紧扣/g, "手轻搭在"],
+    // 手指扣/攥住腰、手腕、手臂
+    [/手指[扣攥][住]?(?:她|他)?(?:的)?(?:腰|手腕|手臂|胳膊)/g, "手轻轻揽住"],
+    // 指尖描摹/划过/轻描
+    [/指尖(?:描摹|划过|轻描|描过|轻抚)/g, "手掌轻抚"],
+];
+
+/** 把描述里高风险的复杂手姿确定性替换为安全手姿；不改变其余内容。 */
+export function sanitizeHandGestures(text: string): string {
+    if (!text) return text;
+    let out = text;
+    for (const [re, to] of HAND_GESTURE_REWRITES) out = out.replace(re, to);
+    return out;
+}
