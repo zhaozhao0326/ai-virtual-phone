@@ -108,6 +108,8 @@ export async function simpleLLMCall(
     const headers = buildRequestHeaders(config, baseUrl);
     const temperature = options?.temperature ?? 0.7;
     const max_tokens = options?.max_tokens;
+    // 只有 OpenAI 兼容分支能在正文为空时改走 SSE 重取（Anthropic/Google 原生协议各自不同）。
+    const streamable = !isNativeAnthropicApi(config) && !isNativeGoogleApi(config);
 
     try {
         let fetchUrl: string;
@@ -172,12 +174,44 @@ export async function simpleLLMCall(
             return { content: null, error: `API 错误 ${res.status}: ${errText.slice(0, 200)}` };
         }
 
-        const data = await res.json();
+        // v1.7.134：不再直接 res.json()。
+        // 不少中转站无视 stream:false、直接回 SSE 流（正文是 `data: {...}` 这种），
+        // 旧代码 JSON.parse 抛错 → 上层只看到「接口返回空」，实际是解析失败、正文是有的。
+        const rawText = await res.text();
+        let data: Record<string, unknown> | null = null;
+        try {
+            const parsed = JSON.parse(rawText);
+            data = (parsed && typeof parsed === "object" ? parsed : {}) as Record<string, unknown>;
+        } catch {
+            const streamed = parseSseText(rawText);
+            if (streamed) {
+                console.log("[simpleLLMCall] 响应是 SSE 流，已就地拼接正文", { len: streamed.length });
+                pushApiLog({
+                    characterName: options?.characterName,
+                    model: config.defaultModel,
+                    messages: messages.map(m => ({ ...m, content: m.content.slice(0, 4000) })),
+                    rawResponse: streamed.slice(0, 8000),
+                    source: "background",
+                    purpose: options?.purpose ?? "background",
+                });
+                return { content: streamed };
+            }
+            return { content: null, error: `响应不是合法 JSON（可能是网关错误页）：${rawText.replace(/\s+/g, " ").slice(0, 200)}` };
+        }
 
         // Extract content — try multiple response formats for maximum compatibility
-        const content = extractLLMContent(data, config.provider);
+        let content = extractLLMContent(data, config.provider);
         const finishReason = extractFinishReason(data);
         const wasTruncated = isTruncationFinishReason(finishReason);
+
+        // v1.7.134：非流式拿到了 200 但正文为空（部分中转只支持流式；或推理模型把
+        // max_tokens 全花在 reasoning 上），自动改成 stream:true 再取一次，把正文拼回来。
+        // 只在「空返回」时触发，正常链路一点不受影响。
+        if (!content && streamable && !options?.signal?.aborted) {
+            console.warn("[simpleLLMCall] 非流式正文为空，改用流式重取一次");
+            const streamed = await collectStreamingText(fetchUrl, headers, body, options?.signal);
+            if (streamed) content = streamed;
+        }
 
         // 记录后台调用日志，让「底层调用大模型日志」能看到记忆总结、朋友圈等功能的真实 token 消耗。
         const usage = (data as { usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } }).usage
@@ -408,4 +442,120 @@ export function extractReasoningContent(data: Record<string, unknown>): string {
     }
 
     return "";
+}
+
+/**
+ * 从一个 SSE / NDJSON 分块里抽出正文增量。
+ * 兼容 OpenAI（choices[0].delta.content）、Anthropic（content_block_delta）、Gemini（candidates[].parts[].text），
+ * 以及部分中转把「整段非流式结构」塞进 data: 里的情况。
+ */
+function extractStreamDelta(payload: unknown): string {
+    if (!payload || typeof payload !== "object") return "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const d = payload as any;
+
+    const delta = d?.choices?.[0]?.delta;
+    if (typeof delta?.content === "string") return delta.content;
+    if (Array.isArray(delta?.content)) {
+        return delta.content.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("");
+    }
+    // 有些中转在流里塞的是完整 message（不是 delta）
+    const messageContent = d?.choices?.[0]?.message?.content;
+    if (typeof messageContent === "string") return messageContent;
+
+    // Anthropic
+    if (typeof d?.delta?.text === "string") return d.delta.text;
+
+    // Gemini
+    const parts = d?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+        return parts
+            .map((p: any) => (p?.thought === true ? "" : typeof p?.text === "string" ? p.text : ""))
+            .join("");
+    }
+    return "";
+}
+
+/** 把一整段「已经是 SSE 文本」的响应体拼成正文；不是 SSE 就返回空串。 */
+function parseSseText(raw: string): string {
+    if (!raw.includes("data:")) return "";
+    let out = "";
+    for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith(":")) continue;
+        const payload = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
+        if (!payload || payload === "[DONE]") continue;
+        if (!payload.startsWith("{")) continue;
+        try {
+            out += extractStreamDelta(JSON.parse(payload));
+        } catch {
+            // 半截 JSON（流被掐断）忽略即可
+        }
+    }
+    return out.trim();
+}
+
+/**
+ * 用 stream:true 重发同一条请求，边读边拼正文。
+ * 只在「非流式返回空正文」时兜底调用，失败一律返回 null，不抛错影响主流程。
+ */
+async function collectStreamingText(
+    fetchUrl: string,
+    headers: Record<string, string>,
+    rawBody: string,
+    signal?: AbortSignal,
+): Promise<string | null> {
+    try {
+        const parsed = JSON.parse(rawBody) as Record<string, unknown>;
+        const res = await fetch(fetchUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ ...parsed, stream: true }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            console.warn("[simpleLLMCall] 流式兜底失败：HTTP", res.status);
+            return null;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let text = "";
+        for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() ?? "";
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith(":")) continue;
+                const payload = trimmed.startsWith("data:") ? trimmed.slice(5).trim() : trimmed;
+                if (!payload || payload === "[DONE]") continue;
+                if (!payload.startsWith("{")) continue;
+                try {
+                    text += extractStreamDelta(JSON.parse(payload));
+                } catch {
+                    // 忽略半截 JSON
+                }
+            }
+        }
+        // 收尾可能残留最后一行
+        const tail = buffer.trim();
+        if (tail.startsWith("data:")) {
+            const payload = tail.slice(5).trim();
+            if (payload && payload !== "[DONE]") {
+                try {
+                    text += extractStreamDelta(JSON.parse(payload));
+                } catch {
+                    // ignore
+                }
+            }
+        }
+        const result = text.trim();
+        return result || null;
+    } catch (err) {
+        console.warn("[simpleLLMCall] 流式兜底异常：", err instanceof Error ? err.message : String(err));
+        return null;
+    }
 }

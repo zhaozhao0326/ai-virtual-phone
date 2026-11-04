@@ -245,7 +245,7 @@ interface TextPhotoModalProps {
     participants: TextPhotoParticipant[];
     defaultSelected?: string[];
     /** 前端直接调生图 API，返回生成后的 data URL（不含 data: 前缀 MIME 也行，函数内会自适配） */
-    onGenerate: (prompt: string, selectedIds: string[]) => Promise<string | null>;
+    onGenerate: (prompt: string, selectedIds: string[], opts?: { cinematic?: boolean }) => Promise<string | null>;
     /** 拿到 data URL 后由父组件把图作为用户消息发出 */
     onSend: (prompt: string, dataUrl: string) => void;
     /** 不发送、只把这张图存进相册（保存的是已生成的图，不会重新生成） */
@@ -262,6 +262,9 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
         return init;
     });
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    // v1.7.135：电影感构图开关。线下定格一直带这套摄影规格（机位/视线/光线/胶片质感），
+    // 线上随手生图没有，于是「线下好看、线上平淡」。默认关闭，勾了才注入，不改变原有习惯。
+    const [cinematic, setCinematic] = useState(false);
     const [busy, setBusy] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedHint, setSavedHint] = useState<string | null>(null);
@@ -298,7 +301,7 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
         setBusy(true);
         setErrorText(null);
         try {
-            const url = await onGenerate(trimmed, selectedIds);
+            const url = await onGenerate(trimmed, selectedIds, { cinematic });
             if (url) {
                 setPreviewUrl(url);
                 setSavedHint(null);
@@ -357,6 +360,43 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                     rows={3}
                     style={{ resize: "none" }}
                 />
+
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={cinematic}
+                    onClick={() => setCinematic((v) => !v)}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg mt-1"
+                    style={{
+                        background: cinematic ? "rgba(255,90,90,0.08)" : "var(--c-input)",
+                        border: cinematic ? "1px solid rgba(255,90,90,0.25)" : "1px solid transparent",
+                    }}
+                >
+                    <div className="flex flex-col items-start">
+                        <span className="ts-13 text-[var(--c-text)]">电影感构图</span>
+                        <span className="ts-11 text-[var(--c-icon)]" style={{ textAlign: "left" }}>
+                            机位、视线、光影、胶片质感（线下定格同款）
+                        </span>
+                    </div>
+                    <span
+                        className="relative inline-flex items-center flex-none"
+                        style={{ width: 36, height: 20, borderRadius: 999, background: cinematic ? "var(--c-redpacket)" : "var(--c-icon-bg, #d8d8d8)", transition: "background 0.15s" }}
+                    >
+                        <span
+                            style={{
+                                position: "absolute",
+                                top: 2,
+                                left: cinematic ? 18 : 2,
+                                width: 16,
+                                height: 16,
+                                borderRadius: 999,
+                                background: "#fff",
+                                transition: "left 0.15s",
+                                boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                            }}
+                        />
+                    </span>
+                </button>
 
                 <label className="ts-12 text-[var(--c-icon)] w-full mt-1">画面人物（最多 4 人，全不选 = 纯场景、画面里没有人）</label>
                 <div className="w-full flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">

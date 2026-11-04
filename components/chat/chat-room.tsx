@@ -326,6 +326,11 @@ const OFFLINE_FRAME_SPEC_COMMON = [
     "NOBODY looks at the camera, no front-facing symmetrical lineup, every gaze falls on the other person, on their own hands, or on something inside the scene; ",
     "light comes from the upper side of the frame (window light or a warm lamp, 3200-4200K), clear light-to-shadow contrast, a cool rim light along one edge, small catchlights in the eyes; ",
     "realistic skin with subtle specular highlights, hair edges catching the light, natural fabric folds, hands and fingers rendered naturally and anatomically correct, believable bedding, textiles and props; ",
+    // v1.7.135：遮挡 + 解剖铁律。原先只写了「手和手指要自然正确」，没约束「被遮挡物的形状」，
+    // 模型会把「裹在被子里只露头」画成一坨有肩线/胸廓的变形身体（用户实测的典型失败）。
+    // 这段是纯约束、不动机位与光影，所以不会改变已经满意的构图风格。
+    "anatomy and occlusion must stay physically correct: every limb clearly attached and plausibly placed, no extra limbs, no merged, floating or duplicated hands, no twisted joints, real human proportions; ",
+    "when a body is wrapped in a quilt, blanket, duvet or loose clothing, the fabric must read as fabric — soft thick folds and a believable bundle shape — the covered body must NOT show through as a bulging or distorted torso, no shoulder line, chest shape or waist silhouette poking out of the wrapping; only the head and the skin the scene actually exposes are visible, and the visible parts must join up into one anatomically plausible body; ",
     "35mm cinema lens, shallow depth of field with soft bokeh, fine film grain, professional color grading, full framing with nobody cropped, ultra detailed, 8k",
 ].join("");
 // 双人：重点是「朝向彼此」与前后层次，专门反制并排正脸。
@@ -3950,8 +3955,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         return ids.slice(0, 2);
     }, [textPhotoParticipants, textPhotoParticipantIds]);
 
-    const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[], hairOverride?: Record<string, string>): Promise<string | null> => {
+    // v1.7.135：第 4 参 opts.cinematic —— 让「线上生图」（聊天生图弹窗）也能一键套上线下定格那套
+    // 摄影规格（机位/视线/光线/胶片质感/解剖约束）。默认关闭，不改变原有的随手自拍式生图。
+    const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[], hairOverride?: Record<string, string>, opts?: { cinematic?: boolean }): Promise<string | null> => {
         if (!prompt.trim()) return null;
+        // 勾了「电影感构图」时，按出镜人数自动选机位模板（双人还按有无搂抱切越肩亲密机位），
+        // 与线下定格共用同一份 buildOfflineFrameSpec，保证两边质感一致。
+        const cinematicPrompt = opts?.cinematic
+            ? `${prompt}。${buildOfflineFrameSpec(
+                selectedIds.length <= 1
+                    ? "solo"
+                    : selectedIds.length === 2
+                        ? (OFFLINE_FRAME_INTIMATE_RE.test(prompt) ? "intimate" : "pair")
+                        : "group",
+            )}`
+            : prompt;
         const u = resolveUserIdentity();
         const chars = loadCharacters();
         const photoSettings = loadImageGenerationSettings();
@@ -4089,7 +4107,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
         const requestBody = {
-            description: prompt,
+            description: cinematicPrompt,
             participantAppearance: appearancePrompt || undefined,
             // v1.7.110：hasReference 按「真实取到图」回报，而非按「配置里有图」。
             // 否则取图失败的人会被服务端当成有图者 → 外貌描述被降级 + 参考图张冠李戴。
@@ -4219,14 +4237,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
             const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和两人此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。`;
 
-            const summaryRes = await simpleLLMCall(
+            const directorMessages = [
+                { role: "system", content: directorSystem },
+                { role: "user", content: userContent },
+            ];
+            let summaryRes = await simpleLLMCall(
                 apiConfig,
-                [
-                    { role: "system", content: directorSystem },
-                    { role: "user", content: userContent },
-                ],
-                { temperature: 0.7, max_tokens: 600, disableThinking: true },
+                directorMessages,
+                // v1.7.134：max_tokens 从 600 提到 1200。推理模型会先烧 reasoning，
+                // 600 常被吃光导致正文为空（史上「AI 总结这帧没成功」的主因之一）。
+                { temperature: 0.7, max_tokens: 1200, disableThinking: true },
             );
+            // 明确是「被长度截断」才值得加预算重试；其他空返回走下面的文本兜底。
+            if (!summaryRes.content?.trim() && summaryRes.wasTruncated) {
+                console.warn("[定格] 导演输出被截断（额度吃光），加大预算重试一次");
+                summaryRes = await simpleLLMCall(
+                    apiConfig,
+                    directorMessages,
+                    { temperature: 0.6, max_tokens: 3000, disableThinking: true },
+                );
+            }
             let framePrompt: string;
             if (summaryRes.error || !summaryRes.content?.trim()) {
                 // 导演总结没拿到内容（常见：绑定的模型是推理模型把额度吃光只留 reasoning_content、
@@ -4236,7 +4266,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const uExcerpt = stripTags(targetTurn.userContent || "").slice(0, 60);
                 const sceneSeed = aExcerpt || uExcerpt || "当下这一刻的相处";
                 framePrompt = `电影感定格一帧：侧前方过肩机位，${charName} 与 ${userName} 正处在「${sceneSeed}」这一刻——两人的身体朝向彼此，姿态自然贴合，谁也没有看镜头；环境光从侧上方落下，明暗过渡柔和，背景有真实的生活物件与浅景深虚化，胶片质感。`;
-                showChatToast("AI 总结这帧没成功（你的接口返回空），已改用剧情文本直接出图。", 4200);
+                // v1.7.134：把真实原因带出来（截断/中转只支持流式/鉴权失败各不相同），
+                // 便于一眼判断该改配置还是该重试，而不是只看到一句「接口返回空」。
+                const reason = (summaryRes.error || "接口返回了空正文").replace(/\s+/g, " ").slice(0, 80);
+                showChatToast(`AI 导演这帧没写出来（${reason}），已按剧情文本直接出图。`, 5200);
                 console.warn("[定格] 导演总结失败，走文本兜底：", summaryRes.error);
             } else {
                 framePrompt = summaryRes.content.trim();
@@ -7667,7 +7700,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 <TextPhotoModal
                     participants={textPhotoParticipants}
                     defaultSelected={textPhotoDefaultSelected}
-                    onGenerate={handleTextPhotoGenerate}
+                    onGenerate={(p, ids, opts) => handleTextPhotoGenerate(p, ids, undefined, opts)}
                     onSend={handleTextPhotoSend}
                     onSave={handleTextPhotoSave}
                     onClose={() => setRichModal(null)}

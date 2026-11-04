@@ -1160,9 +1160,10 @@ export async function generateImageFromConfiguredApi(params: {
   if (settings.provider === "novelai") {
     const nai = settings.novelai;
     // NAI 校验：只要求 Key，地址留空即内置官方
+    // v1.7.134：与 OpenAI 分支一致，缺字段时明确报错，不再静默返回空。
     if (!description || !nai?.apiKey?.trim()) {
-      console.warn("[IMG-SVC] NAI 路径返回 null", { hasDescription: Boolean(description), hasKey: Boolean(nai?.apiKey?.trim()), keyLen: nai?.apiKey?.length || 0 });
-      return null;
+      console.warn("[IMG-SVC] NAI 配置不完整", { hasDescription: Boolean(description), hasKey: Boolean(nai?.apiKey?.trim()) });
+      throw new Error(`生图配置不完整：缺少「${!description ? "画面描述" : "NovelAI API Key"}」。请到「设置 → 生图」补齐后再试。`);
     }
 
     throwIfAborted(params.signal);
@@ -1246,7 +1247,9 @@ export async function generateImageFromConfiguredApi(params: {
   // ── Google Imagen（需 Key，经服务端转发）──
   if (settings.provider === "google-imagen") {
     const gi = settings.googleImagen;
-    if (!description || !gi?.apiKey?.trim()) return null;
+    if (!description || !gi?.apiKey?.trim()) {
+      throw new Error(`生图配置不完整：缺少「${!description ? "画面描述" : "Google Imagen API Key"}」。请到「设置 → 生图」补齐后再试。`);
+    }
     throwIfAborted(params.signal);
     const data = await generateGoogleImagenViaServer({ settings, prompt: description, signal: params.signal });
     throwIfAborted(params.signal);
@@ -1267,7 +1270,17 @@ export async function generateImageFromConfiguredApi(params: {
   }
 
   // ── OpenAI 兼容（原有逻辑）──
-  if (!description || !settings.apiKey.trim() || !settings.baseUrl.trim() || !settings.model.trim()) return null;
+  // v1.7.134：旧实现在这里静默 return null，外层只能报「生图返回为空，请重试」，
+  // 用户根本不知道是哪个字段没填。改成明确抛错，一眼能看出缺什么。
+  if (!description || !settings.apiKey?.trim() || !settings.baseUrl?.trim() || !settings.model?.trim()) {
+    const missing = [
+      !description ? "画面描述" : "",
+      !settings.apiKey?.trim() ? "API Key" : "",
+      !settings.baseUrl?.trim() ? "接口地址(Base URL)" : "",
+      !settings.model?.trim() ? "模型名" : "",
+    ].filter(Boolean).join("、");
+    throw new Error(`生图配置不完整：缺少「${missing}」。请到「设置 → 生图」补齐后再试。`);
+  }
 
   const prompt = mergePrompt(description, settings.extraPrompt);
 
