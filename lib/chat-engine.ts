@@ -66,7 +66,7 @@ import { retrieveAutoMemoryForPrompt } from "./auto-memory-service";
 import { buildListenTogetherPrompt } from "./music-together";
 import { buildEmotionPromptLine, applyChatTurn } from "./character-emotion";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
-import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults } from "./tool-executor";
+import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults, dedupeToolCalls } from "./tool-executor";
 import type { ToolCall, ToolResult } from "./tool-executor";
 import { getCustomStickerNames, getCustomStickerExample } from "./custom-sticker-storage";
 import { formatCustomAppChatDirectivesForPrompt } from "./custom-app-chat-directives";
@@ -2246,21 +2246,24 @@ async function generateNativeChatCompletion(
         }
 
         throwIfAborted(options?.signal);
+        // 同一轮里模型可能重复吐出完全相同的 tool_call（repeat loop），只保留首个，否则会刷屏：
+        // 「角色正在稍后主动联系、稍后主动联系…」「已设置 80 分钟后主动联系；已设置 80 分钟后主动联系；…」
+        const nativeToolCalls = dedupeToolCalls(result.toolCalls);
         await callbacks?.onNativeToolAssistantTurn?.({
             content: afterActionStrip,
             rawContent: result.content,
             reasoning: result.reasoning,
             openRouterReasoningDetails: result.openRouterReasoningDetails,
-            toolCalls: result.toolCalls,
+            toolCalls: nativeToolCalls,
         });
         if (afterActionStrip) {
             parts.push({ text: afterActionStrip });
         }
 
-        const loaderCalls = result.toolCalls
+        const loaderCalls = nativeToolCalls
             .map(call => ({ call, loader: nativeBundle.loaderMap.get(call.name) }))
             .filter((item): item is { call: LlmToolCall; loader: { sourceKey: string; label: string } } => Boolean(item.loader));
-        const realNativeCalls = result.toolCalls.filter(call => !nativeBundle.loaderMap.has(call.name));
+        const realNativeCalls = nativeToolCalls.filter(call => !nativeBundle.loaderMap.has(call.name));
         const textCalls = realNativeCalls.map((call) => nativeChatToolCallToTextCall(call, nativeBundle));
         const displayedActionNames = [
             ...loaderCalls.map(item => `展开「${item.loader.label}」动作说明`),
@@ -2272,8 +2275,8 @@ async function generateNativeChatCompletion(
         let realResults: Awaited<ReturnType<typeof executeToolCalls>> = [];
         try {
             if (textCalls.length > 0) {
-                const onlyNativeCall = result.toolCalls.length === 1 && textCalls.length === 1
-                    ? result.toolCalls[0]
+                const onlyNativeCall = nativeToolCalls.length === 1 && textCalls.length === 1
+                    ? nativeToolCalls[0]
                     : undefined;
                 realResults = await executeToolCalls(textCalls, {
                     appId: options?.appId ?? "chat",
@@ -2293,7 +2296,7 @@ async function generateNativeChatCompletion(
                                 content: assistantForToolContext,
                                 reasoning: result.reasoning,
                                 openRouterReasoningDetails: result.openRouterReasoningDetails,
-                                toolCalls: result.toolCalls,
+                                toolCalls: nativeToolCalls,
                             },
                             {
                                 role: "tool",
@@ -2337,7 +2340,7 @@ async function generateNativeChatCompletion(
         let realResultIndex = 0;
         let expandedChanged = false;
 
-        for (const nativeCall of result.toolCalls) {
+        for (const nativeCall of nativeToolCalls) {
             const loader = nativeBundle.loaderMap.get(nativeCall.name);
             if (loader) {
                 expandedSourceIds = touchNativeExpandedToolSource(expandedSourceIds, loader.sourceKey);
@@ -2383,9 +2386,9 @@ async function generateNativeChatCompletion(
             nativeBundle = buildNativeChatTools(enabledTools, expandedSourceIds, nativeToolBuildOptions);
         }
 
-        const notices = outcomes.map(item => (
+        const notices = Array.from(new Set(outcomes.map(item => (
             item.result.userNotice || (item.result.success ? `✓ ${item.result.name} 执行成功` : `✗ ${item.result.name}: ${item.result.error}`)
-        )).filter(Boolean).join("；");
+        )).filter(Boolean))).join("；");
         throwIfAborted(options?.signal);
         if (notices) callbacks?.onToolNotice?.(notices);
 
@@ -2395,7 +2398,7 @@ async function generateNativeChatCompletion(
             content: assistantForToolContext,
             reasoning: result.reasoning,
             openRouterReasoningDetails: result.openRouterReasoningDetails,
-            toolCalls: result.toolCalls,
+            toolCalls: nativeToolCalls,
         });
         const toolExecutionId = createToolExecutionId();
         for (const outcome of outcomes) {
@@ -2743,7 +2746,7 @@ async function generateChatCompletionCore(
                     } : undefined,
                 });
                 throwIfAborted(options?.signal);
-                const resultNotices = results.map(r => r.userNotice || (r.success ? `✓ ${r.name} 执行成功` : `✗ ${r.name}: ${r.error}`)).join("；");
+                const resultNotices = Array.from(new Set(results.map(r => r.userNotice || (r.success ? `✓ ${r.name} 执行成功` : `✗ ${r.name}: ${r.error}`)))).join("；");
                 callbacks?.onToolNotice?.(resultNotices);
             } catch (err) {
                 throwIfAborted(options?.signal);

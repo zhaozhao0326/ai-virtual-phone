@@ -71,7 +71,7 @@ import { getCustomStickerExample, loadCustomStickers } from "./custom-sticker-st
 import { formatCustomAppChatDirectivesForPrompt } from "./custom-app-chat-directives";
 import { findEnabledToolForSchema, getEnabledTools } from "./tool-storage";
 import { formatToolsForPrompt, formatGroupToolsForPrompt, formatToolSchema } from "./tool-prompt";
-import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults, type ToolCall } from "./tool-executor";
+import { parseToolCalls, parseToolFetches, executeToolCalls, formatToolResults, dedupeToolCalls, type ToolCall } from "./tool-executor";
 import { stripStateAndInnerForPrompt } from "./prompt-sanitizer";
 import { buildGroupRosterMacro } from "./group-admin";
 import { parseOfflineResponse, type ParsedOfflineResponse } from "./chat-offline-storage";
@@ -617,18 +617,20 @@ async function runNativeGroupToolLoop(params: {
         }
 
         throwIfAborted(signal);
+        // repeat loop 防护：同一轮里完全相同的 tool_call 只保留首个，避免「正在XX、XX…」刷屏
+        const nativeToolCalls = dedupeToolCalls(result.toolCalls);
         await callbacks?.onNativeToolAssistantTurn?.({
             content: result.content,
             rawContent: result.content,
             reasoning: result.reasoning,
             openRouterReasoningDetails: result.openRouterReasoningDetails,
-            toolCalls: result.toolCalls,
+            toolCalls: nativeToolCalls,
         });
 
-        const loaderCalls = result.toolCalls
+        const loaderCalls = nativeToolCalls
             .map(call => ({ call, loader: nativeBundle.loaderMap.get(call.name) }))
             .filter((item): item is { call: LlmToolCall; loader: { sourceKey: string; label: string } } => Boolean(item.loader));
-        const realNativeCalls = result.toolCalls.filter(call => !nativeBundle.loaderMap.has(call.name));
+        const realNativeCalls = nativeToolCalls.filter(call => !nativeBundle.loaderMap.has(call.name));
         const textCalls = realNativeCalls.map(call => nativeGroupToolCallToTextCall(call, nativeBundle));
         const actorNames = [...new Set([
             ...loaderCalls.map(item => getNativeGroupActorName(item.call)),
@@ -672,7 +674,7 @@ async function runNativeGroupToolLoop(params: {
         let realResultIndex = 0;
         let expandedChanged = false;
 
-        for (const nativeCall of result.toolCalls) {
+        for (const nativeCall of nativeToolCalls) {
             const loader = nativeBundle.loaderMap.get(nativeCall.name);
             if (loader) {
                 expandedSourceIds = touchNativeExpandedToolSource(expandedSourceIds, loader.sourceKey);
@@ -729,7 +731,7 @@ async function runNativeGroupToolLoop(params: {
             content: assistantForToolContext,
             reasoning: result.reasoning,
             openRouterReasoningDetails: result.openRouterReasoningDetails,
-            toolCalls: result.toolCalls,
+            toolCalls: nativeToolCalls,
         });
         const toolExecutionId = createToolExecutionId();
         for (const outcome of outcomes) {
@@ -936,7 +938,7 @@ export async function generateGroupChatCompletion(
                     return attachGroupToolActor(result!, actor);
                 }));
                 throwIfAborted(options?.signal);
-                const notices = results.map(r => r.userNotice || (r.success ? `✓ ${r.name} 执行成功` : `✗ ${r.name}: ${r.error}`)).join("；");
+                const notices = Array.from(new Set(results.map(r => r.userNotice || (r.success ? `✓ ${r.name} 执行成功` : `✗ ${r.name}: ${r.error}`)))).join("；");
                 callbacks?.onToolNotice?.(notices);
             } catch (err) {
                 throwIfAborted(options?.signal);

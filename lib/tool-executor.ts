@@ -422,9 +422,55 @@ export function findToolCallEnd(text: string, start: number): number | null {
     return parseToolCallAt(text, start)?.end ?? null;
 }
 
+/**
+ * 单轮工具调用护栏（防模型 repeat loop 刷屏）。
+ *
+ * 模型（尤其走文本协议 `[执行动作:xxx({...})]` 时）偶尔会陷入重复生成：同一轮里把
+ * 完全相同的动作块连吐几十遍。结果就是聊天区被
+ * 「角色正在稍后主动联系、稍后主动联系、稍后主动联系…」
+ * 「已设置 80 分钟后主动联系；已设置 80 分钟后主动联系；…」
+ * 这类灰色提示刷屏（v1.7.124 用户实拍）。
+ *
+ * 约束：只对 **name + 参数完全相同** 的调用去重（保留第一次出现的），参数不同的照常执行；
+ * 再对单轮总数设一个宽松上限，防止一轮执行上百个动作把 token / 性能打爆。
+ */
+const MAX_TOOL_CALLS_PER_TURN = 12;
+
+function toolCallArgsKey(args: Record<string, unknown> | undefined | null): string {
+    if (!args || typeof args !== "object") return "";
+    try {
+        const sorted = Object.keys(args).sort().reduce<Record<string, unknown>>((acc, key) => {
+            acc[key] = args[key];
+            return acc;
+        }, {});
+        return JSON.stringify(sorted);
+    } catch {
+        return String(args);
+    }
+}
+
+export function toolCallDedupeKey(name: string, args?: Record<string, unknown> | null): string {
+    return `${name}\u0000${toolCallArgsKey(args)}`;
+}
+
+/** 按 name + 参数去重（保留首个），并限制单轮数量。原生 tool_calls 与文本动作共用。 */
+export function dedupeToolCalls<T extends { name: string; args?: Record<string, unknown> }>(calls: T[]): T[] {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const call of calls) {
+        const key = toolCallDedupeKey(call.name, call.args);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(call);
+        if (out.length >= MAX_TOOL_CALLS_PER_TURN) break;
+    }
+    return out;
+}
+
 export function parseToolCalls(text: string): { cleanText: string; toolCalls: ToolCall[] } {
     const toolCalls: ToolCall[] = [];
     const spans: ParsedToolCallSpan[] = [];
+    const seen = new Set<string>();
 
     let pos = 0;
     while (pos < text.length) {
@@ -436,7 +482,13 @@ export function parseToolCalls(text: string): { cleanText: string; toolCalls: To
             continue;
         }
         const args = parseToolArgsJson(span.argsRaw) || {};
-        toolCalls.push({ name: span.name, args, actor: span.actor });
+        // 重复生成防护：同一个动作（同名同参数）只执行第一次
+        const key = toolCallDedupeKey(span.name, args);
+        if (!seen.has(key) && toolCalls.length < MAX_TOOL_CALLS_PER_TURN) {
+            seen.add(key);
+            toolCalls.push({ name: span.name, args, actor: span.actor });
+        }
+        // 无论是否保留执行，这段文本都要从正文里剔掉，避免用户看到一堆动作块
         spans.push(span);
         pos = span.end;
     }
