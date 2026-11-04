@@ -1269,3 +1269,31 @@ export function setWorldUserIdentity(worldId: string, identityId: string | null)
     }
     saveBindingConfig({ ...config, worldBindings });
 }
+
+/**
+ * 收集「绑定到指定面具（身份）的所有世界」里的角色 = 该面具的社交圈。
+ * 朋友圈按面具分圈时复用：以面具 N 发圈，默认只给这个圈子的角色看。
+ * 若面具未绑定任何世界（或指定 id 为空）返回空数组——调用方应回退到「全部联系人」。
+ * 直接读 kv 世界数据，避免与 character-world-storage 形成循环依赖。
+ */
+export function getIdentityCircleCharacterIds(identityId: string): string[] {
+    if (!identityId || typeof window === "undefined") return [];
+    try {
+        const config = loadBindingConfig();
+        const raw = kvGet(CHARACTER_WORLDS_KEY);
+        if (!raw) return [];
+        const groups = JSON.parse(raw) as { id?: string; memberIds?: string[] }[];
+        if (!Array.isArray(groups)) return [];
+        const worldBindings = (config.worldBindings || {}) as Record<string, { userIdentityId?: string }>;
+        const ids = new Set<string>();
+        for (const g of groups) {
+            const binding = worldBindings[g.id || ""];
+            if (binding && binding.userIdentityId === identityId && Array.isArray(g.memberIds)) {
+                g.memberIds.forEach(id => { if (id) ids.add(id); });
+            }
+        }
+        return [...ids];
+    } catch {
+        return [];
+    }
+}

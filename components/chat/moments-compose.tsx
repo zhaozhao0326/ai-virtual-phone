@@ -5,7 +5,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts } from "@/lib/chat-storage";
 import { addMomentPost } from "@/lib/moments-storage";
 import { onUserPost } from "@/lib/moments-engine";
-import { resolveUserIdentity } from "@/lib/settings-storage";
+import { resolveUserIdentity, getIdentityCircleCharacterIds } from "@/lib/settings-storage";
 import { saveChatImageToIndexedDB, getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 
@@ -26,6 +26,8 @@ export function MomentsCompose({ onClose, onPublished }: Props) {
     const [showPeople, setShowPeople] = useState(false);
     const userIdentity = resolveUserIdentity(undefined, "chat");
     const userName = userIdentity?.name ?? "我";
+    // 当前面具（身份）经世界绑定对应的角色圈：发圈默认仅该圈子可见，面具之间天然隔离。
+    const identityCircle = userIdentity?.id ? getIdentityCircleCharacterIds(userIdentity.id) : [];
 
     // Panel toggles
     const [showMention, setShowMention] = useState(false);
@@ -35,10 +37,14 @@ export function MomentsCompose({ onClose, onPublished }: Props) {
     const [visibility, setVisibility] = useState<Record<string, boolean>>(() => {
         const contacts = loadChatContacts();
         const chars = loadCharacters();
+        const circleSet = new Set(identityCircle);
         const map: Record<string, boolean> = {};
         contacts.forEach(c => {
             const char = chars.find(ch => ch.id === c.characterId);
-            if (char) map[c.characterId] = true;
+            if (char) {
+                // 当前面具分了圈子 → 默认只勾选圈内人；未分圈（圈子为空）→ 保持全员可见，兼容老用法
+                map[c.characterId] = circleSet.size > 0 ? circleSet.has(c.characterId) : true;
+            }
         });
         return map;
     });
@@ -403,6 +409,11 @@ export function MomentsCompose({ onClose, onPublished }: Props) {
                     </div>
                     {showVisibility && (
                         <div className="compose-panel-inline" style={{ padding: "12px 16px", borderBottom: "none" }}>
+                            {identityCircle.length > 0 && (
+                                <div className="ts-12 text-[var(--c-icon)] opacity-70 mb-2">
+                                    当前发圈身份：{userIdentity?.name || "默认"} · 默认仅该面具圈子可见，可手动增删或选「全部公开」
+                                </div>
+                            )}
                             <div className="chat-contact-list">
                                 <div
                                     className="chat-contact-item"

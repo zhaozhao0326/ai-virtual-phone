@@ -35,6 +35,7 @@ import {
     loadWorldBooks,
     loadRegexes,
     resolveUserIdentity,
+    getIdentityCircleCharacterIds,
 } from "./settings-storage";
 import type { PresetConfig, ApiConfig } from "./settings-types";
 import { loadMemoryConfig, incrementEventCounter } from "./memory-storage";
@@ -355,7 +356,11 @@ async function triggerAIPost(characterId: string): Promise<void> {
         }
 
         const contacts = loadChatContacts();
-        const visibility = contacts.map(c => c.characterId);
+        // 按「发圈面具」分圈：默认只给该面具（经世界绑定）对应的角色圈可见，面具之间天然隔离。
+        // 若面具未绑定世界（圈子为空）回退全部联系人，兼容未分圈用法。
+        const identity = resolveUserIdentity(characterId, "moments");
+        const circle = identity?.id ? getIdentityCircleCharacterIds(identity.id) : [];
+        const visibility = circle.length > 0 ? circle : contacts.map(c => c.characterId);
 
         // 先入库再生图：帖子立即可见，生图慢/超时/页面被杀都不会丢帖
         const post = addMomentPost({
