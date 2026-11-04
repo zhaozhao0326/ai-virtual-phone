@@ -4217,7 +4217,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
             ].join("\n");
 
-            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和两人此刻的身体动作写明白，再写光影、场景与氛围。`;
+            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和两人此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。`;
 
             const summaryRes = await simpleLLMCall(
                 apiConfig,

@@ -17,6 +17,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "1.7.133",
+    date: "2026-11-04",
+    title: "补齐 v1.7.132 两处漏落盘：导演 user 强化句 + APP_VERSION 常量对齐",
+    highlights: [
+      "【背景】v1.7.132 的 detectStoryHair 重写代码与缓存 v55 已上线，线下定格跟剧情新发型的主链（导演系统提示词 + detectStoryHair 兜底 + storyHairOverride 顶掉旧发型）已闭环、功能正常。但自审发现两处「文档写了却没真正落盘」的遗留：",
+      "【补一·导演 user 指令强化】v1.7.129 的更新日志写明会在导演 user 指令里加「务必在画面描述里写明该角色当下的发型发色」，但那一句实际未落到 userContent（4220 行）。本次补回，与系统提示词（4213 行）双保险，让导演更稳地把剧情新发型写进画面。",
+      "【补二·APP_VERSION 对齐】v1.7.132 推送时顶部 APP_VERSION 常量的递增编辑又漏落盘（与 v1.7.130 同类），导致线上 APP_VERSION 仍是 1.7.131，而 CHANGELOG 顶部已是 1.7.132、缓存已是 v55——「系统更新」会显示日志最新 1.7.132、App 却报 1.7.131，对不上。本次把 APP_VERSION 纠正为 1.7.133，与 CHANGELOG/缓存一致。",
+      "【说明】本次为一致性补齐，不动发型主逻辑；功能表现与已上线的 v1.7.132 一致。清缓存到 v56 生效。",
+    ],
+  },
+  {
     version: "1.7.132",
     date: "2026-11-04",
     title: "线下定格发型检测扩宽：覆盖更多「换发型」自然说法，避免误剥旧发型",
