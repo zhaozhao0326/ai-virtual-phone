@@ -14,7 +14,9 @@ import {
     deleteMomentCommentThread,
 } from "@/lib/moments-storage";
 import { loadCharacters } from "@/lib/character-storage";
-import { resolveUserIdentity } from "@/lib/settings-storage";
+import { loadChatContacts } from "@/lib/chat-storage";
+import { resolveUserIdentity, getIdentityCircleCharacterIds } from "@/lib/settings-storage";
+import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 import { buildTwoLevelMomentThreads } from "@/lib/moments-comment-threading";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
 import { splitBilingualText } from "@/lib/bilingual-text";
@@ -54,9 +56,25 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     const [postPhotoDescDraft, setPostPhotoDescDraft] = useState("");
     const [postUseReferenceDraft, setPostUseReferenceDraft] = useState(false);
     const [postLocationDraft, setPostLocationDraft] = useState("");
+    const [postVisibilityDraft, setPostVisibilityDraft] = useState<string[]>([]);
     const [editingComment, setEditingComment] = useState<MomentComment | null>(null);
     const [commentDraft, setCommentDraft] = useState("");
     const [deleteCommentTarget, setDeleteCommentTarget] = useState<MomentComment | null>(null);
+
+    // 编辑动态时用的「可见范围」选择器数据（与 moments-compose 同口径）
+    // 仅编辑弹窗打开时才读存储，避免每条卡片每次渲染都拉取，拖累信息流。
+    const editContacts = editingPostOpen ? loadChatContacts() : [];
+    const editChars = editingPostOpen ? loadCharacters() : [];
+    const editUserIdentity = editingPostOpen ? resolveUserIdentity(undefined, "chat") : null;
+    const editIdentityCircle = (editingPostOpen && editUserIdentity?.id) ? getIdentityCircleCharacterIds(editUserIdentity.id) : [];
+    const editEnrichedContacts = editContacts
+        .map(c => ({ ...c, char: editChars.find(ch => ch.id === c.characterId) }))
+        .filter(c => c.char);
+    const editVisSet = new Set(postVisibilityDraft);
+    const editVisAllSelected = editEnrichedContacts.length > 0 && editEnrichedContacts.every(c => editVisSet.has(c.characterId));
+    const editCircleSet = new Set(editIdentityCircle);
+    const editVisIsCircleOnly = editCircleSet.size > 0
+        && editEnrichedContacts.every(c => editVisSet.has(c.characterId) === editCircleSet.has(c.characterId));
 
     // Resolve asset:// photo URLs from IndexedDB
     const [resolvedPhotoUrl, setResolvedPhotoUrl] = useState<string | null>(null);
@@ -150,6 +168,10 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
         setPostPhotoDescDraft(post.photoDescription || "");
         setPostUseReferenceDraft(post.photoUseReferenceImage === true);
         setPostLocationDraft(post.location || "");
+        // 可见范围：已存名单就用它；老帖子（空名单=历史全可见）默认回到全员，保存不改即保持现状
+        const cs = loadChatContacts();
+        const initialVis = post.visibility && post.visibility.length > 0 ? post.visibility : cs.map(c => c.characterId);
+        setPostVisibilityDraft([...initialVis]);
         setShowPostActions(false);
         setEditingPostOpen(true);
     };
@@ -163,6 +185,7 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
             photoDescription: photoDescription || undefined,
             photoUseReferenceImage: photoDescription ? postUseReferenceDraft : false,
             location: postLocationDraft.trim() || undefined,
+            visibility: postVisibilityDraft,
         });
         setEditingPostOpen(false);
         onUpdate();
@@ -503,6 +526,47 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                                     onChange={e => setPostLocationDraft(e.target.value)}
                                     placeholder="不显示地点时留空"
                                 />
+                            </label>
+                            <label className="feed-post-edit-field">
+                                <span>可见范围（谁可看这条动态）</span>
+                                <div className="feed-post-edit-visibility-row" style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-ghost"
+                                        style={editVisAllSelected ? { borderColor: "var(--c-primary, #07C160)", color: "var(--c-primary, #07C160)" } : undefined}
+                                        onClick={() => setPostVisibilityDraft(editEnrichedContacts.map(c => c.characterId))}
+                                    >全部公开</button>
+                                    {editIdentityCircle.length > 0 && (
+                                        <button
+                                            type="button"
+                                            className="ui-btn ui-btn-ghost"
+                                            style={editVisIsCircleOnly ? { borderColor: "var(--c-primary, #07C160)", color: "var(--c-primary, #07C160)" } : undefined}
+                                            onClick={() => setPostVisibilityDraft([...editIdentityCircle])}
+                                        >仅当前面具圈子</button>
+                                    )}
+                                </div>
+                                <div className="chat-contact-list" style={{ maxHeight: 220, overflowY: "auto" }}>
+                                    {editEnrichedContacts.map(c => (
+                                        <div
+                                            key={c.characterId}
+                                            className="chat-contact-item"
+                                            onClick={() => setPostVisibilityDraft(prev =>
+                                                prev.includes(c.characterId)
+                                                    ? prev.filter(id => id !== c.characterId)
+                                                    : [...prev, c.characterId]
+                                            )}
+                                        >
+                                            <div className="chat-contact-avatar" style={editVisSet.has(c.characterId) ? { outline: "2px solid var(--c-primary, #07C160)", outlineOffset: "2px" } : undefined}>
+                                                {c.char!.avatar ? (
+                                                    <img src={c.char!.avatar} alt="" />
+                                                ) : (
+                                                    <ChatFallbackAvatar />
+                                                )}
+                                            </div>
+                                            <span className="chat-contact-name">{c.char!.name}</span>
+                                        </div>
+                                    ))}
+                                </div>
                             </label>
                         </div>
                         <div className="modal-footer" data-ui="modal-footer">
