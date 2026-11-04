@@ -72,7 +72,9 @@ export function parseMeetingInvite(block: string): ParsedMeetingInvite | null {
     const lines = (block || "").split(/\r?\n/);
     const map: Record<string, string> = {};
     for (const line of lines) {
-        const m = line.match(/^\s*([^=<]+?)\s*[=＝]\s*(.+?)\s*$/);
+        // 字段分隔符同时容忍半角 = ＝ 与全角/半角冒号 ：:（模型常把"邀请人=xxx"写成"邀请人：xxx"，
+        // 旧正则只认 =／＝，用冒号时整块解析为 null → 卡片被静默剥掉、什么都不弹）
+        const m = line.match(/^\s*([^=:<]+?)\s*[=＝:：]\s*(.+?)\s*$/);
         if (m) map[m[1].trim()] = m[2].trim();
     }
     const inviter = map["邀请人"] || "";

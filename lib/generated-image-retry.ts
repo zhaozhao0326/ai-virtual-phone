@@ -140,6 +140,78 @@ export function buildParticipantAppearancePrompt(characterIds: string[]): string
     return buildParticipantSpecs(characterIds).appearanceText;
 }
 
+// ── v1.7.121 聊天生图：按「描述本身」判定画面里该有谁 ──
+// 为什么必须有这一层：调用方（首次生图 / 重新生成图片 / 后续服务）各自传参不一致，
+// 「重新生成图片」甚至完全不传，默认值就变成「你 + 当前角色」两个人。用户看到的就是
+// 「提示词明明只是场景，图里却冒出两个人」。把判定收到这里，任何调用方都绕不过去。
+// 判据（优先级从高到低）：
+//   ① 明确「无人 / 空景 / 空无一人」       → 0 人，且连参考图一起断（否则 edits 会把人带进来）
+//   ② 描述点名了某几个角色                 → 只画这几个
+//   ③ 群聊且语义是「大家 / 所有人 / 一群人」→ 群成员全画
+//   ④ 只出现「我 / 自己」（角色视角）       → 只画该角色，不塞「你」
+//   ⑤ 出现「你 / 我们 / 一起 / 合影 / 两人」→ 角色 + 你（或仅你）
+//   ⑥ 全篇没有任何人称代词 / 人物名词       → 纯场景，不注入任何人
+// 注意 ④⑤ 的拆分是关键：旧代码只凭 `/我|自己|你/` 就把「你」塞进去，于是
+// 「我端着那碗馄饨」（角色视角，本该只有 1 人）被画成 2 人。
+export function resolveChatImagePeopleIntent(args: {
+    description: string;
+    candidateIds: string[];
+    characterId?: string;
+    excludeUser?: boolean;
+}): { characterIds: string[]; includeUser: boolean; noPeople: boolean } {
+    const description = (args.description || "").trim();
+    const candidateIds = (args.candidateIds || []).filter(Boolean);
+    const allIds = { characterIds: candidateIds, includeUser: !args.excludeUser, noPeople: false };
+    if (!description) return allIds;
+
+    // ① 明确「不要人」最高优先
+    if (hasExplicitNoPerson(description)) {
+        return { characterIds: [], includeUser: false, noPeople: true };
+    }
+
+    const chars = loadCharacters();
+    const namedIds = candidateIds.filter((id) => {
+        const c = chars.find((x) => x.id === id);
+        return c ? description.includes(c.name) : false;
+    });
+
+    // 「你」：点名用户名字，或出现明确同框/双人语义。
+    // 单凭「我」不算——角色视角的「我」是角色本人，不是用户。
+    const identityName = resolveUserIdentity()?.name?.trim() || "";
+    const mentionsUser =
+        (identityName.length > 0 && description.includes(identityName)) ||
+        /你|我们|咱们|我俩|一起|同框|合影|合照|两人|俩人|双人|陪你|带你/.test(description);
+    const mentionsSelf = /我|自己|本人/.test(description);
+    const groupWords = /大家|众人|所有人|全都|全员|一群人|一群|都在|每个人/.test(description);
+    // 第三人称也一定意味着画面里有人（「他靠在窗边」不能当纯场景处理）
+    const genericPerson = /他|她|人物|男生|女生|男人|女人|男子|女子|少年|少女|孩子|小孩|人群|旁人|路人|身影|人们/.test(description);
+
+    const includeUser = !args.excludeUser && mentionsUser;
+
+    // ②③④ 多候选（群聊 / 多人聊天）
+    if (candidateIds.length > 1) {
+        if (namedIds.length > 0) return { characterIds: namedIds, includeUser, noPeople: false };
+        if (groupWords) return { characterIds: candidateIds, includeUser: true, noPeople: false };
+        // 「我 / 他 / 一个人」这类没点名的主语，默认是发这张图的角色本人
+        const speakerFallback = args.characterId && candidateIds.includes(args.characterId) ? [args.characterId] : [];
+        if (mentionsSelf || genericPerson) return { characterIds: speakerFallback, includeUser, noPeople: false };
+        // 没点名任何群成员、也没有人的痕迹 → 纯场景（用户遇到的正是这个 case）
+        return { characterIds: [], includeUser, noPeople: false };
+    }
+
+    // ⑤⑥ 单候选（单聊）
+    if (candidateIds.length === 1) {
+        if (namedIds.length > 0 || mentionsSelf || genericPerson) {
+            return { characterIds: candidateIds, includeUser, noPeople: false };
+        }
+        if (includeUser) return { characterIds: [], includeUser: true, noPeople: false };
+        return { characterIds: [], includeUser: false, noPeople: false };
+    }
+
+    // 没有任何候选角色：只可能「你」入镜
+    return { characterIds: [], includeUser, noPeople: false };
+}
+
 // 浏览器内把头像压缩到最长边 maxSize，减小传给 NAI 的 base64 体积（NAI 参考图无需原图大小）
 export function resizeImageDataUrl(dataUrl: string, maxSize = 512): Promise<string | null> {
     return new Promise((resolve) => {
@@ -220,17 +292,40 @@ export async function generateAndApplyChatGeneratedImage(
         if (marked) dispatchChatMessagesUpdated(marked.sessionId, marked);
     }
 
-    // 参与者：群聊传 participantIds，单聊传 [contactId]
-    const participantIds = options?.participantIds && options.participantIds.length
+    // 参与者候选池：群聊传 participantIds，单聊传 [contactId]
+    const candidateIds = options?.participantIds && options.participantIds.length
         ? options.participantIds
         : (characterId ? [characterId] : []);
-    // 纯净模式：描述未点名「我/你」时排除「你」这个参与者
-    const includeUser = !options?.excludeUser;
-    const { specs, appearanceText } = buildParticipantSpecs(participantIds, includeUser);
+
+    // ── v1.7.121 图文相符：按「描述本身」判定画面里该不该有人、该有谁 ──
+    // 旧逻辑无条件注入「你 + 当前角色」；而「重新生成图片」走 retryChatGeneratedImage 时
+    // 连 participantIds / excludeUser 都不传，直接吃默认值 → 纯场景、静物、菜品的描述
+    // 也被硬塞进一两个人（用户反馈的「只有场景却冒出两个人」正是这条）。
+    // 现在改为按描述解析，首次生图与重绘两条路统一走这里。
+    const peopleIntent = resolveChatImagePeopleIntent({
+        description,
+        candidateIds,
+        characterId,
+        excludeUser: options?.excludeUser === true,
+    });
+    const { specs, appearanceText } = buildParticipantSpecs(peopleIntent.characterIds, peopleIntent.includeUser);
     const participantAppearance = appearanceText || undefined;
+    // 描述自带「无人/空景」时，把中文否定片段剥掉并改写成英文负面指令：
+    // 生图模型会把「无人」当正标签、反而画人（与朋友圈重试保持同一处理）。
+    // 判定为「无人」但描述没显式写「无人物」时，同样补一句英文负面——
+    // 静物/菜品/风景描述最容易被模型自作主张加一个"陪衬的人"，这是跨 provider 都有效的硬信号。
+    const noOneInFrame = peopleIntent.characterIds.length === 0 && !peopleIntent.includeUser;
+    const finalDescription = noOneInFrame
+        ? `No people, no person, empty scene, solo. ${peopleIntent.noPeople ? stripExplicitNoPerson(description) : description}`
+        : description;
     // 收集头像参考图（浏览器内压缩），用于 NAI character_reference 锁脸
     // 用户(「你」)若设了锁脸裁脸选区，先裁出脸部再压缩，与角色参考图裁脸对称。
-    const referenceImages = (await Promise.all(
+    // v1.7.123 群聊锁错脸修复：参考图与 participants 必须由「同一份压缩结果」派生，
+    // 否则某人头像压缩失败 / 某人没设头像 → 二者长度/索引错位 → 把 B 的脸贴给 A。
+    // 做法：先算 refResults（每个 spec 是否成功压出参考图），再据此同时产出
+    // referenceImages（成功者）与 participants.hasReference（同样标记成功者），
+    // 从构造上保证「第 k 张参考图 ↔ 第 k 个 hasReference 参与者」严格同序。
+    const refResults = await Promise.all(
         specs.map((s) => {
             if (!s.avatar) return Promise.resolve(null);
             const cropped = s.faceCrop
@@ -238,7 +333,15 @@ export async function generateAndApplyChatGeneratedImage(
                 : Promise.resolve(s.avatar);
             return cropped.then((c) => resizeImageDataUrl(c, 512));
         }),
-    )).filter(Boolean) as string[];
+    );
+    const referenceImages = refResults.filter(Boolean) as string[];
+    const participants = specs.map((s, i) => ({
+        name: s.name,
+        anchor: s.anchor,
+        // 仅当该角色头像成功压出参考图时才标记有参考图；服务端据此紧凑编号，
+        // 不会把无头像/压缩失败的人误绑到别人脸上（群聊多人、有人设头像有人没设时尤其关键）。
+        hasReference: Boolean(refResults[i]),
+    }));
 
     // 实时阶段回调：把生图进行中的状态写回消息 mediaData，让气泡显示「正在生成 / 并发锁等待中」
     // 而不是一片空白让用户以为卡死了。
@@ -264,23 +367,26 @@ export async function generateAndApplyChatGeneratedImage(
             referenceImageCount: referenceImages.length,
         });
         console.log("[IMG-CHAT] 发送生图输入", {
-            description: description.slice(0, 160),
+            description: finalDescription.slice(0, 160),
+            peopleIntent,
             participantAppearance: (participantAppearance || "").slice(0, 160),
             sceneBackground: (settings.sceneBackground || "").slice(0, 160),
             sceneLighting: (settings.sceneLighting || "").slice(0, 160),
             referenceImageCount: referenceImages.length,
-            useReferenceImage: message.mediaData?.useReferenceImage === true,
+            useReferenceImage: peopleIntent.characterIds.length > 0 && message.mediaData?.useReferenceImage === true,
             provider: settings.provider,
         });
         const generated = await generateImageWithReferenceFallback({
-            description,
+            description: finalDescription,
             characterId,
             participantAppearance,
-            participants: specs.map((s) => ({ name: s.name, anchor: s.anchor })),
+            participants,
             referenceImages: referenceImages.length ? referenceImages : undefined,
             sceneBackground: settings.sceneBackground?.trim() || undefined,
             sceneLighting: settings.sceneLighting?.trim() || undefined,
-            useReferenceImage: message.mediaData?.useReferenceImage === true,
+            // 画面里判定为无人时强制关掉锁脸参考图：否则 /images/edits 会把参考图的
+            // 那张脸"带进"本该纯场景的画面，人数约束也压不住（这正是出两个人的最后一环）。
+            useReferenceImage: peopleIntent.characterIds.length > 0 && message.mediaData?.useReferenceImage === true,
             signal: options?.signal,
             settings,
             onStage,

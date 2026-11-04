@@ -348,7 +348,7 @@ const OFFLINE_FRAME_SPEC_GROUP = [
     ", camera at a three-quarter angle with clear front-to-back layering, people placed across the frame at different depths instead of lining up shoulder to shoulder, each one focused on what is happening in the scene rather than posing for the lens, the nearest figure softly out of focus in the foreground",
 ].join("");
 // 动作关键词：命中即切「越肩亲密机位」。只在双人时生效（单人走 solo，三人以上走 group）。
-const OFFLINE_FRAME_INTIMATE_RE = /(搂|抱住|抱紧|抱着|拥抱|揽|拥在|靠在|靠进|靠向|依偎|怀里|怀中|躺在|躺进|枕|贴在|贴进|相依|膝上|腿上)/;
+const OFFLINE_FRAME_INTIMATE_RE = /(搂|抱住|抱紧|抱着|拥抱|揽|拥在|靠在|靠进|靠向|依偎|怀里|怀中|躺在|躺进|枕|贴在|贴进|相依|膝上|腿上|吻|亲吻|拥吻|啵)/;
 function buildOfflineFrameSpec(mode: "solo" | "pair" | "intimate" | "group"): string {
     const body = mode === "solo" ? OFFLINE_FRAME_SPEC_SOLO
         : mode === "intimate" ? OFFLINE_FRAME_SPEC_INTIMATE
@@ -4054,11 +4054,27 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 .find((t) => /^(女生|男生|女性|男性|女人|男人|女孩|男孩|少女|少年|女|男|female|male|woman|man|girl|boy)$/i.test(t)) || "";
         };
 
+        // v1.7.122：从人设里只抽「发型/发色」短句，让带参考图的人也能透传新发型。
+        // 旧逻辑把整段外观丢弃、只留性别，导致角色卡换了发型、生图仍画参考图旧发型。
+        // 只抽发型维度（不抽脸/身材/衣服），既让「换新发型就画新发型」，又不破坏锁脸（脸仍来自参考图）。
+        const pickHairText = (anchor?: string): string => {
+            if (!anchor) return "";
+            const hairKw = /(发型|发色|头发|长发|短发|卷发|直发|马尾|刘海|丸子头|双马尾|波波头|寸头|中分|偏分|编发|麻花辫|辫子|黑发|金发|棕发|褐发|白发|红发|紫发|银发|蓝发|粉发|染发|挑染|及肩|及腰|齐耳|齐肩|盘发|发尾|鬓角|光头|hair|hairstyle|long hair|short hair|ponytail|bun|braid|blonde|brunette)/i;
+            return anchor
+                .split(/[，,、;；/|]+/)
+                .map((t) => t.trim())
+                .filter((t) => hairKw.test(t))
+                .join("，");
+        };
+
         const appearanceText = specList.length
             ? `画面中的人物设定：${specList.map((s) => {
                 if (gotRefIds.has(s.id)) {
+                    // 带参考图的人：性别 + 角色卡里的发型（若写了新发型就透传），其余长相交给参考图
                     const g = pickGenderOnly(s.anchor);
-                    return g ? `${s.name}（${g}）` : s.name;
+                    const hair = pickHairText(s.anchor);
+                    const bits = [g, hair].filter(Boolean);
+                    return bits.length ? `${s.name}（${bits.join("，")}）` : s.name;
                 }
                 return s.anchor ? `${s.name}（${s.anchor}）` : s.name;
             }).join("；")}。请按各自外貌与性别绘制，清晰区分不同人物的特征。`
@@ -4068,7 +4084,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // v1.7.107 改成按维度裁决：性别/年龄/体型看人设，五官长相（脸型、眼睛、鼻子、轮廓）必须来自参考图。
         // v1.7.110 补上「发色/发型由参考图唯一决定」，并明确禁止按文字重新设计脸。
         const appearancePrompt = appearanceText
-            ? `${appearanceText}\n\n重要：人物的性别、年龄段、体型以上述人设为准；但脸型、眼睛、鼻子、嘴唇、面部轮廓，以及发型与发色，必须严格以提供的参考图为准——这是本人的脸，参考图不是风格参考。文字里任何关于长相/发型/发色的描述若与参考图冲突，一律以参考图为准，禁止按文字重新设计五官或改发色。参考图只决定人物本身，画面的姿势、背景、衣着仍以文字描述为准。`
+            ? `${appearanceText}\n\n重要：人物的性别、年龄段、体型以上述人设为准；脸型、眼睛、鼻子、嘴唇、面部轮廓必须严格以提供的参考图为准——这是本人的脸，参考图不是风格参考，禁止按文字重新设计五官或脸型。发型与发色以文字描述为准：若文字给出了发型/发色（如角色换了新发型），就按文字画；若文字未描述发型，则沿用参考图的发型。参考图只决定人物脸与身份，画面的姿势、背景、衣着仍以文字描述为准。`
             : "";
 
         const settings = { ...loadImageGenerationSettings(), enabled: true };
@@ -4179,10 +4195,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 "7. 氛围：这一刻的情绪，用构图、距离和光影表达。",
                 "",
                 "写作要求：",
-                "- 绝对不要描写人物五官、脸型、发型、发色等具体长相——这些由参考图锁定，生图时会自动贴合本人。",
+                "- 绝对不要描写人物五官、脸型等具体长相——脸由参考图锁定，生图时会自动贴合本人；发型与发色以角色当前设定（角色卡）为准，不要凭空编造。",
                 "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
                 "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
-                "- 保持得体克制：不写亲吻、肌肤相贴的细节、裸露或血腥暴力；拥抱、揽肩、倚靠、对视这类日常相处动作可以正常写。",
+                "- 描写尺度放宽、自然就好：可以写亲吻（轻吻、吻额头/脸颊、双唇相贴这类亲密但非暴露的动作）、拥抱、依偎、肌肤自然相贴、居家松弛的穿着（如男生赤裸上身或仅着睡裤的居家状态、肩颈与手臂自然裸露）；只要不是直白的性行为、暴露的性器官描绘或血腥暴力，都可以如实写进画面。用光影、距离与构图承载情绪，而非直白刻画私处。",
                 "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
             ].join("\n");
 

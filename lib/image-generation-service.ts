@@ -746,7 +746,7 @@ async function generateImageDirect(params: {
       ? ` The final image must contain ONLY these ${refList.length} referenced people and nobody else — do not add bystanders, duplicates, or any extra individuals.`
       : ` The final image must contain ONLY this single referenced person and nobody else — do not add any additional people, bystanders, or duplicates.`;
     const appearanceNote = params.participantAppearance?.trim() ? ` ${params.participantAppearance.trim()}` : "";
-    const refInstruction = `${faceRule} Where the text description of a person's face, hairstyle or hair colour conflicts with the reference image, the reference image WINS — do not redesign the face.${appearanceNote}${personConstraint} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: `;
+    const refInstruction = `${faceRule} Where the text describes a person's face (face shape, eyes, nose, contours), the reference image WINS — do not redesign the face or identity. Where the text specifies a hairstyle or hair colour, follow the text; otherwise keep the reference image's hair.${appearanceNote}${personConstraint} Generate ONE brand-new image that strictly follows the description below. Do NOT copy the reference's background, pose, or outfit. Description: `;
     form.set("prompt", refInstruction + prompt);
     if (settings.size && settings.size !== "auto") form.set("size", settings.size);
     if (settings.quality && settings.quality !== "auto") form.set("quality", settings.quality);
