@@ -15,7 +15,7 @@ import {
 } from "@/lib/moments-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { loadChatContacts } from "@/lib/chat-storage";
-import { resolveUserIdentity, getIdentityCircleCharacterIds } from "@/lib/settings-storage";
+import { resolveUserIdentity, getIdentityCircleCharacterIds, loadUserIdentities } from "@/lib/settings-storage";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
 import { buildTwoLevelMomentThreads } from "@/lib/moments-comment-threading";
 import { getChatImageFromIndexedDB } from "@/lib/chat-asset-storage";
@@ -75,6 +75,22 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
     const editCircleSet = new Set(editIdentityCircle);
     const editVisIsCircleOnly = editCircleSet.size > 0
         && editEnrichedContacts.every(c => editVisSet.has(c.characterId) === editCircleSet.has(c.characterId));
+
+    // 帖子卡片上的「可见范围」标签（仅用户帖）：一眼确认这条圈给哪个面具/哪些人看
+    const postVisSummary = useMemo(() => {
+        if (post.authorType !== "user") return null;
+        const vis = post.visibility && post.visibility.length > 0 ? post.visibility : [];
+        if (vis.length === 0) return "全部公开";
+        const identities = loadUserIdentities();
+        for (const id of identities) {
+            if (!id.id) continue;
+            const circle = getIdentityCircleCharacterIds(id.id);
+            if (circle.length > 0 && circle.length === vis.length && circle.every(c => vis.includes(c))) {
+                return `仅「${id.name}」面具圈子`;
+            }
+        }
+        return `部分可见（${vis.length} 人）`;
+    }, [post.authorType, post.visibility]);
 
     // Resolve asset:// photo URLs from IndexedDB
     const [resolvedPhotoUrl, setResolvedPhotoUrl] = useState<string | null>(null);
@@ -628,6 +644,13 @@ export function MomentPostCard({ post, onUpdate, onRequestDelete, onOpenCommentC
                     onConfirm={handleConfirmCommentDelete}
                     onCancel={() => setDeleteCommentTarget(null)}
                 />
+            )}
+
+            {/* 可见范围标签：一眼确认这条圈给哪个面具 / 哪些人（仅用户帖） */}
+            {postVisSummary && (
+                <div className="feed-post-visibility-hint ts-12 text-[var(--c-icon)] opacity-70 mb-1">
+                    可见范围：{postVisSummary}
+                </div>
             )}
 
             {/* Timestamp + action buttons */}

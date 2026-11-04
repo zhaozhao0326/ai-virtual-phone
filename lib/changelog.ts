@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.127";
+export const APP_VERSION = "1.7.128";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.128",
+    date: "2026-11-04",
+    title: "朋友圈卡片加「可见范围」标签——一眼确认这条圈给哪个面具",
+    highlights: [
+      "【痛点】v1.7.126/127 已让朋友圈按面具分圈，但用户没法在界面上直观看到「这条到底锁给了哪个面具」，仍会担心串号。",
+      "【做法】每条用户帖下方加一行灰色小字「可见范围：…」：名单为空显示「全部公开」；恰好等于某个面具的圈子显示「仅『X』面具圈子」；其余显示「部分可见（N 人）」。角色帖不显示（走同世界可见规则）。",
+      "【计算】遍历面具列表，用 getIdentityCircleCharacterIds 反查每个面具的圈子，与帖子 visibility 做集合精确匹配；用 useMemo 缓存，仅在帖子可见名单变化时重算，信息流不额外拉取。",
+      "【配合】与 v1.7.126（新发默认圈子）、v1.7.127（旧帖手动收窄）共同构成完整闭环；标签读的是帖子真实 visibility，改完即时反映。",
+    ],
+  },
   {
     version: "1.7.127",
     date: "2026-11-04",
