@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.138";
+export const APP_VERSION = "1.7.139";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.139",
+    date: "2026-11-04",
+    title: "定格复杂手势自动改写为安全手姿",
+    highlights: [
+      "线下定格的分镜导演现在会把剧情里的复杂手部动作（探入发间、捏住下颌、张开的五指、扣住腰、指尖描摹等）直接改写为安全手姿：手掌轻贴脸颊、拇指落下颌一侧、其余手指放松微屈，或一只手揽腰/扶肩，不再照抄原句。",
+      "目的是从源头减少多指、断指、手腕接不上手臂这类手部错画。",
+    ],
+  },
   {
     version: "1.7.138",
     date: "2026-11-04",
