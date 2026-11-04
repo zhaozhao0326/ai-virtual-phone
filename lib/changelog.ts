@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.129";
+export const APP_VERSION = "1.7.131";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.131",
+    date: "2026-11-04",
+    title: "修 v1.7.130 漏改：线下定格主路径（首绘）也需带 storyHairOverride",
+    highlights: [
+      "【问题】v1.7.130 给线下定格加了 storyHairOverride（剧情换发型时把角色卡旧发型从锁脸裁定顶掉），但编辑时只落到了「审核重试（远景）」那一次调用，最常走的「首绘」主调用漏了——导致首绘仍可能带角色卡旧发型进锁脸裁定，v1.7.130 的去干扰加固大部分情况没生效。",
+      "【修法】主调用 handleTextPhotoGenerate(shootPrompt, castIds, storyHairOverride) 补上第三参；与重试路径一致。现在首绘与远景重试都不再把角色卡旧发型带进锁脸裁定。",
+      "【附带纠正】上轮 v1.7.130 推送时 APP_VERSION 常量（lib/changelog.ts 顶部）的递增编辑未真正落盘，导致 v1.7.130 那次部署里 APP_VERSION 仍是 1.7.129（changelog 条目与 sw.js 缓存已正确为 1.7.130/v53）。本次一并把 APP_VERSION 纠正为 1.7.131，消除版本常量与日志/缓存不一致。",
+    ],
+  },
   {
     version: "1.7.130",
     date: "2026-11-04",

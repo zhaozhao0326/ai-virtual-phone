@@ -4273,7 +4273,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             let dataUrl: string | null = null;
             let autoRestrained = false;
             try {
-                dataUrl = await handleTextPhotoGenerate(shootPrompt, castIds);
+                dataUrl = await handleTextPhotoGenerate(shootPrompt, castIds, storyHairOverride);
             } catch (photoError) {
                 if (!isModerationBlocked(photoError)) throw photoError;
                 const restrainedPrompt = `${framePrompt}；改为中远景，镜头从侧后方拍摄两人的背影或剪影，人物朝向彼此而不面对镜头，以环境、光影与留白承载情绪`;
