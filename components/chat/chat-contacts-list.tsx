@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue, useSyncExternalStore } from "react";
-import { loadChatContacts, ChatContact, createOrGetSession, ChatSession, addChatContact, pushChatMessage, loadChatMessages } from "@/lib/chat-storage";
+import { loadChatContacts, ChatContact, createOrGetSession, ChatSession, addChatContact, pushChatMessage, loadChatMessages, hideContact, unhideContact, getHiddenContactIds, isContactHidden } from "@/lib/chat-storage";
+import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { resolveUserIdentity } from "@/lib/settings-storage";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import { loadCharacters } from "@/lib/character-storage";
@@ -56,6 +57,10 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
     const addFromCardRef = useRef(false);
     const mascotSettings = useSyncExternalStore(subscribeMascotSettings, getMascotSettingsSnapshot, getMascotSettingsSnapshot);
     const [mascotAvatarUrl, setMascotAvatarUrl] = useState(mascotSettings.avatarImage || DEFAULT_MASCOT_AVATAR);
+    // 左滑操作（单按钮：隐藏）
+    const contactSwipe = useSwipeActions(62);
+    // 「已隐藏联系人」折叠区
+    const [showHidden, setShowHidden] = useState(false);
 
     const identity = useMemo(() => resolveUserIdentity(), []);
     const chars = useMemo(() => loadCharacters(), []);
@@ -130,9 +135,11 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
     /** Group contacts by pinyin initial */
     const { grouped, indexLetters } = useMemo(() => {
         const keyword = deferredContactFilter.trim().toLowerCase();
-        const filtered = keyword
+        const filtered = (keyword
             ? contacts.filter(c => (c.char?.name || "").toLowerCase().includes(keyword))
-            : contacts;
+            : contacts)
+            // 被用户隐藏的联系人不进列表（可在底部「已隐藏联系人」恢复）
+            .filter(c => !isContactHidden(c.characterId));
         const map: Record<string, typeof contacts> = {};
         for (const c of filtered) {
             const letter = getInitial(c.char?.name || "");
@@ -147,6 +154,13 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
         return { grouped: map, indexLetters: sorted };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [contacts, deferredContactFilter]);
+
+    // 已隐藏的联系人（从全局隐藏集合派生，刷新后自动同步）
+    const hiddenChars = useMemo(() => {
+        const hiddenIds = new Set(getHiddenContactIds());
+        if (hiddenIds.size === 0) return [];
+        return contacts.filter(c => c.char && hiddenIds.has(c.characterId)).map(c => c.char!);
+    }, [contacts]);
 
     const handleAccept = async (req: FriendRequest) => {
         setIsProcessing(true);
@@ -272,32 +286,105 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                                 {grouped[letter].map(c => {
                                     const char = c.char!;
                                     return (
-                                        <div
+                                        <SwipeActionRow
                                             key={c.id}
-                                            onClick={() => {
-                                                const sess = createOrGetSession(char.id);
-                                                onSelectSession(sess);
-                                            }}
-                                            className="minimal-list-item"
+                                            controller={contactSwipe}
+                                            id={c.id}
+                                            actions={
+                                                <button
+                                                    type="button"
+                                                    className="ui-swipe-action"
+                                                    data-variant="hide"
+                                                    onClick={() => {
+                                                        hideContact(char.id);
+                                                        contactSwipe.close();
+                                                        refresh();
+                                                    }}
+                                                >
+                                                    <span>隐藏</span>
+                                                </button>
+                                            }
                                         >
-                                            <div className="minimal-avatar-wrapper">
-                                                {char.avatar ? (
-                                                    <img src={char.avatar} className="w-full h-full object-cover rounded-full" alt="" />
-                                                ) : (
-                                                    <ChatFallbackAvatar className="rounded-full" />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center gap-1">
-                                                <div className="ts-16 font-medium text-[var(--c-text-title)] truncate">
-                                                    {char.name || "UNNAMED"}
+                                            <div
+                                                key={c.id}
+                                                onClick={() => {
+                                                    if (contactSwipe.consumeClickSuppression()) return;
+                                                    if (contactSwipe.openId || contactSwipe.swipingId) {
+                                                        contactSwipe.close();
+                                                        return;
+                                                    }
+                                                    const sess = createOrGetSession(char.id);
+                                                    onSelectSession(sess);
+                                                }}
+                                                className="minimal-list-item"
+                                            >
+                                                <div className="minimal-avatar-wrapper">
+                                                    {char.avatar ? (
+                                                        <img src={char.avatar} className="w-full h-full object-cover rounded-full" alt="" />
+                                                    ) : (
+                                                        <ChatFallbackAvatar className="rounded-full" />
+                                                    )}
                                                 </div>
-                                                <div className="ts-13 text-[var(--c-text)] opacity-80 truncate font-normal">
-                                                    {latestPost[char.id] || "暂无动态"}
+                                                <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center gap-1">
+                                                    <div className="ts-16 font-medium text-[var(--c-text-title)] truncate">
+                                                        {char.name || "UNNAMED"}
+                                                    </div>
+                                                    <div className="ts-13 text-[var(--c-text)] opacity-80 truncate font-normal">
+                                                        {latestPost[char.id] || "暂无动态"}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
+                                        </SwipeActionRow>
                                     );
                                 })}
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {/* 已隐藏联系人：可一键恢复（不删好友、不丢记录） */}
+                {hiddenChars.length > 0 && (
+                    <div className="mb-3 mt-4">
+                        <div
+                            className="minimal-list-item"
+                            onClick={() => setShowHidden(v => !v)}
+                        >
+                            <div className="minimal-avatar-wrapper bg-[var(--c-card-border)] flex items-center justify-center shrink-0">
+                                <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="var(--c-icon)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
+                            </div>
+                            <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center">
+                                <div className="ts-16 font-medium text-[var(--c-text-title)] truncate">已隐藏联系人（{hiddenChars.length}）</div>
+                                <div className="ts-13 text-[var(--c-text)] opacity-80 truncate font-normal">点开可恢复</div>
+                            </div>
+                            <svg className={`transition-transform ${showHidden ? "rotate-90" : ""}`} width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="var(--c-icon)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg>
+                        </div>
+                        {showHidden && hiddenChars.map(c => (
+                            <div
+                                key={c.id}
+                                className="minimal-list-item"
+                            >
+                                <div className="minimal-avatar-wrapper">
+                                    {c.avatar ? (
+                                        <img src={c.avatar} className="w-full h-full object-cover rounded-full" alt="" />
+                                    ) : (
+                                        <ChatFallbackAvatar className="rounded-full" />
+                                    )}
+                                </div>
+                                <div className="flex-1 overflow-hidden h-[48px] flex flex-col justify-center gap-1">
+                                    <div className="ts-16 font-medium text-[var(--c-text-title)] truncate">{c.name || "UNNAMED"}</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="ui-btn ui-btn-ghost shrink-0"
+                                    style={{ padding: "6px 12px", fontSize: "calc(13px*var(--app-text-scale,1))" }}
+                                    onClick={() => {
+                                        unhideContact(c.id);
+                                        contactSwipe.close();
+                                        refresh();
+                                    }}
+                                >
+                                    恢复
+                                </button>
                             </div>
                         ))}
                     </div>

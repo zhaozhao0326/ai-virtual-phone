@@ -4274,6 +4274,7 @@
 .ui-swipe-action[data-variant="replace"] { background: var(--c-warning); }
 .ui-swipe-action[data-variant="export"] { background: var(--c-icon); }
 .ui-swipe-action[data-variant="delete"] { background: var(--c-danger); }
+.ui-swipe-action[data-variant="hide"] { background: var(--c-action-blue, #246bfd); }
 .ui-swipe-action:active { filter: brightness(0.9); }
 .ui-entry-icon {
   flex-shrink: 0;

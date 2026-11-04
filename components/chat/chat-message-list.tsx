@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useSyncExternalStore } from "react";
 import { ChevronLeft } from "lucide-react";
-import { loadChatSessions, loadChatContacts, ChatSession, createOrGetSession, createGroupSession, pushChatMessage, addChatContact, loadChatMessages, getLastVisibleSessionMessage, getChatMessagePreview } from "@/lib/chat-storage";
+import { loadChatSessions, loadChatContacts, ChatSession, createOrGetSession, createGroupSession, pushChatMessage, addChatContact, loadChatMessages, getLastVisibleSessionMessage, getChatMessagePreview, hideContact, isContactHidden } from "@/lib/chat-storage";
+import { SwipeActionRow, useSwipeActions, type SwipeActionsController } from "@/components/ui/swipe-actions";
 import { loadCharacters } from "@/lib/character-storage";
 import { Character } from "@/lib/character-types";
 import { resolveUserIdentity } from "@/lib/settings-storage";
@@ -78,6 +79,15 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
     const [identity, setIdentity] = useState<UserIdentity | null>(null);
     const mascotSettings = useSyncExternalStore(subscribeMascotSettings, getMascotSettingsSnapshot, getMascotSettingsSnapshot);
     const mascotChat = useSyncExternalStore(subscribeMascotChat, getMascotChatSnapshot, getMascotChatSnapshot);
+    // 左滑操作（单按钮：隐藏 1 对 1 会话；群聊不提供，避免误隐藏想要的世界观群）
+    const sessionSwipe = useSwipeActions(62);
+    const handleHideSession = (s: ChatSession) => {
+        if (s.isGroup || !s.contactId) return;
+        hideContact(s.contactId);
+        sessionSwipe.close();
+        // 强制重渲染：regularItems 的过滤依赖 isContactHidden，刷新即把该会话从列表移出
+        setSessions(prev => [...prev]);
+    };
     const [mascotAvatarUrl, setMascotAvatarUrl] = useState(mascotSettings.avatarImage || DEFAULT_MASCOT_AVATAR);
 
     useEffect(() => {
@@ -222,6 +232,8 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
                             const regularItems = [...sessions]
                             .filter(s => {
                                 if (!(s.isGroup || contactIds.has(s.contactId))) return false;
+                                // 被用户隐藏的 1 对 1 联系人：从消息列表移出（群聊不受影响）
+                                if (!s.isGroup && isContactHidden(s.contactId)) return false;
                                 if (!getLastVisibleSessionMessage(s.id)) return false;
                                 if (listTab === "private" && s.isGroup) return false;
                                 if (listTab === "group" && !s.isGroup) return false;
@@ -238,9 +250,24 @@ export function ChatMessageList({ onCloseApp, activeSession, onSelectSession, on
                                 return new Date(bTime).getTime() - new Date(aTime).getTime();
                             })
                             .map(s => (
-                                <div key={s.id}>
-                                    <SessionItem session={s} onSelect={() => onSelectSession(s)} isPinned={!!s.isPinned} />
-                                </div>
+                                <SwipeActionRow
+                                    key={s.id}
+                                    controller={sessionSwipe}
+                                    id={s.id}
+                                    leftSwipeDisabled={s.isGroup}
+                                    actions={s.isGroup ? null : (
+                                        <button
+                                            type="button"
+                                            className="ui-swipe-action"
+                                            data-variant="hide"
+                                            onClick={() => handleHideSession(s)}
+                                        >
+                                            <span>隐藏</span>
+                                        </button>
+                                    )}
+                                >
+                                    <SessionItem session={s} onSelect={() => onSelectSession(s)} isPinned={!!s.isPinned} swipe={sessionSwipe} />
+                                </SwipeActionRow>
                             ));
                             if (!showMascot && regularItems.length === 0) {
                                 return (
@@ -631,7 +658,7 @@ function ContactPicker({ onClose, onSelect }: { onClose: () => void; onSelect: (
     );
 }
 
-function SessionItem({ session, onSelect, isPinned }: { session: ChatSession, onSelect: () => void, isPinned?: boolean }) {
+function SessionItem({ session, onSelect, isPinned, swipe }: { session: ChatSession, onSelect: () => void, isPinned?: boolean, swipe?: SwipeActionsController }) {
     const chars = loadCharacters();
     const character = chars.find(c => c.id === session.contactId);
     const lastVisibleMessage = getLastVisibleSessionMessage(session.id);
@@ -654,7 +681,16 @@ function SessionItem({ session, onSelect, isPinned }: { session: ChatSession, on
     return (
         <div
             className={`minimal-list-item${isPinned ? ' chat-pinned' : ''}`}
-            onClick={onSelect}
+            onClick={() => {
+                if (swipe) {
+                    if (swipe.consumeClickSuppression()) return;
+                    if (swipe.openId || swipe.swipingId) {
+                        swipe.close();
+                        return;
+                    }
+                }
+                onSelect();
+            }}
         >
             {isGroup ? (
                 <div className="minimal-avatar-wrapper grid grid-cols-2 grid-rows-2 gap-[1px] p-[2px] bg-[var(--c-card-border)] rounded-full overflow-hidden">

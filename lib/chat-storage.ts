@@ -759,6 +759,55 @@ function unmarkContactRemoved(characterId: string): void {
     saveRemovedContactIds(ids);
 }
 
+// ── 用户主动「隐藏」的联系人 ────────────────────────
+// 与上面的「删除好友墓碑」不同：隐藏只是从「联系人 / 消息」列表视图里过滤掉，
+// 不删除联系人记录、不删会话、不丢任何聊天历史，也不影响它在群聊里的成员身份
+// （群成员靠 session.participantIds，不靠联系人）。用于把当年为建群硬加的
+// 世界观 NPC 从列表里清走、但想留着群和记录时。可随时在「已隐藏」区恢复。
+const HIDDEN_CONTACTS_KEY = "ai_phone_hidden_contacts_v1";
+registerKvMigration(HIDDEN_CONTACTS_KEY);
+
+function loadHiddenContactIds(): Set<string> {
+    if (typeof window === "undefined") return new Set<string>();
+    try {
+        const raw = kvGet(HIDDEN_CONTACTS_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        const ids: string[] = Array.isArray(parsed) ? parsed.filter((id: unknown): id is string => typeof id === "string" && !!id) : [];
+        return new Set<string>(ids);
+    } catch {
+        return new Set<string>();
+    }
+}
+
+function saveHiddenContactIds(ids: Set<string>): void {
+    if (typeof window === "undefined") return;
+    kvSet(HIDDEN_CONTACTS_KEY, JSON.stringify([...ids]));
+}
+
+export function isContactHidden(characterId: string): boolean {
+    if (!characterId) return false;
+    return loadHiddenContactIds().has(characterId);
+}
+
+export function hideContact(characterId: string): void {
+    if (!characterId) return;
+    const ids = loadHiddenContactIds();
+    if (ids.has(characterId)) return;
+    ids.add(characterId);
+    saveHiddenContactIds(ids);
+}
+
+export function unhideContact(characterId: string): void {
+    if (!characterId) return;
+    const ids = loadHiddenContactIds();
+    if (!ids.delete(characterId)) return;
+    saveHiddenContactIds(ids);
+}
+
+export function getHiddenContactIds(): string[] {
+    return Array.from(loadHiddenContactIds());
+}
+
 function restoreContactsForPrivateSessions(contacts: ChatContact[], sessions: ChatSession[]): NormalizedList<ChatContact> {
     const characterIds = new Set(loadCharacters().map(character => character.id));
     const removedByUser = loadRemovedContactIds();
