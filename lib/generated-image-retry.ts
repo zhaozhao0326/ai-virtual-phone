@@ -5,6 +5,7 @@ import { generatedImageFilename, generateImageFromConfiguredApi, normalizeRefere
 import { loadImageGenerationSettings, resolveUserIdentity } from "./settings-storage";
 import { updateMomentPost } from "./moments-storage";
 import type { MomentPost } from "./moments-types";
+import { ONLINE_FRAME_QUALITY_SPEC } from "./image-frame-spec";
 
 function errorToMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -315,9 +316,11 @@ export async function generateAndApplyChatGeneratedImage(
     // 判定为「无人」但描述没显式写「无人物」时，同样补一句英文负面——
     // 静物/菜品/风景描述最容易被模型自作主张加一个"陪衬的人"，这是跨 provider 都有效的硬信号。
     const noOneInFrame = peopleIntent.characterIds.length === 0 && !peopleIntent.includeUser;
-    const finalDescription = noOneInFrame
+    const frameBase = noOneInFrame
         ? `No people, no person, empty scene, solo. ${peopleIntent.noPeople ? stripExplicitNoPerson(description) : description}`
         : description;
+    // 线上发图叠加与线下同源的画质 + 遮挡/解剖约束（不含「不许看镜头」，保留自拍/正脸构图）。
+    const finalDescription = `${frameBase}${ONLINE_FRAME_QUALITY_SPEC}`;
     // 收集头像参考图（浏览器内压缩），用于 NAI character_reference 锁脸
     // 用户(「你」)若设了锁脸裁脸选区，先裁出脸部再压缩，与角色参考图裁脸对称。
     // v1.7.123 群聊锁错脸修复：参考图与 participants 必须由「同一份压缩结果」派生，
@@ -490,7 +493,7 @@ export async function retryMomentGeneratedPhoto(post: MomentPost, nextDescriptio
             authorName: author?.name,
         });
         const generated = await generateImageWithReferenceFallback({
-            description: finalDescription,
+            description: `${finalDescription}${ONLINE_FRAME_QUALITY_SPEC}`,
             characterId: includeCharacters && post.authorType === "character" ? post.authorId : undefined,
             participantAppearance: includeCharacters ? momentAppearance || undefined : undefined,
             participants: includeCharacters ? momentSpecs.map((s) => ({ name: s.name, anchor: s.anchor })) : undefined,

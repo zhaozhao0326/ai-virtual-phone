@@ -8,6 +8,7 @@ import { loadCharacters } from "./character-storage";
 import { loadChatContacts } from "./chat-storage";
 import type { Character } from "./character-types";
 import { momentDescriptionImpliesCharacter, hasExplicitNoPerson, stripExplicitNoPerson, buildParticipantSpecs, resizeImageDataUrl } from "./generated-image-retry";
+import { ONLINE_FRAME_QUALITY_SPEC } from "./image-frame-spec";
 import {
     addMomentPost,
     addMomentComment,
@@ -1311,7 +1312,7 @@ export async function generateMomentPhotoUrl(
             useReferenceImage: effectiveUseReferenceImage,
         });
         const generated = await generateImageFromConfiguredApi({
-            description: finalDescription,
+            description: `${finalDescription}${ONLINE_FRAME_QUALITY_SPEC}`,
             characterId: effectiveCharacterId,
             useReferenceImage: effectiveUseReferenceImage,
             participantAppearance,

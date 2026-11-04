@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.136";
+export const APP_VERSION = "1.7.137";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.137",
+    date: "2026-11-04",
+    title: "线上发图（角色主动发图 / 朋友圈）画质与遮挡约束对齐线下",
+    highlights: [
+      "把线下定格同款的「画质 + 遮挡/解剖」约束应用到角色主动发图与朋友圈生图，线上出图的质感、人体结构准确度更接近线下定格。",
+      "被被子/衣物包裹时强制织物像织物、被遮身体不得透出变形躯干；四肢须连接合理、不许多手/漂浮肢体。",
+    ],
+  },
   {
     version: "1.7.136",
     date: "2026-11-04",
