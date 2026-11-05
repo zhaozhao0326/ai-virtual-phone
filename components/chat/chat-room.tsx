@@ -367,6 +367,94 @@ function buildOfflineFrameSpec(mode: "solo" | "pair" | "intimate" | "group"): st
     return `${OFFLINE_FRAME_SPEC_COMMON}${body}`;
 }
 
+// v1.7.141：导演提示词改为「人数感知」。
+// 原先写死「两人」，群聊多人场景导演只会突出主角、把其余人画成背景板贴图。
+// 现在按实际在场名单与人数动态生成「单人 / 双人 / 群像」三类要求，多人时强制群像。
+function buildDirectorSystem(castNames: string[], userName: string): string {
+    const n = Math.max(1, castNames.length);
+    const peopleLine =
+        n <= 1 ? `画面中只有 ${castNames[0] || "对方"} 一个人`
+            : n === 2 ? `画面中是 ${castNames[0]} 与 ${castNames[1]} 两人`
+                : `画面中共有 ${n} 人同框，依次是：${castNames.join("、")}`;
+    const bodyLine =
+        n <= 1 ? `他/她的位置、姿态、正在做的具体动作`
+            : n === 2 ? `两人的相对位置、身体朝向、正在做的具体动作（谁靠近谁、谁的手搭在谁身上），要能从文字里一眼看出他们的关系姿态`
+                : `这 ${n} 人的相对位置与空间关系——每个人都要有自己清晰的肢体动作、姿态和与他人的互动或距离，不要只突出其中一两个人而把其余人画成没有动作的背景板或贴图；构图要让 ${n} 人自然分布在画面的不同深度与位置`;
+    const eyeLine =
+        n <= 1 ? `视线落在场景里的某一处（窗、手中的物、门口），不要看镜头`
+            : `每个人的视线都要有落点——看向对方、看向手中的东西、或看向场景某处，没有人看镜头（这是抓拍不是合影）；多人时注意让不同人的视线各有去向，形成自然的视线网络而非整齐望向同一处`;
+    const clothLine =
+        n <= 1 ? `他/她穿什么、什么颜色与材质`
+            : `${n === 2 ? "两人各" : "每人各"}穿什么、什么颜色与材质`;
+    const groupExtra =
+        n > 2
+            ? `\n- 这是 ${n} 人群像，务必让每个人都“活”在画面里：各有动作、各有视线落点、彼此之间有真实的物理空间关系与前后景层次；严禁有人只是僵硬地并列、悬浮在背景里，或像后来贴上去的图。`
+            : "";
+    return [
+        "你是电影分镜导演，同时负责摄影指导。下面是一条「线下剧情」的片段（用户与角色的一问一答）。",
+        "请就这一条，写一段用于 AI 生图的电影感画面描述（中文）。",
+        "",
+        `【出场人物】${peopleLine}（共 ${n} 人）。`,
+        "",
+        "必须逐项写清楚（这是这段描述能被画对的关键）：",
+        "1. 机位与景别：镜头在哪个角度、什么景别，谁在前景、谁在后一层。",
+        `2. 身体位置与动作：${bodyLine}。手部只写「哪只手大致放在哪个位置」（例如「他一只手扶着她的脸颊」），不要细分手指的动作与角度。`,
+        `3. 视线：${eyeLine}。`,
+        "4. 光线：主光来自哪个方向、什么颜色温度、明暗对比怎样，边缘光落在哪一侧。",
+        "5. 场景与细节：环境里具体的物件、材质、布料褶皱、空气中的浮尘或光斑。",
+        `6. 服装与配饰：${clothLine}，衣料随着姿势怎么起褶皱（家居服、睡衣、外套都按剧情写实）。`,
+        "7. 氛围：这一刻的情绪，用构图、距离和光影表达。",
+        "",
+        "写作要求：",
+        "- 绝对不要描写人物五官、脸型等具体长相——脸由参考图锁定，生图时会自动贴合本人。但发型与发色要按【这一条剧情里实际写到的】来画：如果角色在对话里提到自己换了发型或发色（比如剪短、剪了、烫卷、染了什么颜色、弄了头发、换了新发型），就照剧情里描述的当下模样写进画面，不要套用角色卡里没提到的旧模样，也不要凭空编造。",
+        `- 用真实姓名代指人物（${castNames.join("、")}），不要编造新名字。`,
+        "- 当角色被被子、毯子或宽松衣物包裹时，只描写织物的柔软褶皱与包裹出的蓬松轮廓，绝不要描写被遮住的身体轮廓（不要写肩线、胸廓、腰线或躯干形状），被遮住的部位就让它在布料里自然隐没；",
+        "- 手部接触写得越复杂，画面越容易把手画错（多指、断指、手接不上手臂都是这么来的）：如果这段剧情里出现了「手指探入发间 / 捏住下颌 / 张开的五指 / 手指扣住腰 / 指尖描摹」这类多关节复杂手势，你写画面时一律改写成安全手势——改为「手掌轻轻贴着对方脸颊、拇指自然落在下颌一侧、其余手指放松微屈」，或「一只手揽着腰 / 扶着肩」，绝不要照抄原句的复杂手姿；也不要让手挡住对方大半张脸。",
+        "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
+        "- 描写尺度放宽、自然就好：可以写亲吻（轻吻、吻额头/脸颊、双唇相贴这类亲密但非暴露的动作）、拥抱、依偎、肌肤自然相贴、居家松弛的穿着（如男生赤裸上身或仅着睡裤的居家状态、肩颈与手臂自然裸露）；只要不是直白的性行为、暴露的性器官描绘或血腥暴力，都可以如实写进画面。用光影、距离与构图承载情绪，而非直白刻画私处。",
+        "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
+        groupExtra,
+    ].join("\n");
+}
+
+// v1.7.141：构图多样性候选库。每次定格随机抽 1–2 个机位倾向交给导演发挥，
+// 打破「永远 three-quarter 沙发前坐」的习惯性单一构图。
+// 注意：这些只注入给导演看的 userContent（引导思考），不进最终生图 prompt，因此不存在被机翻改坏术语的问题；
+// 也只描述机位/光线/景别，绝不碰「禁看镜头」等硬约束。
+const OFFLINE_FRAME_SHOT_VARIANTS: string[] = [
+    "镜头从侧窗逆光切入，人物轮廓镀上一层暖色边光，室内偏暗",
+    "从门口框景，前景虚化，人物落进中景纵深里",
+    "低角度仰拍，天光从上方洒下，人物显得舒展放松",
+    "利用镜面或玻璃反射，画面里出现一重淡淡的双重影像",
+    "顺着过道或长廊的纵深构图，人物沿消失点方向分布",
+    "贴近人物肩部的过肩中景，背景是生活场景的横向延展",
+    "特写两人的手与交叠的衣料，表情落在焦外柔化",
+    "逆光剪影处理，人物轮廓融入环境光，细节让位于情绪",
+    "从楼梯上方俯拍下层空间，层高与两层楼都收入构图",
+    "侧前方 45 度越肩，前景人物半挡后景，前后层次分明",
+    "人物倚在窗边或栏杆上，窗外城市或夜景成为天然背景板",
+    "低机位平拍，前景地面与后景墙形成稳定三角构图",
+];
+// 群聊多人额外可用的「场景纵深」提示，强调利用空间层次而非挤在一团。
+const OFFLINE_FRAME_GROUP_SHOT_VARIANTS: string[] = [
+    "利用两层楼的层高做纵深，有人在上层回廊、有人在下层活动",
+    "把众人分成前后两簇，中间留出空间让画面能呼吸",
+    "以沙发或长桌为中轴，人物错落地围坐或倚靠，前后景都有人",
+    "让最近的人虚化成前景光斑，其余人沿纵深铺开",
+];
+function pickShotVariants(isGroup: boolean): string {
+    const pool = isGroup
+        ? [...OFFLINE_FRAME_SHOT_VARIANTS, ...OFFLINE_FRAME_GROUP_SHOT_VARIANTS]
+        : OFFLINE_FRAME_SHOT_VARIANTS;
+    const a = pool[Math.floor(Math.random() * pool.length)];
+    let b = "";
+    if (Math.random() < 0.35) {
+        const rest = pool.filter((x) => x !== a);
+        b = rest[Math.floor(Math.random() * rest.length)];
+    }
+    return [a, b].filter(Boolean).join("；");
+}
+
 type PendingNativeToolCall = {
     id: string;
     name: string;
@@ -1464,7 +1552,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     // v1.7.116：记录「正在定格的是哪一条」，好让只有被点的那条显示骨架占位，
     // 而不是所有条目一起转圈（生图要几十秒，用户得看清是哪一帧在画）。
     const [capturingTurnId, setCapturingTurnId] = useState<string | null>(null);
-    const [framePreview, setFramePreview] = useState<{ dataUrl: string; prompt: string } | null>(null);
+    // v1.7.141：framePreview 扩展存储出镜阵容与摄影规格后缀，便于「可编辑提示词 + 重生成」闭环
+    const [framePreview, setFramePreview] = useState<{
+        dataUrl: string;
+        prompt: string;
+        shootSpec: string;
+        castIds: string[];
+        hairOverride?: Record<string, string>;
+        turnId: string;
+    } | null>(null);
+    // 可编辑的提示词草稿 + 重生成 loading 态
+    const [frameDraft, setFrameDraft] = useState("");
+    const [frameRegenerating, setFrameRegenerating] = useState(false);
     // 线下状态栏：同一时刻只展开一条，且只在展开时才挂载沙盒 iframe（避免长历史里一堆 iframe 空跑）
     // 线下状态栏浮层：存点击那一刻的快照（状态栏原文 / 渲染 HTML / 摘要），null = 关闭。
     // 做成浮层而不是行内展开，聊天记录不再被撑长；沙盒 iframe 只在浮层打开时才挂载。
@@ -4219,30 +4318,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setIsCapturingFrame(true);
         setCapturingTurnId(targetTurn.id);
         try {
-            const directorSystem = [
-                "你是电影分镜导演，同时负责摄影指导。下面是一条「线下剧情」的片段（用户与角色的一问一答）。",
-                "请就这一条，写一段用于 AI 生图的电影感画面描述（中文）。",
-                "",
-                "必须逐项写清楚（这是这段描述能被画对的关键）：",
-                "1. 机位与景别：镜头在哪个角度、什么景别，谁在前景、谁在后一层。",
-                "2. 身体位置与动作：两人的相对位置、身体朝向、正在做的具体动作（谁搂着谁、谁靠近谁），要能从文字里一眼看出他们的关系姿态。手部只写「哪只手大致放在哪个位置」（例如「他一只手扶着她的脸颊」），不要细分手指的动作与角度。",
-                "3. 视线：谁在看谁、看的是对方的脸还是别处；所有人都不看镜头，这是抓拍不是合影。",
-                "4. 光线：主光来自哪个方向、什么颜色温度、明暗对比怎样，边缘光落在哪一侧。",
-                "5. 场景与细节：环境里具体的物件、材质、布料褶皱、空气中的浮尘或光斑。",
-                "6. 服装与配饰：两人各穿什么、什么颜色与材质、衣料随着姿势怎么起褶皱（家居服、睡衣、外套都按剧情写实）。",
-                "7. 氛围：这一刻的情绪，用构图、距离和光影表达。",
-                "",
-                "写作要求：",
-                "- 绝对不要描写人物五官、脸型等具体长相——脸由参考图锁定，生图时会自动贴合本人。但发型与发色要按【这一条剧情里实际写到的】来画：如果角色在对话里提到自己换了发型或发色（比如剪短、剪了、烫卷、染了什么颜色、弄了头发、换了新发型），就照剧情里描述的当下模样写进画面，不要套用角色卡里没提到的旧模样，也不要凭空编造。",
-                "- 用「" + userName + "」「" + charName + "」代指人物，不要编造新名字。",
-                "- 当角色被被子、毯子或宽松衣物包裹时，只描写织物的柔软褶皱与包裹出的蓬松轮廓，绝不要描写被遮住的身体轮廓（不要写肩线、胸廓、腰线或躯干形状），被遮住的部位就让它在布料里自然隐没；",
-                "- 手部接触写得越复杂，画面越容易把手画错（多指、断指、手接不上手臂都是这么来的）：如果这段剧情里出现了「手指探入发间 / 捏住下颌 / 张开的五指 / 手指扣住腰 / 指尖描摹」这类多关节复杂手势，你写画面时一律改写成安全手势——改为「手掌轻轻贴着对方脸颊、拇指自然落在下颌一侧、其余手指放松微屈」，或「一只手揽着腰 / 扶着肩」，绝不要照抄原句的复杂手姿；也不要让手挡住对方大半张脸。",
-                "- 写成一个连贯的电影画面，不是分点清单，也不要出现编号。",
-                "- 描写尺度放宽、自然就好：可以写亲吻（轻吻、吻额头/脸颊、双唇相贴这类亲密但非暴露的动作）、拥抱、依偎、肌肤自然相贴、居家松弛的穿着（如男生赤裸上身或仅着睡裤的居家状态、肩颈与手臂自然裸露）；只要不是直白的性行为、暴露的性器官描绘或血腥暴力，都可以如实写进画面。用光影、距离与构图承载情绪，而非直白刻画私处。",
-                "- 只输出提示词正文，不要标题、引号或任何额外说明。控制在 180 字以内。",
-            ].join("\n");
+            // v1.7.141：先算实际出镜阵容（按人数决定导演写「单人 / 双人 / 群像」），
+            // 上移到导演调用前——原先阵容在导演之后才算，导致导演永远不知道这场有几位，只会写双人模板。
+            const baseCast = offlineParticipants.includes(session.contactId)
+                ? [...offlineParticipants]
+                : [session.contactId, ...offlineParticipants];
+            const castIds = [...baseCast];
+            if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
+            const localChars = loadCharacters();
+            const castNames = castIds.map((id) => {
+                if (id === "user") return userName;
+                return localChars.find((c) => c.id === id)?.name?.trim() || id;
+            });
+            const directorSystem = buildDirectorSystem(castNames, userName);
 
-            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和两人此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。`;
+            // v1.7.141：每次随机抽 1–2 个机位倾向注入导演（只引导思考、不进最终 prompt），打破单一构图。
+            const shotHint = pickShotVariants(castNames.length > 2);
+            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和${castNames.length > 2 ? "众人" : "两人"}此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。\n\n构图倾向（仅供参考，可灵活发挥，不必照抄；不要为此牺牲「不看镜头」与「手部自然」的硬要求）：\n${shotHint}。`;
 
             const directorMessages = [
                 { role: "system", content: directorSystem },
@@ -4300,12 +4392,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             // 同时把角色卡里的旧发型从锁脸裁定里顶掉，明确「以本场景剧情描述中的发型为准」，避免旧发型与剧情新发型打架。
             const storyHairOverride = hairHint ? { [session.contactId]: "以本场景剧情描述中的发型为准" } : undefined;
 
-            // ② 在场角色 + （若开关开启且有锁脸图/头像则含你）作为出镜阵容，复用锁脸生图
-            const baseCast = offlineParticipants.includes(session.contactId)
-                ? [...offlineParticipants]
-                : [session.contactId, ...offlineParticipants];
-            const castIds = [...baseCast];
-            if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
+            // ② 出镜阵容 castIds 已在前面（导演调用前）计算好，这里直接复用。
 
             // 生图：把「摄影规格」硬约束拼在描述后面（中文，服务端会分段翻成英文）。
             // 这段决定机位/视线/光影/细节，压住模型默认的「正面合影」倾向；
@@ -4344,7 +4431,15 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             if (updated) {
                 setOfflineTurns((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
             }
-            setFramePreview({ dataUrl, prompt: framePrompt });
+            setFramePreview({
+                dataUrl,
+                prompt: framePrompt,
+                shootSpec: buildOfflineFrameSpec(poseMode),
+                castIds,
+                hairOverride: storyHairOverride,
+                turnId: targetTurn.id,
+            });
+            setFrameDraft(framePrompt);
             if (autoRestrained) {
                 showChatToast("原构图被生图安全审核拦下，已自动换成远景/氛围构图重新生成。", 3600);
             }
@@ -4383,6 +4478,44 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         isCapturingFrame, isOfflineGenerating, offlineTurns, offlineParticipants,
         includeSelfInFrame, character, session, handleTextPhotoGenerate,
     ]);
+
+    // v1.7.141：线下定格结果弹窗里的「重新生成」——用玩家自己改过的提示词重生图，
+    // 对齐线上「文字生图」弹窗的「可编辑提示词 + 重生图」闭环，不再纯看运气重 roll。
+    const handleFrameRegenerate = useCallback(async () => {
+        if (!framePreview || frameRegenerating) return;
+        const draft = frameDraft.trim();
+        if (!draft) {
+            showChatToast("提示词为空，没法重生成～");
+            return;
+        }
+        setFrameRegenerating(true);
+        try {
+            const shotPrompt = `${draft}。${framePreview.shootSpec}`;
+            const url = await handleTextPhotoGenerate(shotPrompt, framePreview.castIds, framePreview.hairOverride);
+            if (!url) throw new Error("生图返回为空，请重试。");
+            const blob = dataUrlToBlob(url);
+            const assetId = blob ? await saveChatImageToIndexedDB(blob) : null;
+            if (assetId) {
+                const updated = updateChatOfflineTurn(session.id, framePreview.turnId, {
+                    imageAssetId: assetId,
+                    framePrompt: draft,
+                });
+                if (updated) {
+                    setOfflineTurns((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+                }
+            }
+            setFramePreview((p) => (p ? { ...p, dataUrl: url, prompt: draft } : p));
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (isModerationBlocked(error)) {
+                showChatToast("这一帧被安全审核拦下了，试着把提示词改含蓄一点再生成。", 5200);
+            } else {
+                showChatToast(`重新生成失败：${message.slice(0, 200)}`, 4000);
+            }
+        } finally {
+            setFrameRegenerating(false);
+        }
+    }, [framePreview, frameRegenerating, frameDraft, handleTextPhotoGenerate, session.id, setOfflineTurns, showChatToast]);
 
     const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {
         setRichModal(null);
@@ -6928,7 +7061,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                     {turn.imageAssetId && (
                                         <OfflineTurnImage
                                             assetId={turn.imageAssetId}
-                                            onOpen={(src) => setFramePreview({ dataUrl: src, prompt: turn.framePrompt || "经典画面" })}
+                                            onOpen={(src) => {
+                                                const base = offlineParticipants.includes(session.contactId)
+                                                    ? [...offlineParticipants]
+                                                    : [session.contactId, ...offlineParticipants];
+                                                const ids = [...base];
+                                                if (includeSelfInFrame && (userIdentity?.faceLockUrl?.trim() || userIdentity?.avatarUrl?.trim())) ids.push("user");
+                                                const localChars = loadCharacters();
+                                                const mode: "solo" | "pair" | "intimate" | "group" =
+                                                    ids.length <= 1 ? "solo"
+                                                        : ids.length === 2 ? (OFFLINE_FRAME_INTIMATE_RE.test(turn.framePrompt || "") ? "intimate" : "pair")
+                                                            : "group";
+                                                setFramePreview({
+                                                    dataUrl: src,
+                                                    prompt: turn.framePrompt || "经典画面",
+                                                    shootSpec: buildOfflineFrameSpec(mode),
+                                                    castIds: ids,
+                                                    turnId: turn.id,
+                                                });
+                                                setFrameDraft(turn.framePrompt || "");
+                                            }}
                                         />
                                     )}
                                     {/* 生成中的骨架占位：只出现在被点的那一条下面，让人知道「这一帧正在画」。
@@ -7968,11 +8120,25 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                         </div>
                         <div className="frame-preview-body">
                             <img className="frame-preview-img" src={framePreview.dataUrl} alt="经典画面" />
-                            <div className="frame-preview-prompt">{framePreview.prompt}</div>
+                            <textarea
+                                className="frame-preview-prompt-edit"
+                                value={frameDraft}
+                                onChange={(e) => setFrameDraft(e.target.value)}
+                                rows={5}
+                                placeholder="可在这里调整提示词，再点「重生成」"
+                            />
                         </div>
                         <div className="frame-preview-actions">
-                            <a
+                            <button
+                                type="button"
                                 className="ui-btn ui-btn-primary"
+                                onClick={() => void handleFrameRegenerate()}
+                                disabled={frameRegenerating}
+                            >
+                                {frameRegenerating ? "生成中…" : "用这段提示词重生成"}
+                            </button>
+                            <a
+                                className="ui-btn"
                                 href={framePreview.dataUrl}
                                 download={generatedImageFilename(framePreview.prompt)}
                             >

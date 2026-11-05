@@ -8,7 +8,8 @@ import { loadCharacters } from "./character-storage";
 import { loadChatContacts } from "./chat-storage";
 import type { Character } from "./character-types";
 import { momentDescriptionImpliesCharacter, hasExplicitNoPerson, stripExplicitNoPerson, buildParticipantSpecs, resizeImageDataUrl } from "./generated-image-retry";
-import { ONLINE_FRAME_QUALITY_SPEC, sanitizeHandGestures } from "./image-frame-spec";
+import { ONLINE_FRAME_QUALITY_SPEC, sanitizeHandGestures, buildMomentDirectorSystem, buildMomentDirectorUserContent, pickMomentShotVariant } from "./image-frame-spec";
+import { simpleLLMCall } from "./api-helpers";
 import {
     addMomentPost,
     addMomentComment,
@@ -1306,6 +1307,37 @@ export async function generateMomentPhotoUrl(
                 if (refImages.length) effectiveReferenceImages = refImages;
             }
         } catch { /* 取不到角色名时退回原描述 */ }
+        // v1.7.142：朋友圈生图加「导演层」——把 LLM 写的扁平 photoDescription 改写成电影感画面，
+        // 并随机注入一个生活化机位倾向，打破「永远同一构图」的单调。锁脸参考图 / 外观由下方参数独立处理，
+        // 导演只重排文本描述，不碰硬约束；导演失败 / 为空则退回原描述，保证一定出得了图。
+        if (!noPerson && effectiveCharacterId) {
+            try {
+                const directorConfig = (() => {
+                    try {
+                        const gid = loadBindingConfig().globalDefaults.apiConfigId;
+                        const all = loadApiConfigs();
+                        return (gid ? all.find((c) => c.id === gid) : all[0]) ?? null;
+                    } catch { return null; }
+                })();
+                if (directorConfig) {
+                    const authorName = loadCharacters().find((c) => c.id === characterId)?.name?.trim() || "她";
+                    const variant = pickMomentShotVariant();
+                    const dMessages = [
+                        { role: "system", content: buildMomentDirectorSystem(authorName) },
+                        { role: "user", content: buildMomentDirectorUserContent(finalDescription, authorName, variant) },
+                    ];
+                    const dRes = await simpleLLMCall(
+                        directorConfig,
+                        dMessages,
+                        // 朋友圈导演是短文本生成，思考模型会吃光 token 预算只留 reasoning，
+                        // 显式关掉 thinking（与线下定格导演一致）。
+                        { temperature: 0.7, max_tokens: 600, disableThinking: true, purpose: "moment-director", signal },
+                    );
+                    const directed = dRes?.content?.trim();
+                    if (directed) finalDescription = directed;
+                }
+            } catch { /* 导演异常退回原描述，不影响出图 */ }
+        }
         console.log("[Moments] 生图角色注入判断", {
             description: description.slice(0, 80),
             hasCharacter: Boolean(effectiveCharacterId),

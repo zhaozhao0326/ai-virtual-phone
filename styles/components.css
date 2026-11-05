@@ -90,6 +90,24 @@
   opacity: 0.85;
   white-space: pre-wrap;
 }
+.frame-preview-prompt-edit {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c-text) 18%, transparent);
+  background: color-mix(in srgb, var(--c-page-body-bg) 70%, transparent);
+  color: var(--c-text);
+  font-size: calc(13px * var(--app-text-scale, 1));
+  line-height: 1.6;
+  font-family: inherit;
+  outline: none;
+}
+.frame-preview-prompt-edit:focus {
+  border-color: var(--c-accent, #6b8cff);
+}
 .frame-preview-actions {
   display: flex;
   gap: 10px;
