@@ -4318,18 +4318,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setIsCapturingFrame(true);
         setCapturingTurnId(targetTurn.id);
         try {
-            // v1.7.141：先算实际出镜阵容（按人数决定导演写「单人 / 双人 / 群像」），
-            // 上移到导演调用前——原先阵容在导演之后才算，导致导演永远不知道这场有几位，只会写双人模板。
-            const baseCast = offlineParticipants.includes(session.contactId)
-                ? [...offlineParticipants]
-                : [session.contactId, ...offlineParticipants];
-            const castIds = [...baseCast];
-            if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
+            // v1.7.143：出镜阵容按【这一条剧情实际有谁】决定，而不是把群里所有在场者都塞进画面。
+            // 否则两人对话的群聊也会被画成满屏人、像有人在监控。规则：
+            //   - 主角色（这一条正在回复的角色）必在；
+            //   - 只有【在这条剧情文本里被点名】的其他在场角色才入镜；
+            //   - 你自己（includeSelfInFrame 且配了头像/锁脸）按需加入。
             const localChars = loadCharacters();
-            const castNames = castIds.map((id) => {
-                if (id === "user") return userName;
-                return localChars.find((c) => c.id === id)?.name?.trim() || id;
+            const nameOf = (id: string): string =>
+                id === "user" ? userName : (localChars.find((c) => c.id === id)?.name?.trim() || id);
+            const mainId = session.contactId;
+            const mentionedOthers = offlineParticipants.filter((id) => {
+                if (id === mainId) return false;
+                const nm = localChars.find((c) => c.id === id)?.name?.trim();
+                return !!nm && transcript.includes(nm);
             });
+            const castIds: string[] = [mainId, ...mentionedOthers];
+            if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
+            const castNames = castIds.map((id) => nameOf(id));
             const directorSystem = buildDirectorSystem(castNames, userName);
 
             // v1.7.141：每次随机抽 1–2 个机位倾向注入导演（只引导思考、不进最终 prompt），打破单一构图。
@@ -7062,12 +7067,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         <OfflineTurnImage
                                             assetId={turn.imageAssetId}
                                             onOpen={(src) => {
-                                                const base = offlineParticipants.includes(session.contactId)
-                                                    ? [...offlineParticipants]
-                                                    : [session.contactId, ...offlineParticipants];
-                                                const ids = [...base];
-                                                if (includeSelfInFrame && (userIdentity?.faceLockUrl?.trim() || userIdentity?.avatarUrl?.trim())) ids.push("user");
+                                                // v1.7.143：与定格完全一致——按这一条剧情文本里被点名的角色决定出镜阵容，
+                                                // 不再把群里所有在场者都算进来（否则历史图重生成会又画回满屏人）。
+                                                const stripT = (s: string): string => s.replace(/\s+/g, " ").trim();
+                                                const tName = userIdentity?.name?.trim() || "你";
+                                                const cName = character?.name?.trim() || (session.isGroup ? (session.groupName || "对方") : "对方");
+                                                const tTranscript = [
+                                                    `你（${tName}）：${stripT(turn.userContent || "")}`,
+                                                    `${cName}：${stripT(turn.assistantContent || "")}`,
+                                                ].join("\n");
                                                 const localChars = loadCharacters();
+                                                const mainId = session.contactId;
+                                                const mentionedOthers = offlineParticipants.filter((id) => {
+                                                    if (id === mainId) return false;
+                                                    const nm = localChars.find((c) => c.id === id)?.name?.trim();
+                                                    return !!nm && tTranscript.includes(nm);
+                                                });
+                                                const ids: string[] = [mainId, ...mentionedOthers];
+                                                if (includeSelfInFrame && (userIdentity?.faceLockUrl?.trim() || userIdentity?.avatarUrl?.trim())) ids.push("user");
                                                 const mode: "solo" | "pair" | "intimate" | "group" =
                                                     ids.length <= 1 ? "solo"
                                                         : ids.length === 2 ? (OFFLINE_FRAME_INTIMATE_RE.test(turn.framePrompt || "") ? "intimate" : "pair")
