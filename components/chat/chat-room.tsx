@@ -455,6 +455,21 @@ function pickShotVariants(isGroup: boolean): string {
     return [a, b].filter(Boolean).join("；");
 }
 
+// v1.7.144：线下定格的「景别」可选项。free = 导演自由构图（含随机机位多样性）；
+// wide/medium/closeup = 用户显式选定，作为英文硬约束拼进最终生图 prompt（不进导演、不被机翻改坏）。
+type FrameShotMode = "free" | "wide" | "medium" | "closeup";
+const FRAME_SHOT_MODES: { key: FrameShotMode; label: string }[] = [
+    { key: "free", label: "自由构图" },
+    { key: "wide", label: "远景" },
+    { key: "medium", label: "中景" },
+    { key: "closeup", label: "特写" },
+];
+const FRAME_SHOT_MODE_SPEC: Partial<Record<FrameShotMode, string>> = {
+    wide: "WIDE SHOT — full figures and the surrounding environment clearly visible, characters relatively small within the scene, strong sense of space and location, setting prominent.",
+    medium: "MEDIUM SHOT — figures framed roughly from the waist up, environment partially visible, balanced subject and setting.",
+    closeup: "CLOSE-UP — tightly framed on faces and upper body or key details, background softly blurred, intimate detail emphasized.",
+};
+
 type PendingNativeToolCall = {
     id: string;
     name: string;
@@ -1167,6 +1182,8 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     includeSelfInFrame: boolean;
     onToggleIncludeSelf: () => void;
     showFrameSelfToggle: boolean;
+    frameShotMode: FrameShotMode;
+    onSetFrameShotMode: (m: FrameShotMode) => void;
 }>(function OfflineTextInputBar({
     isOfflineGenerating,
     isSpectator,
@@ -1182,9 +1199,12 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
     includeSelfInFrame,
     onToggleIncludeSelf,
     showFrameSelfToggle,
+    frameShotMode,
+    onSetFrameShotMode,
 }, ref) {
     const [inputText, setInputText] = useState("");
     const inputTextRef = useRef("");
+    const [shotMenuOpen, setShotMenuOpen] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     const resetTextareaHeight = () => {
@@ -1322,6 +1342,35 @@ const OfflineTextInputBar = memo(forwardRef<OfflineTextInputHandle, {
                         {includeSelfInFrame ? "含你" : "无你"}
                     </button>
                 )}
+                <div className="frame-shot-wrap">
+                    <button
+                        type="button"
+                        onClick={() => setShotMenuOpen((v) => !v)}
+                        disabled={isCapturingFrame || isOfflineGenerating}
+                        className={`chat-frame-shot-toggle${frameShotMode !== "free" ? " is-on" : ""}`}
+                        title="选择定格的景别：默认「自由构图」由导演自主发挥；也可强制远景 / 中景 / 特写"
+                    >
+                        {FRAME_SHOT_MODES.find((m) => m.key === frameShotMode)?.label ?? "自由构图"}
+                        <span className="frame-shot-caret">▾</span>
+                    </button>
+                    {shotMenuOpen && (
+                        <>
+                            <div className="frame-shot-menu-backdrop" onClick={() => setShotMenuOpen(false)} />
+                            <div className="frame-shot-menu" role="listbox">
+                                {FRAME_SHOT_MODES.map((m) => (
+                                    <button
+                                        key={m.key}
+                                        type="button"
+                                        className={`frame-shot-menu-item${frameShotMode === m.key ? " is-active" : ""}`}
+                                        onClick={() => { onSetFrameShotMode(m.key); setShotMenuOpen(false); }}
+                                    >
+                                        {m.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
                 <button
                     type="button"
                     onClick={() => { if (isOfflineGenerating) onStopGeneration(); else handleSubmit(); }}
@@ -1435,6 +1484,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const hasUserPortrait = !!(userPortraitIdentity?.faceLockUrl?.trim() || userPortraitIdentity?.avatarUrl?.trim());
     // 线下「定格经典画面」是否把自己也画进画面：默认跟随旧行为（有肖像就进镜），可在工具栏临时切换并落盘
     const [includeSelfInFrame, setIncludeSelfInFrame] = useState<boolean>(() => session.offlineFrameIncludeSelf ?? true);
+    // v1.7.144：线下定格景别选择（默认自由构图=导演自主；可选远景/中景/特写作为强制硬约束）
+    const [frameShotMode, setFrameShotMode] = useState<FrameShotMode>("free");
     const applyFrameIncludeSelf = useCallback((value: boolean) => {
         setIncludeSelfInFrame(value);
         updateOfflineFrameIncludeSelf(session.id, value);
@@ -4263,7 +4314,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     // 流程：① 让 AI 当导演，把最近剧情总结成电影感生图提示词（中立、不描五官，脸走锁脸参考图）
     //       ② 复用 handleTextPhotoGenerate 的锁脸生图管线出图
     //       ③ 存进 IndexedDB，作为一条带图记录收进这段线下时光（永不丢）
-    const handleCaptureOfflineFrame = useCallback(async (targetTurnId?: string) => {
+    const handleCaptureOfflineFrame = useCallback(async (targetTurnId?: string, shotMode: FrameShotMode = "free") => {
         if (isCapturingFrame || isOfflineGenerating) return;
         if (offlineTurns.length === 0) {
             showChatToast("先有一段线下剧情，再定格这一帧～");
@@ -4338,8 +4389,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const directorSystem = buildDirectorSystem(castNames, userName);
 
             // v1.7.141：每次随机抽 1–2 个机位倾向注入导演（只引导思考、不进最终 prompt），打破单一构图。
-            const shotHint = pickShotVariants(castNames.length > 2);
-            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和${castNames.length > 2 ? "众人" : "两人"}此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。\n\n构图倾向（仅供参考，可灵活发挥，不必照抄；不要为此牺牲「不看镜头」与「手部自然」的硬要求）：\n${shotHint}。`;
+            // v1.7.144：若用户显式选了景别（远景/中景/特写），则改为强制硬约束（见下方最终 prompt），
+            // 这里不再注入随机倾向、改为明确指令，避免导演在「随机机位」与「强制景别」之间打架。
+            const shotHint = shotMode === "free" ? pickShotVariants(castNames.length > 2) : "";
+            const shotModeZh = shotMode === "wide" ? "远景（全身与环境都入镜，人物在场景中偏小，强调空间与地点）"
+                : shotMode === "medium" ? "中景（人物大致从腰部以上入镜，环境部分可见，主体与场景平衡）"
+                    : shotMode === "closeup" ? "特写（紧贴面部与上半身或关键细节，背景柔化虚化，强调亲密细节）"
+                        : "";
+            const userContent = `【这一条剧情】\n${transcript}\n\n请为这一条写一段电影感生图提示词：先把机位和${castNames.length > 2 ? "众人" : "两人"}此刻的身体动作写明白，再写光影、场景与氛围。\n\n特别重要：如果这段剧情里角色提到了自己换了发型或发色（剪短、染了、烫卷、弄了头发、换了新发型等），务必在画面描述里写明该角色当下的发型发色，不要套用角色卡里的旧模样，也不要凭空编造。${shotHint
+                ? `\n\n构图倾向（仅供参考，可灵活发挥，不必照抄；不要为此牺牲「不看镜头」与「手部自然」的硬要求）：\n${shotHint}。`
+                : shotModeZh
+                    ? `\n\n构图要求（务必执行，不要偏离）：明确采用${shotModeZh}。`
+                    : ""}`;
 
             const directorMessages = [
                 { role: "system", content: directorSystem },
@@ -4407,7 +4468,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 : castIds.length === 2
                     ? (OFFLINE_FRAME_INTIMATE_RE.test(framePrompt) ? "intimate" : "pair")
                     : "group";
-            const shootPrompt = `${framePrompt}。${buildOfflineFrameSpec(poseMode)}`;
+            // v1.7.144：用户显式选了景别时，把英文硬约束拼进最终 prompt（不被机翻、直接约束生图模型）；free 时走随机多样性。
+            const shotModeSpec = shotMode !== "free" ? FRAME_SHOT_MODE_SPEC[shotMode] : "";
+            const shootPrompt = `${framePrompt}。${shotModeSpec ? shotModeSpec + "。" : ""}${buildOfflineFrameSpec(poseMode)}`;
             // 生图：被内容安全审核拦下时，不原样重试，而是把镜头拉远（中远景/背影/剪影/环境空镜）再试一次。
             // 这是「让画面更克制」，不是绕审核；多数亲密/贴身构图在远景下就能正常出图。
             let dataUrl: string | null = null;
@@ -4495,7 +4558,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
         setFrameRegenerating(true);
         try {
-            const shotPrompt = `${draft}。${framePreview.shootSpec}`;
+            const shotModeSpec = frameShotMode !== "free" ? FRAME_SHOT_MODE_SPEC[frameShotMode] : "";
+            const shotPrompt = `${draft}。${shotModeSpec ? shotModeSpec + "。" : ""}${framePreview.shootSpec}`;
             const url = await handleTextPhotoGenerate(shotPrompt, framePreview.castIds, framePreview.hairOverride);
             if (!url) throw new Error("生图返回为空，请重试。");
             const blob = dataUrlToBlob(url);
@@ -4520,7 +4584,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         } finally {
             setFrameRegenerating(false);
         }
-    }, [framePreview, frameRegenerating, frameDraft, handleTextPhotoGenerate, session.id, setOfflineTurns, showChatToast]);
+    }, [framePreview, frameRegenerating, frameDraft, handleTextPhotoGenerate, session.id, setOfflineTurns, showChatToast, frameShotMode]);
 
     const handleTextPhotoSend = useCallback((prompt: string, dataUrl: string) => {
         setRichModal(null);
@@ -6114,7 +6178,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 <div className="flex">
                     <button
                         className="ctx-menu-btn ctx-menu-btn-frame"
-                        onClick={() => { setActiveOfflineTarget(null); void handleCaptureOfflineFrame(turn.id); }}
+                        onClick={() => { setActiveOfflineTarget(null); void handleCaptureOfflineFrame(turn.id, frameShotMode); }}
                     >定格这一帧</button>
                 </div>
                 <div data-menu-triangle className="ctx-menu-triangle absolute -top-[6px] w-0 h-0" />
@@ -7113,7 +7177,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                         type="button"
                                         className="chat-offline-frame-btn"
                                         disabled={isCapturingFrame || isOfflineGenerating || !!session.isSpectator}
-                                        onClick={(e) => { e.stopPropagation(); void handleCaptureOfflineFrame(turn.id); }}
+                                        onClick={(e) => { e.stopPropagation(); void handleCaptureOfflineFrame(turn.id, frameShotMode); }}
                                         title="把这一条剧情定格成一张图（只总结这一条）"
                                     >
                                         {isCapturingFrame && capturingTurnId === turn.id
@@ -7710,11 +7774,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     onToggleEmojiPanel={() => { setShowEmojiPanel(!showEmojiPanel); setShowStickerPanel(false); setShowPlusMenu(false); }}
                     onSendText={handleOfflineSend}
                     onStopGeneration={clearOfflineGeneration}
-                    onCaptureFrame={handleCaptureOfflineFrame}
+                    onCaptureFrame={() => handleCaptureOfflineFrame(undefined, frameShotMode)}
                     isCapturingFrame={isCapturingFrame}
                     includeSelfInFrame={includeSelfInFrame}
                     onToggleIncludeSelf={() => applyFrameIncludeSelf(!includeSelfInFrame)}
                     showFrameSelfToggle={hasUserPortrait}
+                    frameShotMode={frameShotMode}
+                    onSetFrameShotMode={setFrameShotMode}
                 />
             ) : (
             <ChatTextInputBar

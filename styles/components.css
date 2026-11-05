@@ -119,6 +119,65 @@
   text-decoration: none;
 }
 
+/* v1.7.144：线下定格「景别」折叠选择器 */
+.frame-shot-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.chat-frame-shot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: calc(12px * var(--app-text-scale, 1));
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--c-border, rgba(128, 128, 128, 0.35));
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chat-frame-shot-toggle:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-frame-shot-toggle.is-on {
+  border-color: var(--c-accent, #7c9cff);
+  color: var(--c-accent, #7c9cff);
+}
+.frame-shot-caret { font-size: 9px; opacity: 0.7; }
+.frame-shot-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.frame-shot-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  background: var(--c-bg, #fff);
+  border: 1px solid var(--c-border, rgba(128, 128, 128, 0.35));
+  border-radius: 10px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 61;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  min-width: 116px;
+}
+.frame-shot-menu-item {
+  font-size: calc(13px * var(--app-text-scale, 1));
+  padding: 7px 10px;
+  border-radius: 7px;
+  text-align: left;
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  border: none;
+}
+.frame-shot-menu-item:hover { background: var(--c-hover, rgba(128, 128, 128, 0.12)); }
+.frame-shot-menu-item.is-active { color: var(--c-accent, #7c9cff); font-weight: 600; }
+
 .modal-dialog {
   width: 80%;
   max-width: 300px;
