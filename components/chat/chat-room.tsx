@@ -1537,9 +1537,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             applyOfflineParticipants(offlineParticipants.filter((id) => id !== characterId));
             return;
         }
-        const base = offlineParticipants.includes(session.contactId)
+        // 单聊时在场名单需含主角色本身（contactId）；群聊时 contactId 是「群」不是人物，
+        // 绝不能把它加进 offlineParticipants，否则群 id 会污染在场名单、连带定格 cast 算出群名当人名。
+        const base = session.isGroup
             ? [...offlineParticipants]
-            : [session.contactId, ...offlineParticipants];
+            : (offlineParticipants.includes(session.contactId) ? [...offlineParticipants] : [session.contactId, ...offlineParticipants]);
         base.push(characterId);
         applyOfflineParticipants(base);
     }, [offlineParticipants, session.contactId, applyOfflineParticipants]);
@@ -4344,9 +4346,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             showChatToast("这一条还没有可定格的剧情内容。");
             return;
         }
+        const speakerLabel = session.isGroup ? "群聊内容" : charName;
         const transcript = [
             `你（${userName}）：${stripTags(targetTurn.userContent || "").slice(0, 700)}`,
-            `${charName}：${stripTags(targetTurn.assistantContent || "").slice(0, 900)}`,
+            `${speakerLabel}：${stripTags(targetTurn.assistantContent || "").slice(0, 900)}`,
         ].join("\n");
         if (!transcript.trim()) {
             showChatToast("这段剧情还没有可定格的内容。");
@@ -4377,13 +4380,21 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const localChars = loadCharacters();
             const nameOf = (id: string): string =>
                 id === "user" ? userName : (localChars.find((c) => c.id === id)?.name?.trim() || id);
-            const mainId = session.contactId;
-            const mentionedOthers = offlineParticipants.filter((id) => {
-                if (id === mainId) return false;
+            // 群聊时 session.contactId 是「群」本身（不是某个成员角色），绝不能把它当人物塞进 cast，
+            // 否则提示词里会出现群名当人名 → 张冠李戴。候选成员池先排除群 id，双保险。
+            const isGroupSession = session.isGroup;
+            const memberPool = offlineParticipants.filter((id) => id !== session.contactId);
+            const mainId = isGroupSession ? null : session.contactId;
+            const mentionedOthers = memberPool.filter((id) => {
                 const nm = localChars.find((c) => c.id === id)?.name?.trim();
                 return !!nm && transcript.includes(nm);
             });
-            const castIds: string[] = [mainId, ...mentionedOthers];
+            const castIds: string[] = mainId
+                ? [mainId, ...mentionedOthers]
+                : (() => {
+                    const anchor = mentionedOthers[0] ?? memberPool[0];
+                    return [anchor, ...mentionedOthers.filter((id) => id !== anchor)];
+                })();
             if (includeSelfInFrame && (u?.faceLockUrl?.trim() || u?.avatarUrl?.trim())) castIds.push("user");
             const castNames = castIds.map((id) => nameOf(id));
             const directorSystem = buildDirectorSystem(castNames, userName);
@@ -7135,19 +7146,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                 // 不再把群里所有在场者都算进来（否则历史图重生成会又画回满屏人）。
                                                 const stripT = (s: string): string => s.replace(/\s+/g, " ").trim();
                                                 const tName = userIdentity?.name?.trim() || "你";
-                                                const cName = character?.name?.trim() || (session.isGroup ? (session.groupName || "对方") : "对方");
+                                                const tLabel = session.isGroup ? "群聊内容" : (character?.name?.trim() || "对方");
                                                 const tTranscript = [
                                                     `你（${tName}）：${stripT(turn.userContent || "")}`,
-                                                    `${cName}：${stripT(turn.assistantContent || "")}`,
+                                                    `${tLabel}：${stripT(turn.assistantContent || "")}`,
                                                 ].join("\n");
                                                 const localChars = loadCharacters();
-                                                const mainId = session.contactId;
-                                                const mentionedOthers = offlineParticipants.filter((id) => {
-                                                    if (id === mainId) return false;
+                                                // 群聊时 session.contactId 是「群」本身，绝不能当人物塞进 cast（否则群名当人名）。
+                                                const isGroupSession = session.isGroup;
+                                                const memberPool = offlineParticipants.filter((id) => id !== session.contactId);
+                                                const mainId = isGroupSession ? null : session.contactId;
+                                                const mentionedOthers = memberPool.filter((id) => {
                                                     const nm = localChars.find((c) => c.id === id)?.name?.trim();
                                                     return !!nm && tTranscript.includes(nm);
                                                 });
-                                                const ids: string[] = [mainId, ...mentionedOthers];
+                                                const ids: string[] = mainId
+                                                    ? [mainId, ...mentionedOthers]
+                                                    : (() => {
+                                                        const anchor = mentionedOthers[0] ?? memberPool[0];
+                                                        return [anchor, ...mentionedOthers.filter((id) => id !== anchor)];
+                                                    })();
                                                 if (includeSelfInFrame && (userIdentity?.faceLockUrl?.trim() || userIdentity?.avatarUrl?.trim())) ids.push("user");
                                                 const mode: "solo" | "pair" | "intimate" | "group" =
                                                     ids.length <= 1 ? "solo"

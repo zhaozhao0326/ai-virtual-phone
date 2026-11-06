@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.144";
+export const APP_VERSION = "1.7.145";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.145",
+    date: "2026-11-06",
+    title: "群聊线下定格：修复以「群名」锁人导致张冠李戴",
+    highlights: [
+      "修复：群聊线下定格的生图提示词里，出镜阵容此前用了「群」本身（session.contactId = 群 id / 群名）当人物，于是提示词出现群名当人名，导演和生图模型都不认识 → 张冠李戴、人物认错。现在群聊出镜阵容严格只从真实成员里挑，绝不混入群 id。",
+      "双保险：① 候选成员池先排除群 id；② 「邀请在场」逻辑在群聊时不再把群 id 写进 offlineParticipants（避免长期污染名单）；③ 给导演的剧情片段在群聊时改用中性「群聊内容」前缀，不再把群名当说话人灌进去。主定格与历史图「重新生成」两个入口同步修复。",
+    ],
+  },
   {
     version: "1.7.144",
     date: "2026-11-06",
