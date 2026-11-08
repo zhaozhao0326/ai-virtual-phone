@@ -20,6 +20,7 @@ import {
     normalizeVisionImagePromptLimit,
     createResponseBatchId,
     createToolExecutionId,
+    getChatSessionById,
 } from "./chat-storage";
 import { extractTextToolDirectiveText, stripTextToolDirectives } from "./text-tool-protocol";
 import type { ApiConfig, PresetConfig, Prompt, PromptOrderEntry, RegexConfig } from "./settings-types";
@@ -1978,6 +1979,17 @@ export async function buildChatPromptMessages(
         musicTogether: musicTogetherPromptText,
         characterEmotion: characterEmotionPromptText,
     });
+
+    // 导演执导指令：从存储读取最新值（不依赖内存 session 是否已刷新），
+    // 作为 system 消息注入，让角色本轮起遵循后台沟通沉淀的表演要求。
+    // 放在 token 刹车之前——system 角色受保护不会被裁掉（enforceTotalTokenBudget 首轮跳过 system）。
+    const directiveSession = getChatSessionById(session.id);
+    if (directiveSession?.directorDirective?.trim()) {
+        llmMessages.push({
+            role: "system",
+            content: `【导演执导】你正在被片场导演执导。以下是从你与用户的后台沟通中沉淀下来的执导要求，请在本轮及后续演绎中遵循（除非用户当下的新剧情明显与之冲突）：\n${directiveSession.directorDirective.trim()}`,
+        });
+    }
 
     // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，
     // 否则模型会直接报错"超出 token 上限"而无法回复。超出时优先裁掉

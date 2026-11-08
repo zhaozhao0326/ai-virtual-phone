@@ -85,6 +85,18 @@ export type ChatSession = {
     lifelikeDelayMin?: number;
     /** 延迟最大秒数，默认 30 */
     lifelikeDelayMax?: number;
+    /** 导演对讲机：用户与导演（AI 表演指导）的私密侧聊记录，不进主聊天气泡 */
+    directorLog?: DirectorMessage[];
+    /** 导演当前生效的执导指令（从侧聊沉淀而来），注入角色下一轮上下文，直到被清空/更新 */
+    directorDirective?: string;
+};
+
+/** 导演对讲机侧聊的単条消息 */
+export type DirectorMessage = {
+    id: string;
+    role: "user" | "assistant";
+    content: string;
+    createdAt: string;
 };
 
 export type ChatMessageStatus = "sending" | "sent" | "read" | "failed";
@@ -1139,6 +1151,22 @@ export function saveChatSessions(sessions: ChatSession[]) {
     }
     if (normalized.changed || redirectedMessages > 0 || refreshed.changed) dbReplaceSessions(refreshed.items);
     else dbPutSessions(refreshed.items);
+}
+
+/** 按 id 取单个会话（找不到返回 undefined）。用于生成前就地读取最新持久化字段（如执导指令）。 */
+export function getChatSessionById(sessionId: string): ChatSession | undefined {
+    return loadChatSessions().find(s => s.id === sessionId);
+}
+
+/** 局部更新单个会话的若干字段，合并写入并落库。 */
+export function updateChatSession(sessionId: string, patch: Partial<ChatSession>): ChatSession | undefined {
+    const sessions = loadChatSessions();
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    if (idx < 0) return undefined;
+    const updated: ChatSession = { ...sessions[idx], ...patch };
+    sessions[idx] = updated;
+    saveChatSessions(sessions);
+    return updated;
 }
 
 /** 线下场景「在场角色」集合：默认回退到主角色（群则回退到 participantIds）。 */

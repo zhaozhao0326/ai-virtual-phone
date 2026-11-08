@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, Fragment, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { ChatSession, ChatMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, updateOfflineFrameIncludeSelf, resolveOfflineParticipantChanges } from "@/lib/chat-storage";
+import { ChatSession, ChatMessage, DirectorMessage, CHAT_APP_SETTINGS_UPDATED_EVENT, CHAT_INITIAL_VISIBLE_MESSAGE_COUNT, CHAT_LOAD_MORE_MESSAGE_COUNT, CHAT_REQUEST_REPLY_EVENT, loadChatAppSettings, loadChatMessages, loadChatContacts, loadChatSessions, saveChatSessions, pushChatMessage, updateChatMessage, deleteChatMessage, deleteChatMessagesFrom, deleteChatMessagesByIds, retractChatMessage, editChatMessage, updateMessageMediaData, replaceResponseBatchWithParts, replaceGroupResponseRound, isReadingDiscussMessage, isSystemInstructionMessage, createResponseBatchId, createResponseRoundId, getLatestStateValues, getLatestCharacterStateValues, compareChatMessages, getOfflineParticipants, updateOfflineParticipants, updateOfflineFrameIncludeSelf, resolveOfflineParticipantChanges, updateChatSession, getChatSessionById } from "@/lib/chat-storage";
 import type { StateValue } from "@/lib/chat-storage";
 import { appendCheckPhoneUserPhoto, USER_CLASSIC_FRAMES_ALBUM_ID, USER_CLASSIC_FRAMES_ALBUM_TITLE, USER_TEXT_PHOTO_ALBUM_ID, USER_TEXT_PHOTO_ALBUM_TITLE } from "@/lib/checkphone-user-photos";
 import { parseStateValues, mergeStateValues } from "@/lib/state-value-parser";
@@ -17,6 +17,7 @@ import { EmojiPanel, StickerPanel } from "./emoji-panel";
 import { StickerSearchSuggest } from "./sticker-search-suggest";
 import { StateValuesPanel } from "./state-values-panel";
 import { generateChatCompletion, generateOfflineChatCompletion, flattenCompletionResult, ChatEngineError } from "@/lib/chat-engine";
+import { generateDirectorReply } from "@/lib/director-engine";
 import { formatOfflineTurnXml as formatOfflineTurnXmlShared, buildOfflinePromptHistory as buildOfflinePromptHistoryShared } from "@/lib/offline-prompt-builder";
 import { getStatusRegionConfig, isCustomStatusRegionActive, resolveOfflineRenderHtml, STATUS_REGION_UPDATED_EVENT } from "@/lib/chat-status-region";
 import { CustomStatusFrame } from "@/components/chat/custom-status-frame";
@@ -805,13 +806,10 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onSendText: (text: string) => boolean;
     onStopGeneration: () => void;
     onTriggerAIResponse: () => void;
-	onSendSticker: (name: string, url?: string) => void;
+    onSendSticker: (name: string, url?: string) => void;
     // 导演对讲机
     showNarratorDialog: boolean;
-    narratorText: string;
-    setNarratorText: (text: string) => void;
     setShowNarratorDialog: (show: boolean) => void;
-    onInjectNarration: (text: string) => void;
     session: ChatSession;
 }>(function ChatTextInputBar({
     characterName,
@@ -848,10 +846,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     onSendSticker,
     // 导演对讲机
     showNarratorDialog,
-    narratorText,
-    setNarratorText,
     setShowNarratorDialog,
-    onInjectNarration,
 }, ref) {
     const [inputText, setInputText] = useState("");
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -866,6 +861,101 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
     }, [muteUntilMs]);
     const muteRemainingMs = muteUntilMs > muteNowTick ? muteUntilMs - muteNowTick : 0;
     const inputLocked = isSpectator || muteRemainingMs > 0 || session.dissolved === true;
+
+    // ── 导演对讲机：用户与导演（AI 表演指导）的私密侧聊 ──
+    const [directorLog, setDirectorLog] = useState<DirectorMessage[]>([]);
+    const [directorDirective, setDirectorDirective] = useState<string>("");
+    const [directorInput, setDirectorInput] = useState("");
+    const [directorBusy, setDirectorBusy] = useState(false);
+    const directorScrollRef = useRef<HTMLDivElement | null>(null);
+
+    // 每次打开面板，从存储读取最新（避免依赖父层可能滞后的 session）
+    useEffect(() => {
+        if (!showNarratorDialog) return;
+        const s = getChatSessionById(session.id);
+        setDirectorLog(s?.directorLog ?? []);
+        setDirectorDirective(s?.directorDirective ?? "");
+        setDirectorInput("");
+        setDirectorBusy(false);
+    }, [showNarratorDialog, session.id]);
+
+    // 新消息到达或思考中时滚动到底
+    useEffect(() => {
+        if (!showNarratorDialog) return;
+        const el = directorScrollRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+    }, [showNarratorDialog, directorLog, directorBusy]);
+
+    const persistDirector = useCallback((patch: Partial<ChatSession>) => {
+        updateChatSession(session.id, patch);
+    }, [session.id]);
+
+    const sendDirectorMessage = useCallback(async () => {
+        const text = directorInput.trim();
+        if (!text || directorBusy) return;
+        const userMsg: DirectorMessage = {
+            id: `dir-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            role: "user",
+            content: text,
+            createdAt: new Date().toISOString(),
+        };
+        const nextLog = [...directorLog, userMsg];
+        setDirectorLog(nextLog);
+        setDirectorInput("");
+        setDirectorBusy(true);
+        persistDirector({ directorLog: nextLog });
+        try {
+            const res = await generateDirectorReply(session, nextLog);
+            if (res.error) {
+                const errMsg: DirectorMessage = {
+                    id: `dir-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                    role: "assistant",
+                    content: `⚠️ 导演暂时没回应：${res.error}`,
+                    createdAt: new Date().toISOString(),
+                };
+                const withErr = [...nextLog, errMsg];
+                setDirectorLog(withErr);
+                persistDirector({ directorLog: withErr });
+                return;
+            }
+            const dirMsg: DirectorMessage = {
+                id: `dir-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                role: "assistant",
+                content: res.reply || "（导演没有更多话要说）",
+                createdAt: new Date().toISOString(),
+            };
+            const withDir = [...nextLog, dirMsg];
+            setDirectorLog(withDir);
+            if (res.directive) {
+                setDirectorDirective(res.directive);
+                persistDirector({ directorLog: withDir, directorDirective: res.directive });
+            } else {
+                persistDirector({ directorLog: withDir });
+            }
+        } catch (err) {
+            const errMsg: DirectorMessage = {
+                id: `dir-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                role: "assistant",
+                content: `⚠️ 导演调用出错：${err instanceof Error ? err.message : String(err)}`,
+                createdAt: new Date().toISOString(),
+            };
+            const withErr = [...nextLog, errMsg];
+            setDirectorLog(withErr);
+            persistDirector({ directorLog: withErr });
+        } finally {
+            setDirectorBusy(false);
+        }
+    }, [directorInput, directorBusy, directorLog, session, persistDirector]);
+
+    const stopDirectorDirective = useCallback(() => {
+        setDirectorDirective("");
+        persistDirector({ directorDirective: "" });
+    }, [persistDirector]);
+
+    const clearDirectorLog = useCallback(() => {
+        setDirectorLog([]);
+        persistDirector({ directorLog: [] });
+    }, [persistDirector]);
 
     const resetTextareaHeight = () => {
         if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -1071,55 +1161,101 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                 <ChatPluginSlot name="chat.inputToolbar" slotProps={{ isGroup }} className="chat-plugin-input-toolbar" />
             )}
 
-            {/* 召唤小卷 —— 导演对讲机 */}
+            {/* 召唤小卷 —— 导演对讲机（与导演私密侧聊） */}
             {showNarratorDialog && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 mx-3 bg-white dark:bg-[var(--c-bg-panel)] border border-[var(--c-border)] rounded-xl p-4 shadow-lg z-50">
-                    <div className="flex items-center justify-between mb-3">
-                        <span className="ts-13 font-semibold text-[var(--c-text)]">🎬 导演对讲机</span>
-                        <button
-                            onClick={() => { setShowNarratorDialog(false); setNarratorText(""); }}
-                            className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-[var(--c-hover)] text-[var(--c-text-subtle)]"
-                            aria-label="关闭"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                        </button>
+                <div className="absolute bottom-full left-0 right-0 mb-2 mx-3 bg-white dark:bg-[var(--c-bg-panel)] border border-[var(--c-border)] rounded-xl shadow-lg z-50 flex flex-col max-h-[70vh]">
+                    {/* 头部 */}
+                    <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-[var(--c-border)]">
+                        <div className="flex flex-col">
+                            <span className="ts-13 font-semibold text-[var(--c-text)]">🎬 导演对讲机</span>
+                            <span className="ts-11 text-[var(--c-text-subtle)]">与导演私下沟通，调教角色演绎</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={clearDirectorLog}
+                                className="ts-11 text-[var(--c-text-subtle)] hover:text-[var(--c-accent)]"
+                                title="清空对话（不影响主聊天）"
+                            >
+                                清空
+                            </button>
+                            <button
+                                onClick={() => setShowNarratorDialog(false)}
+                                className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-[var(--c-hover)] text-[var(--c-text-subtle)]"
+                                aria-label="关闭"
+                            >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            </button>
+                        </div>
                     </div>
-                    <p className="ts-11 text-[var(--c-text-subtle)] mb-3">输入旁白/事件描述，直接注入当前聊天。角色会自动做出反应。</p>
-                    <textarea
-                        className="w-full h-20 border border-[var(--c-border)] rounded-lg p-2.5 ts-13 bg-[var(--c-bg)] text-[var(--c-text)] resize-none focus:outline-none focus:border-[var(--c-accent)]"
-                        placeholder="例如：突然停电了，房间里一片漆黑……"
-                        value={narratorText}
-                        onChange={(e) => setNarratorText(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                if (narratorText.trim()) {
-                                    onInjectNarration(narratorText.trim());
-                                    setNarratorText("");
-                                    setShowNarratorDialog(false);
-                                }
-                            }
-                        }}
-                    />
-                    <div className="flex justify-end gap-2 mt-3">
-                        <button
-                            onClick={() => { setShowNarratorDialog(false); setNarratorText(""); }}
-                            className="px-3 py-1.5 ts-12 rounded-lg border border-[var(--c-border)] text-[var(--c-text-subtle)] hover:bg-[var(--c-hover)]"
-                        >
-                            取消
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (narratorText.trim()) {
-                                    onInjectNarration(narratorText.trim());
-                                    setNarratorText("");
-                                    setShowNarratorDialog(false);
+
+                    {/* 当前执导指令横幅 */}
+                    {directorDirective && (
+                        <div className="mx-3 mt-3 px-3 py-2 rounded-lg bg-[var(--c-hover)] border border-[var(--c-accent)]">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="ts-11 text-[var(--c-text)]">
+                                    <span className="font-semibold">📋 当前执导指令（持续生效）</span>
+                                    <p className="ts-12 mt-1 whitespace-pre-wrap">{directorDirective}</p>
+                                </div>
+                                <button
+                                    onClick={stopDirectorDirective}
+                                    className="shrink-0 ts-11 px-2 py-1 rounded-md border border-[var(--c-border)] text-[var(--c-text-subtle)] hover:bg-[var(--c-bg)]"
+                                >
+                                    停止生效
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 消息列表 */}
+                    <div ref={directorScrollRef} className="flex-1 overflow-y-auto px-3 py-3 flex flex-col gap-2 min-h-[120px] max-h-[40vh]">
+                        {directorLog.length === 0 && !directorBusy && (
+                            <p className="ts-11 text-[var(--c-text-subtle)] text-center mt-6 leading-relaxed">
+                                和导演说说你的想法吧——比如「他刚才语气太黏了」「这段情绪不够」。<br />
+                                导演会回看演出记录，沟通好后你的下一句剧情就会按执导重新演绎。
+                            </p>
+                        )}
+                        {directorLog.map((m) => (
+                            <div key={m.id} className={`flex flex-col max-w-[85%] ${m.role === "user" ? "self-end items-end" : "self-start items-start"}`}>
+                                <span className="ts-10 text-[var(--c-text-subtle)] mb-0.5">{m.role === "user" ? "我" : "导演"}</span>
+                                <div className={`ts-12 px-3 py-2 rounded-2xl whitespace-pre-wrap ${
+                                    m.role === "user"
+                                        ? "bg-[var(--c-accent)] text-white rounded-tr-sm"
+                                        : "bg-[var(--c-bg)] text-[var(--c-text)] border border-[var(--c-border)] rounded-tl-sm"
+                                }`}>
+                                    {m.content}
+                                </div>
+                            </div>
+                        ))}
+                        {directorBusy && (
+                            <div className="self-start flex flex-col max-w-[85%] items-start">
+                                <span className="ts-10 text-[var(--c-text-subtle)] mb-0.5">导演</span>
+                                <div className="ts-12 px-3 py-2 rounded-2xl rounded-tl-sm bg-[var(--c-bg)] text-[var(--c-text-subtle)] border border-[var(--c-border)]">
+                                    导演正在思考…
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* 输入区 */}
+                    <div className="border-t border-[var(--c-border)] p-3 flex items-end gap-2">
+                        <textarea
+                            className="flex-1 h-12 max-h-28 border border-[var(--c-border)] rounded-lg p-2.5 ts-12 bg-[var(--c-bg)] text-[var(--c-text)] resize-none focus:outline-none focus:border-[var(--c-accent)]"
+                            placeholder="对导演说点什么…（Enter 发送 / Shift+Enter 换行）"
+                            value={directorInput}
+                            onChange={(e) => setDirectorInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void sendDirectorMessage();
                                 }
                             }}
-                            disabled={!narratorText.trim()}
-                            className="px-3 py-1.5 ts-12 rounded-lg bg-[var(--c-accent)] text-white disabled:opacity-40 hover:opacity-90"
+                        />
+                        <button
+                            onClick={() => void sendDirectorMessage()}
+                            disabled={!directorInput.trim() || directorBusy}
+                            className="px-3 py-2 ts-12 rounded-lg bg-[var(--c-accent)] text-white disabled:opacity-40 hover:opacity-90"
                         >
-                            注入旁白
+                            发送
                         </button>
                     </div>
                 </div>
@@ -1655,7 +1791,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [cloudDeletePending, setCloudDeletePending] = useState<{ count: number } | null>(null);
     const [showPlusMenu, setShowPlusMenu] = useState(false);
     const [showNarratorDialog, setShowNarratorDialog] = useState(false);
-    const [narratorText, setNarratorText] = useState("");
     const [customPlusActions, setCustomPlusActions] = useState<RegisteredCustomAppChatPlusAction[]>(() => loadCustomAppChatPlusActions());
     const [activeCustomChatPlus, setActiveCustomChatPlus] = useState<ActiveCustomChatPlus | null>(null);
     const [showSettings, setShowSettings] = useState(false);
@@ -7834,12 +7969,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 onStopGeneration={clearStuckGeneration}
                 onTriggerAIResponse={triggerAIResponse}
                 onSendSticker={(name, url) => { setShowStickerPanel(false); sendRichMessage("sticker", { label: name, stickerUrl: url }); }}
-                narratorText={narratorText}
                 session={session}
                 showNarratorDialog={showNarratorDialog}
-                setNarratorText={setNarratorText}
                 setShowNarratorDialog={setShowNarratorDialog}
-                onInjectNarration={(text) => pushChatMessage({ sessionId: session.id, role: "system", content: "📖 " + text })}
             />
             ))}
 

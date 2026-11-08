@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.145";
+export const APP_VERSION = "1.7.146";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.146",
+    date: "2026-11-08",
+    title: "召唤小卷：导演对讲机升级为「真后台导演」",
+    highlights: [
+      "把原来只会「注入旁白气泡」的导演对讲机，改造成用户与导演（AI 表演指导）的私密双向侧聊：导演能回看这段戏的最近演出记录，回答你关于角色演绎的疑问、调教语气/情绪/距离。",
+      "沟通达成共识后，导演会在末尾沉淀一条「执导指令」（持续生效），并注入角色下一轮上下文——你关掉对讲机、在主聊天框输入新剧情，角色就会按执导重新演绎。指令横幅可随时「停止生效」，侧聊可「清空」（都不影响主聊天记录）。",
+      "侧聊记录与执导指令按会话独立存储（ChatSession.directorLog / directorDirective），刷新/重开都在；导演回复使用角色已绑定的模型，沿用简单调用并关掉思考以省 token。",
+    ],
+  },
   {
     version: "1.7.145",
     date: "2026-11-06",
