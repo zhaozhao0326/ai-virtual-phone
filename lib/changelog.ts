@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.148";
+export const APP_VERSION = "1.7.149";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.149",
+    date: "2026-11-14",
+    title: "群聊生图锁脸修复：参考图取图兜底",
+    highlights: [
+      "修复群聊生图「锁不住脸 / 出来不认识的人」：角色锁脸参考图取图此前只认 data: URL 与 IndexedDB key，面具头像常存成 http(s) URL，直接丢给 getChatImageFromIndexedDB 必失败，导致参考图整包丢失、退化成纯文字生图。新增 resolveFaceLockDataUrl 兜底（data: 直用 / http(s) fetch 转 data URL / key 走 IndexedDB），并在参考图失效时回退到角色头像。",
+      "群聊默认勾选全部成员时若 >4 人，会与会话生图弹窗的 4 人上限冲突、使「生成」按钮变灰（误以为生图坏了）；现 >4 人只默认前 4 个，其余由用户手动勾加。",
+    ],
+  },
   {
     version: "1.7.148",
     date: "2026-11-14",

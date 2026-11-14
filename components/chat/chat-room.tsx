@@ -4263,11 +4263,46 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // 其余成员不进 selectedIds，生图管线既不会描述他们、也不会带他们的锁脸参考图（只锁1人）。
         // 非群（单角色）仍只勾主角色本身。
         const charIds = session.isGroup ? textPhotoParticipantIds : textPhotoParticipantIds.slice(0, 1);
-        charIds.forEach((cid) => {
+        // v1.7.149：TextPhotoModal 硬限 4 人（canAct 要求 selectedCount<=4），群聊 >4 人时若全选会
+        // 让「生成」按钮变灰（用户误以为生图坏了）。故 >4 时只默认前 4 个，其余由用户手动加。
+        const cappedCharIds = charIds.length > 4 ? charIds.slice(0, 4) : charIds;
+        cappedCharIds.forEach((cid) => {
             if (textPhotoParticipants.some((p) => p.id === cid)) ids.push(cid);
         });
         return ids;
     }, [textPhotoParticipants, textPhotoParticipantIds, session.isGroup]);
+
+    // v1.7.149：锁脸参考图取图兜底。
+    // 旧逻辑只认 data: URL（直接用）与 IndexedDB key（getChatImageFromIndexedDB）；
+    // 群聊成员的头像/参考图常存成 http(s) URL（面具头像常见），直接丢给 getChatImageFromIndexedDB 必失败，
+    // 导致 refImages 整包丢失、生图退化成纯文字 → 表现就是「群聊生图锁不住脸、出来不认识的人」。
+    // 这里补上 http(s) → fetch 转 data URL 兜底，让头像也能当锁脸参考图（CORS 失败也只是回退 null，不更糟）。
+    const resolveFaceLockDataUrl = async (source: string | null | undefined): Promise<string | null> => {
+        if (!source || typeof source !== "string") return null;
+        const s = source.trim();
+        if (s.startsWith("data:image/")) return s;
+        if (/^https?:\/\//i.test(s)) {
+            try {
+                const r = await fetch(s, { cache: "force-cache" });
+                if (!r.ok) return null;
+                const blob = await r.blob();
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                    const fr = new FileReader();
+                    fr.onload = () => resolve(typeof fr.result === "string" ? fr.result : "");
+                    fr.onerror = () => reject(new Error("read failed"));
+                    fr.readAsDataURL(blob);
+                });
+                return dataUrl.startsWith("data:image/") ? dataUrl : null;
+            } catch {
+                return null;
+            }
+        }
+        try {
+            return await getChatImageFromIndexedDB(s);
+        } catch {
+            return null;
+        }
+    };
 
     // v1.7.135 起第 4 参 opts.cinematic 让「线上生图」（聊天生图弹窗）也能套电影感规格；
     // v1.7.148：线上不再复用线下定格的 buildOfflineFrameSpec（那套含「不看镜头」约束，只属于线下抓拍），
@@ -4285,7 +4320,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // v1.7.109：锁脸参考图统一 1024 上限（NAI 另有 pad 到官方尺寸；OpenAI 1024 脸细节够、又不撑爆 Vercel 4.5MB 请求体）
         const refMaxSize = 1024;
 
-        const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null; hasReference?: boolean }[] = [];
+        const specList: { id: string; name: string; anchor?: string; faceLockSource?: string | null; avatarFallback?: string | null; hasReference?: boolean }[] = [];
         for (const id of selectedIds) {
             if (id === "user") {
                 const bits: string[] = [];
@@ -4299,6 +4334,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     name: u?.name?.trim() || "你",
                     anchor: bits.length ? bits.join("，") : undefined,
                     faceLockSource: faceLock,
+                    avatarFallback: null,
                     // v1.7.31：明确标注「谁有参考图」，服务端按此序列紧凑分配 {charN} 锚点，
                     // 避免中间缺图的人挤占索引导致后面的脸全部错位（参考图张冠李戴）
                     hasReference: Boolean(faceLock),
@@ -4317,14 +4353,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     || (c.briefPersona?.trim() ? c.briefPersona.trim().slice(0, 48) : undefined);
                 if (roleAppearance) roleBits.push(roleAppearance);
                 // v1.7.32：优先用角色参考图（生图设置里上传的），没有就用角色头像兜底——
-                // 与角色发图链路一致，保证「没配参考图的角色」在文字图片里也能锁上脸
-                const faceSource = ref?.assetId || c.avatar?.trim() || null;
+                // 与角色发图链路一致，保证「没配参考图的角色」在文字图片里也能锁上脸。
+                // v1.7.149：拆成 faceLockSource（优先 ref.assetId）+ avatarFallback（头像 URL），
+                // 取图时先试参考图、失败再回退头像——避免「assetId 失效但头像可用」时被直接判死。
+                const faceLockSource = ref?.assetId || null;
+                const avatarFallback = c.avatar?.trim() || null;
                 specList.push({
                     id,
                     name: c.name,
                     anchor: roleBits.length ? roleBits.join("，") : undefined,
-                    faceLockSource: faceSource,
-                    hasReference: Boolean(faceSource),
+                    faceLockSource,
+                    avatarFallback,
+                    hasReference: Boolean(faceLockSource || avatarFallback),
                 });
             }
         }
@@ -4341,18 +4381,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         // hasReference 仍为 true，会导致文字外观被一起丢掉 → 画面里出现无名无貌的路人。
         const gotRefIds = new Set<string>();
         for (const s of specList) {
-            if (!s.faceLockSource) continue;
-            let raw: string | null = null;
-            if (s.id === "user" || s.faceLockSource.startsWith("data:")) {
-                // 面具锁脸图/头像兜底是 data URL，直接用；参考图 assetId 才走 IndexedDB
-                raw = s.faceLockSource;
-            } else {
-                try {
-                    raw = await getChatImageFromIndexedDB(s.faceLockSource);
-                } catch {
-                    raw = null;
-                }
-            }
+            if (!s.faceLockSource && !s.avatarFallback) continue;
+            // v1.7.149：先试参考图，失败（assetId 失效 / IndexedDB 被清）再回退头像；
+            // 两种来源都走 resolveFaceLockDataUrl，统一处理 data: / http(s) / key 三种形态。
+            let raw: string | null = await resolveFaceLockDataUrl(s.faceLockSource);
+            if (!raw && s.avatarFallback) raw = await resolveFaceLockDataUrl(s.avatarFallback);
             if (!raw) continue;
             // 用户锁脸对称裁脸：与角色参考图裁脸一致，仅裁出脸部区域作为参考，减少张冠李戴。
             // 仅对「你」(user) 应用，且只有当用户在身份设置里设过 faceCrop 时才裁。
