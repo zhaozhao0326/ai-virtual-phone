@@ -262,9 +262,10 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
         return init;
     });
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    // v1.7.135：电影感构图开关。线下定格一直带这套摄影规格（机位/视线/光线/胶片质感），
-    // 线上随手生图没有，于是「线下好看、线上平淡」。默认关闭，勾了才注入，不改变原有习惯。
-    const [cinematic, setCinematic] = useState(false);
+    // v1.7.135 起电影感构图开关；v1.7.148 改为默认开启——线上群聊/单聊生图按用户要求
+    // 默认套电影感高质感规格（ONLINE_CINEMATIC_SPEC），与线下定格同质感但允许看镜头。
+    // 仍保留开关，想随手自拍式生图可关掉。
+    const [cinematic, setCinematic] = useState(true);
     const [busy, setBusy] = useState(false);
     const [saving, setSaving] = useState(false);
     const [savedHint, setSavedHint] = useState<string | null>(null);

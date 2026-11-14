@@ -339,6 +339,22 @@ const OFFLINE_FRAME_SPEC_COMMON = [
     "when a body is wrapped in a quilt, blanket, duvet or loose clothing, the fabric must read as fabric — soft thick folds and a believable bundle shape — the covered body must NOT show through as a bulging or distorted torso, no shoulder line, chest shape or waist silhouette poking out of the wrapping; only the head and the skin the scene actually exposes are visible, and the visible parts must join up into one anatomically plausible body; ",
     "35mm cinema lens, shallow depth of field with soft bokeh, fine film grain, professional color grading, full framing with nobody cropped, ultra detailed, 8k",
 ].join("");
+
+// v1.7.148：线上生图专用电影感规格。
+// 线下定格的 buildOfflineFrameSpec 写了「NOBODY looks at the camera / rather than posing for the lens」——
+// 那是线下抓拍专用，按铁律绝不进线上发图链路（线上群照/自拍本来就该看镜头，强套会让人不望镜头、构图诡异）。
+// 所以线上单独做一份：只取质量/光线/皮肤/解剖/遮挡/8k 胶片感这些「提升质感」的部分，去掉不看镜头约束，
+// 并加一句中性构图提示（避免僵硬一字排开），让群照既电影感又不别扭。同样纯英文，避免被机翻改废。
+const ONLINE_CINEMATIC_SPEC = [
+    ", cinematic film still, natural and lively composition with gentle depth variation rather than a flat rigid row; ",
+    "light comes from the upper side of the frame (window light or a warm lamp, 3200-4200K), clear light-to-shadow contrast, a cool rim light along one edge, small catchlights in the eyes; ",
+    "realistic skin with subtle specular highlights, hair edges catching the light, natural fabric folds, believable textiles and props; ",
+    "hands must be anatomically exact: exactly five digits on each hand, the thumb clearly opposed and visible on the opposite side of whatever the hand holds, grips or cups; fingers must not merge, elongate, duplicate or bend backwards; a hand must never be larger than the face it touches, and every wrist must connect visibly to a forearm — no disembodied, floating or extra hand; keep hands relaxed and slightly curled instead of splayed with all fingers spread wide; if a hand is mostly hidden by fabric or another body, draw only the visible part rather than inventing a whole hand; ",
+    "anatomy and occlusion must stay physically correct: every limb clearly attached and plausibly placed, no extra limbs, no merged, floating or duplicated hands, no twisted joints, real human proportions; ",
+    "when a body is wrapped in a quilt, blanket, duvet or loose clothing, the fabric must read as fabric — soft thick folds and a believable bundle shape — the covered body must NOT show through as a bulging or distorted torso, no shoulder line, chest shape or waist silhouette poking out of the wrapping; only the head and the skin the scene actually exposes are visible, and the visible parts must join up into one anatomically plausible body; ",
+    "35mm cinema lens, shallow depth of field with soft bokeh, fine film grain, professional color grading, full framing with nobody cropped, ultra detailed, 8k",
+].join("");
+
 // 双人：重点是「朝向彼此」与前后层次，专门反制并排正脸。
 const OFFLINE_FRAME_SPEC_TWO = [
     ", camera at a three-quarter over-the-shoulder angle slightly from the side, one person in the near foreground softly out of focus and the other in the focal plane, clear front-to-back layering; ",
@@ -1163,7 +1179,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
 
             {/* 召唤小卷 —— 导演对讲机（与导演私密侧聊） */}
             {showNarratorDialog && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 mx-3 bg-white dark:bg-[var(--c-bg-panel)] border border-[var(--c-border)] rounded-xl shadow-lg z-50 flex flex-col max-h-[70vh]">
+                <div className="absolute bottom-full left-0 right-0 mb-2 mx-3 bg-[var(--c-bg-panel)] border border-[var(--c-border)] rounded-xl shadow-lg z-50 flex flex-col max-h-[70vh]">
                     {/* 头部 */}
                     <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b border-[var(--c-border)]">
                         <div className="flex flex-col">
@@ -1240,7 +1256,7 @@ const ChatTextInputBar = memo(forwardRef<ChatTextInputHandle, {
                     <div className="border-t border-[var(--c-border)] p-3 flex items-end gap-2">
                         <textarea
                             className="flex-1 h-12 max-h-28 border border-[var(--c-border)] rounded-lg p-2.5 ts-12 bg-[var(--c-bg)] text-[var(--c-text)] resize-none focus:outline-none focus:border-[var(--c-accent)]"
-                            placeholder="对导演说点什么…（Enter 发送 / Shift+Enter 换行）"
+                            placeholder="对导演说点什么…（点「发送」）"
                             value={directorInput}
                             onChange={(e) => setDirectorInput(e.target.value)}
                             onKeyDown={(e) => {
@@ -4230,7 +4246,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             list.push({
                 id: c.id,
                 name: c.name,
-                hasReference: !!ref?.assetId,
+                // v1.7.147：hasReference 同时计入头像兜底——生图锁脸实际会用 ref?.assetId || c.avatar，
+                // 否则弹窗显示「无参考图」、实际却能靠头像锁，状态不一致、还误导用户以为锁不上。
+                hasReference: !!(ref?.assetId || c.avatar?.trim()),
                 appearance: c.appearance?.trim() || null,
                 gender: null,
             });
@@ -4241,26 +4259,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const textPhotoDefaultSelected = useMemo<string[]>(() => {
         const ids: string[] = [];
         if (textPhotoParticipants.some((p) => p.id === "user")) ids.push("user");
-        textPhotoParticipantIds.forEach((cid) => {
+        // v1.7.147：群聊默认勾选【全部】群成员——否则 .slice(0,2) 只勾前两个，
+        // 其余成员不进 selectedIds，生图管线既不会描述他们、也不会带他们的锁脸参考图（只锁1人）。
+        // 非群（单角色）仍只勾主角色本身。
+        const charIds = session.isGroup ? textPhotoParticipantIds : textPhotoParticipantIds.slice(0, 1);
+        charIds.forEach((cid) => {
             if (textPhotoParticipants.some((p) => p.id === cid)) ids.push(cid);
         });
-        return ids.slice(0, 2);
-    }, [textPhotoParticipants, textPhotoParticipantIds]);
+        return ids;
+    }, [textPhotoParticipants, textPhotoParticipantIds, session.isGroup]);
 
-    // v1.7.135：第 4 参 opts.cinematic —— 让「线上生图」（聊天生图弹窗）也能一键套上线下定格那套
-    // 摄影规格（机位/视线/光线/胶片质感/解剖约束）。默认关闭，不改变原有的随手自拍式生图。
+    // v1.7.135 起第 4 参 opts.cinematic 让「线上生图」（聊天生图弹窗）也能套电影感规格；
+    // v1.7.148：线上不再复用线下定格的 buildOfflineFrameSpec（那套含「不看镜头」约束，只属于线下抓拍），
+    // 改为套 ONLINE_CINEMATIC_SPEC——只取质量/光线/解剖/遮挡/8k 胶片感，去掉不看镜头，线上群照/自拍本该看镜头。
     const handleTextPhotoGenerate = useCallback(async (prompt: string, selectedIds: string[], hairOverride?: Record<string, string>, opts?: { cinematic?: boolean }): Promise<string | null> => {
         if (!prompt.trim()) return null;
-        // 勾了「电影感构图」时，按出镜人数自动选机位模板（双人还按有无搂抱切越肩亲密机位），
-        // 与线下定格共用同一份 buildOfflineFrameSpec，保证两边质感一致。
+        // 勾了「电影感构图」时，套线上专用电影感规格（质感一致，但允许看镜头）。
         const cinematicPrompt = opts?.cinematic
-            ? `${prompt}。${buildOfflineFrameSpec(
-                selectedIds.length <= 1
-                    ? "solo"
-                    : selectedIds.length === 2
-                        ? (OFFLINE_FRAME_INTIMATE_RE.test(prompt) ? "intimate" : "pair")
-                        : "group",
-            )}`
+            ? `${prompt}。${ONLINE_CINEMATIC_SPEC}`
             : prompt;
         const u = resolveUserIdentity();
         const chars = loadCharacters();
@@ -4295,7 +4311,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 // v1.5.11：角色侧 anchor 拼装先把性别词顶到最前，避免被锁脸图反推"带偏"
                 const roleGender = extractGenderHintFromPersona(c.persona, c.briefPersona);
                 if (roleGender) roleBits.push(roleGender);
-                if (c.appearance?.trim()) roleBits.push(c.appearance.trim());
+                // v1.7.147：appearance 为空时退回 briefPersona 精简片段，避免提示词只剩名字（「偷懒」观感）；
+                // 头像/参考图仍负责锁脸，这段文字只补外貌描述，不冲突。
+                const roleAppearance = c.appearance?.trim()
+                    || (c.briefPersona?.trim() ? c.briefPersona.trim().slice(0, 48) : undefined);
+                if (roleAppearance) roleBits.push(roleAppearance);
                 // v1.7.32：优先用角色参考图（生图设置里上传的），没有就用角色头像兜底——
                 // 与角色发图链路一致，保证「没配参考图的角色」在文字图片里也能锁上脸
                 const faceSource = ref?.assetId || c.avatar?.trim() || null;
