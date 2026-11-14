@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { CallSttWarningDialog, hideCallSttWarningPermanently, isCallSttWarningHidden } from "./call-stt-warning-dialog";
 import { isAndroidBrowser } from "./voice-input-platform";
 
@@ -241,6 +241,24 @@ export interface TextPhotoParticipant {
     gender?: string | null;
 }
 
+// v1.7.150：生图弹窗「纯场景 / 人物出镜」自动判定。
+// 群聊生图默认勾选全部成员（v1.7.147 为修「只锁1人」），副作用是任何群聊生图都带全员脸，
+// 于是「拍午餐 / 拍风景」这类本不该有人的图也被强行塞人。这里用**保守**启发式：
+// 只有当提示词明确命中食物/物件/风景类关键词、且**不含**任何人物意图（人称 / 合照 / 姿态 / 参与者名字）时，
+// 才自动切到「纯场景」（清空选人，不注入任何角色脸与外貌）。其余一律保持「人物出镜」默认，不误伤群合照。
+const SCENE_ONLY_RE = /(食物|吃|餐|饭|面|粉|粥|火锅|烧烤|炒菜|菜品|菜|肉|鱼|蛋|水果|咖啡|奶茶|茶|酒|甜点|甜品|蛋糕|面包|饼干|便当|料理|美食|早餐|午餐|晚餐|宵夜|夜宵|小吃|零食|饮品|饮料|风景|山水|日落|日出|晚霞|天空|云|海|湖|河|溪|山|森林|雪|花|植物|盆栽|房间|桌面|桌子|书桌|厨房|物件|静物|建筑|街景|城市|夜景|灯光|宠物|猫|狗|车|特写|细节|景|窗外|阳台|卧室|庭院|公园|操场|书架|衣柜|飘窗|窗台)/i;
+const PEOPLE_HINT_RE = /(我|我们|咱|咱们|他|她|它|它们|大家|一起|合照|合影|自拍|合个影|同框|入镜|出镜|背影|抱着|抱|牵|搂|依偎|靠着|靠在|坐着|站着|躺着|趴着|人物|人影|朋友|家人|男友|女友|老公|老婆|室友|同事|同学|姐妹|兄弟|拍张照|拍张|照片|合影|摆拍|比个耶|比耶|pose|POSE|凹造型)/i;
+
+export function isPureScenePrompt(text: string, participants: TextPhotoParticipant[]): boolean {
+    const t = text.trim();
+    if (!t) return false;
+    if (PEOPLE_HINT_RE.test(t)) return false;
+    // 提到任一参与者名字 → 人物意图，不切纯场景
+    if (participants.some((p) => p.name && p.name.trim() && t.includes(p.name.trim()))) return false;
+    if (!SCENE_ONLY_RE.test(t)) return false;
+    return true;
+}
+
 interface TextPhotoModalProps {
     participants: TextPhotoParticipant[];
     defaultSelected?: string[];
@@ -255,12 +273,38 @@ interface TextPhotoModalProps {
 
 export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSend, onSave, onClose }: TextPhotoModalProps) {
     const [text, setText] = useState("");
-    const [selected, setSelected] = useState<Record<string, boolean>>(() => {
+    // v1.7.150：拍摄入镜模式。
+    // 「人物出镜」保留 v1.7.147 群聊默认全员勾选的群合照体验；
+    // 「纯场景 / 静物」清空所有选人，不注入任何角色脸与外貌——食物 / 风景 / 物件图不再被强行塞人。
+    const [mode, setMode] = useState<"people" | "scene">("people");
+    const [modeExplicit, setModeExplicit] = useState(false);
+    const [peopleSelected, setPeopleSelected] = useState<Record<string, boolean>>(() => {
         const init: Record<string, boolean> = {};
-        const seed = defaultSelected && defaultSelected.length ? defaultSelected : participants.slice(0, 2).map(p => p.id);
-        seed.forEach((id) => { if (participants.some(p => p.id === id)) init[id] = true; });
+        const seed = defaultSelected && defaultSelected.length ? defaultSelected : participants.slice(0, 2).map((p) => p.id);
+        seed.forEach((id) => { if (participants.some((p) => p.id === id)) init[id] = true; });
         return init;
     });
+    const defaultSeed = useMemo(() => {
+        const seed = defaultSelected && defaultSelected.length ? defaultSelected : participants.slice(0, 2).map((p) => p.id);
+        return seed.filter((id) => participants.some((p) => p.id === id));
+    }, [defaultSelected, participants]);
+    // v1.7.150：提示词命中「纯场景」（食物/物件/风景，且无任何人称/合照/姿态/参与者名字）时，
+    // 自动切到「纯场景」；一旦用户手动点任一段，modeExplicit=true，不再被自动判定覆盖。
+    useEffect(() => {
+        if (modeExplicit) return;
+        if (text.trim() && isPureScenePrompt(text, participants)) setMode("scene");
+        else setMode("people");
+    }, [text, modeExplicit, participants]);
+    // 模式切换时同步选人：进「纯场景」清空；回「人物出镜」恢复默认勾选（群聊全员）。
+    useEffect(() => {
+        if (mode === "scene") {
+            setPeopleSelected({});
+        } else {
+            const init: Record<string, boolean> = {};
+            defaultSeed.forEach((id) => { init[id] = true; });
+            setPeopleSelected(init);
+        }
+    }, [mode, defaultSeed]);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     // v1.7.135 起电影感构图开关；v1.7.148 改为默认开启——线上群聊/单聊生图按用户要求
     // 默认套电影感高质感规格（ONLINE_CINEMATIC_SPEC），与线下定格同质感但允许看镜头。
@@ -271,7 +315,7 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
     const [savedHint, setSavedHint] = useState<string | null>(null);
     const [errorText, setErrorText] = useState<string | null>(null);
 
-    const selectedIds = Object.keys(selected).filter((id) => selected[id]);
+    const selectedIds = mode === "scene" ? [] : Object.keys(peopleSelected).filter((id) => peopleSelected[id]);
     const selectedCount = selectedIds.length;
     // v1.7.118：允许 0 人（纯场景）。不再强制至少选 1 位，这样「只写场景、不要人」能直接生成。
     const canAct = text.trim().length > 0 && selectedCount <= 4 && !busy;
@@ -279,7 +323,8 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
     const canSave = (!!previewUrl || canAct) && !saving;
 
     const toggle = (id: string) => {
-        setSelected((prev) => {
+        if (mode === "scene") return; // 纯场景模式下不允许勾选人物
+        setPeopleSelected((prev) => {
             const next = { ...prev };
             if (next[id]) {
                 delete next[id];
@@ -399,18 +444,56 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                     </span>
                 </button>
 
-                <label className="ts-12 text-[var(--c-icon)] w-full mt-1">画面人物（最多 4 人，全不选 = 纯场景、画面里没有人）</label>
+                {/* v1.7.150：拍摄入镜模式分段控件——「人物出镜」保留群合照默认；
+                    「纯场景 / 静物」用于拍食物 / 风景 / 物件，不注入任何角色脸与外貌。 */}
+                <div className="w-full flex rounded-lg overflow-hidden mt-1" style={{ border: "1px solid var(--c-icon-bg, #e0e0e0)" }}>
+                    <button
+                        type="button"
+                        onClick={() => { setMode("people"); setModeExplicit(true); }}
+                        className="ts-13 flex-1 py-2"
+                        style={{
+                            background: mode === "people" ? "var(--c-redpacket)" : "transparent",
+                            color: mode === "people" ? "#fff" : "var(--c-icon)",
+                            fontWeight: mode === "people" ? 600 : 400,
+                        }}
+                    >
+                        👥 人物出镜
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setMode("scene"); setModeExplicit(true); }}
+                        className="ts-13 flex-1 py-2"
+                        style={{
+                            background: mode === "scene" ? "var(--c-redpacket)" : "transparent",
+                            color: mode === "scene" ? "#fff" : "var(--c-icon)",
+                            fontWeight: mode === "scene" ? 600 : 400,
+                        }}
+                    >
+                        🍽️ 纯场景 / 静物
+                    </button>
+                </div>
+
+                <label className="ts-12 text-[var(--c-icon)] w-full mt-1">
+                    {mode === "scene"
+                        ? "纯场景：画面里没有人，适合拍食物 / 风景 / 物件（不注入任何角色脸与外貌）"
+                        : "画面人物（最多 4 人，全不选 = 纯场景、画面里没有人）"}
+                </label>
                 <div className="w-full flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
                     {participants.length === 0 && (
                         <span className="ts-12 text-[var(--c-icon)] py-2 text-center">没有可选人物</span>
                     )}
                     {participants.map((p) => {
-                        const on = !!selected[p.id];
+                        const on = mode === "scene" ? false : !!peopleSelected[p.id];
+                        const disabled = mode === "scene";
                         return (
                             <div
                                 key={p.id}
                                 className="w-full flex items-center justify-between px-3 py-2 rounded-lg"
-                                style={{ background: on ? "rgba(255,90,90,0.08)" : "var(--c-input)", border: on ? "1px solid rgba(255,90,90,0.25)" : "1px solid transparent" }}
+                                style={{
+                                    background: on ? "rgba(255,90,90,0.08)" : "var(--c-input)",
+                                    border: on ? "1px solid rgba(255,90,90,0.25)" : "1px solid transparent",
+                                    opacity: disabled ? 0.45 : 1,
+                                }}
                             >
                                 <div className="flex flex-col">
                                     <span className="ts-13 text-[var(--c-text)]">{p.name}</span>
@@ -423,9 +506,10 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                                     role="switch"
                                     aria-checked={on}
                                     aria-label={`切换 ${p.name}`}
+                                    disabled={disabled}
                                     onClick={() => toggle(p.id)}
                                     className="relative inline-flex items-center"
-                                    style={{ width: 36, height: 20, borderRadius: 999, background: on ? "var(--c-redpacket)" : "var(--c-icon-bg, #d8d8d8)", transition: "background 0.15s" }}
+                                    style={{ width: 36, height: 20, borderRadius: 999, background: on ? "var(--c-redpacket)" : "var(--c-icon-bg, #d8d8d8)", transition: "background 0.15s", cursor: disabled ? "not-allowed" : "pointer" }}
                                 >
                                     <span
                                         style={{
@@ -445,6 +529,11 @@ export function TextPhotoModal({ participants, defaultSelected, onGenerate, onSe
                         );
                     })}
                 </div>
+                {mode === "scene" && (
+                    <p className="ts-11 text-[var(--c-icon)] leading-relaxed w-full">
+                        当前为「纯场景」：不会勾选任何人，生图画面里只有你描述的物体 / 食物 / 风景，不出现角色。需要有人时切回「人物出镜」即可。
+                    </p>
+                )}
 
                 <p className="ts-11 text-[var(--c-icon)] leading-relaxed w-full mt-1">
                     生成后按普通图片发送；角色侧会当成你发的图，不会识别成 AI 协议生图。
