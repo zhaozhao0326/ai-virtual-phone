@@ -77,6 +77,12 @@ type CoupleSpaceProps = {
   onOpenApp: (id: string) => void;
   /** 直达某个聊天会话（用于「朋友们」进入绑定角色所在的群聊） */
   onOpenSession: (sessionId: string) => void;
+  /** 情侣空间壁纸（复用宿主壁纸资产库；null = 默认墨色纸面） */
+  wallpaperUrl: string | null;
+  wallpaperLibrary: string[];
+  wallpaperThumbs: Record<string, string>;
+  onChangeWallpaper: (assetId: string | null) => void;
+  onUploadWallpaper: (file: File) => Promise<void>;
 };
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -136,12 +142,15 @@ function buildClips(status: SpaceStatus, name: string, persona: string | undefin
   ];
   const mood = cleanFreeText(status.mood) || fallbacks[0];
   const thought = cleanFreeText(status.thought) || fallbacks[1];
-  // 第三格取人设里的一句（清洗后），没有则用兜底
+  // 第三格取人设里的一句（清洗后），没有则用兜底。
+  // 关键：人设几乎都带 yaml / markdown 结构，**必须先整体清洗再切句**。
+  // 反过来先切句会让 frontmatter 被切碎，整块正则匹配不到，于是裸露出 `---` / `...` / `key:` 这类残渣。
   let third = fallbacks[2];
-  const personaLine = (persona || "")
+  const personaClean = cleanDisplayText(persona || "");
+  const personaLine = personaClean
     .split(/[。！？\n；;]/)
-    .map((s) => cleanDisplayText(s))
-    .find((s) => s.length >= 6 && s.length <= 40);
+    .map((s) => s.trim())
+    .find((s) => s.length >= 8 && s.length <= 46 && !/[:：]/.test(s) && /[\u4e00-\u9fa5]/.test(s));
   if (personaLine) third = personaLine;
   return [mood, thought, third];
 }
@@ -310,10 +319,18 @@ export function CoupleSpace({
   onOpenCharacter,
   onOpenApp,
   onOpenSession,
+  wallpaperUrl,
+  wallpaperLibrary,
+  wallpaperThumbs,
+  onChangeWallpaper,
+  onUploadWallpaper,
 }: CoupleSpaceProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 「朋友们」：TA 所在的群聊（0 提示 / 1 直达 / 多个弹列表）
   const [groupPicker, setGroupPicker] = useState<Array<{ id: string; name: string; count: number }> | null>(null);
+  // 换壁纸浮层（复用宿主壁纸资产库，不是另一套）
+  const [wallpaperOpen, setWallpaperOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [clock, setClock] = useState(() => new Date());
   const [entered, setEntered] = useState(false);
   const [reduced, setReduced] = useState(false);
@@ -488,6 +505,13 @@ export function CoupleSpace({
     <div className={`cs-root ${entered ? "cs-entered" : ""}`} data-drawer={drawerOpen ? "1" : "0"}>
       <div className="cs-ink-transition" aria-hidden />
       <div className="cs-paper" aria-hidden />
+      {/* 情侣空间壁纸：压一层清冷墨色蒙版，保证纸片文字始终读得清 */}
+      {wallpaperUrl && (
+        <>
+          <div className="cs-wallpaper" style={{ backgroundImage: `url(${wallpaperUrl})` }} aria-hidden />
+          <div className="cs-wallpaper-veil" aria-hidden />
+        </>
+      )}
       <div className="cs-glow cs-glow-a" aria-hidden />
       <div className="cs-glow cs-glow-b" aria-hidden />
       <DustCanvas reduced={reduced} />
@@ -670,6 +694,64 @@ export function CoupleSpace({
         </div>
       )}
 
+      {/* 换壁纸：直接列宿主壁纸库里已有的图，也能现场从相册传一张 */}
+      {wallpaperOpen && (
+        <div className="cs-edit-mask" onClick={() => setWallpaperOpen(false)}>
+          <div className="cs-edit-card cs-wall-card" onClick={(e) => e.stopPropagation()}>
+            <div className="cs-edit-head">
+              <span>空间的壁纸</span>
+              <button type="button" onClick={() => setWallpaperOpen(false)} aria-label="关闭"><X size={16} /></button>
+            </div>
+            <div className="cs-wall-grid">
+              <button
+                type="button"
+                className={`cs-wall-item cs-wall-default ${!profile.coupleWallpaperAssetId ? "cs-wall-on" : ""}`}
+                onClick={() => { onChangeWallpaper(null); setWallpaperOpen(false); }}
+              >
+                <span>墨色</span>
+              </button>
+              {wallpaperLibrary.map((id) => {
+                const url = wallpaperThumbs[id];
+                if (!url) return null;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`cs-wall-item ${profile.coupleWallpaperAssetId === id ? "cs-wall-on" : ""}`}
+                    onClick={() => { onChangeWallpaper(id); setWallpaperOpen(false); }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="cs-wall-foot">
+              <label className={`cs-wall-upload ${uploading ? "cs-wall-uploading" : ""}`}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    setUploading(true);
+                    try {
+                      await onUploadWallpaper(file);
+                      setWallpaperOpen(false);
+                    } finally {
+                      setUploading(false);
+                    }
+                  }}
+                />
+                {uploading ? "正在保存…" : "＋ 从相册传一张"}
+              </label>
+              <div className="cs-wall-tip">共用主题里那份壁纸库，不用另外再传一遍。</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 侧滑抽屉：数据驱动的菜单 */}
       {drawerOpen && (
         <div className="cs-drawer-mask" onClick={() => setDrawerOpen(false)}>
@@ -679,6 +761,15 @@ export function CoupleSpace({
                 <X size={18} />
               </button>
             </div>
+
+            <button
+              type="button"
+              className="cs-wall-entry"
+              onClick={() => { setDrawerOpen(false); setWallpaperOpen(true); }}
+            >
+              <ImageIcon size={14} />
+              <span>{wallpaperUrl ? "换一张壁纸" : "给空间铺一张壁纸"}</span>
+            </button>
 
             <div className="cs-profile-card" onClick={onOpenCharacter} role="button" tabIndex={0}>
               <div className="cs-profile-avatar">

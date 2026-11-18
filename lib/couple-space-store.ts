@@ -67,6 +67,16 @@ export function cleanDisplayText(input: string | null | undefined): string {
   s = s.replace(/~~~[a-zA-Z0-9_-]*\n?([\s\S]*?)~~~/g, "$1");
   // 去掉 yaml frontmatter 整块
   s = s.replace(/^\s*---\s*\n[\s\S]*?\n---\s*/m, "");
+  // 残留的 yaml 文档分隔/结束标记（单独成行的 --- / ...），这是「裸露的 ...」的元凶
+  s = s.replace(/^[ \t]*(?:-{3,}|\.{3,})[ \t]*$/gm, " ");
+  // 残留的键值行：只删「典型设定行」，避免误伤正文。
+  // ① 半角冒号（yaml 写法）：整行删
+  s = s.replace(/^[ \t]*[\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_\- ·]{0,11}[ \t]*:[ \t]*\S.*$/gm, " ");
+  // ② 全角冒号：必须「短键 + 短值 + 无句读无引号」，才认定为设定行（否则「备注：记得他怕冷。」这类正文会被吃掉）
+  s = s.replace(/^[ \t]*[\u4e00-\u9fa5A-Za-z_][\u4e00-\u9fa5A-Za-z0-9_\-·]{0,5}[ \t]*：[ \t]*[^。！？，、；：「」“”"'（）()\n]{1,18}[ \t]*$/gm, " ");
+  // 列表项符号 / 花括号结构残渣
+  s = s.replace(/^[ \t]*[-*+][ \t]+/gm, "");
+  s = s.replace(/[{}[\]]/g, " ");
   s = s.replace(/\n/g, " ");
   // 行内 markdown 符号
   s = s.replace(/\*\*([^*]+)\*\*/g, "$1");

@@ -96,6 +96,7 @@ import {
   collectThemeAssetIds,
   getThemeAssetMap,
   readThemeProfile,
+  saveThemeAssetFromBlob,
   writeThemeProfile
 } from "@/lib/theme-storage";
 import { THEME_PACKAGE_INSTALLED_EVENT } from "@/lib/theme-package";
@@ -4243,6 +4244,24 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                   }}
                   onOpenApp={openCoupleApp}
                   onOpenSession={openCoupleGroupChat}
+                  wallpaperUrl={draftTheme.coupleWallpaperAssetId ? themeAssets[draftTheme.coupleWallpaperAssetId] ?? null : null}
+                  wallpaperLibrary={draftTheme.wallpaperLibrary}
+                  wallpaperThumbs={themeAssets}
+                  onChangeWallpaper={(assetId) => {
+                    void applyTheme(normalizeThemeProfile({ ...draftTheme, coupleWallpaperAssetId: assetId }));
+                  }}
+                  onUploadWallpaper={async (file) => {
+                    try {
+                      const assetId = await saveThemeAssetFromBlob(file, "wallpaper");
+                      await applyTheme(normalizeThemeProfile({
+                        ...draftTheme,
+                        coupleWallpaperAssetId: assetId,
+                        wallpaperLibrary: [...draftTheme.wallpaperLibrary, assetId],
+                      }));
+                    } catch {
+                      setNotice("壁纸保存失败，换一张小一点的图试试");
+                    }
+                  }}
                 />
               ) : null}
 

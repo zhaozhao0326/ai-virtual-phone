@@ -67,6 +67,11 @@ export type ThemeProfile = {
   coupleEnabled: boolean;
   coupleCharacterId: string | null;
   coupleSince: string | null;
+  /**
+   * 情侣空间自己的壁纸（v1.7.159）：复用宿主同一套壁纸资产库（wallpaperLibrary / themeAssets），
+   * 只是单独记一个 id，跟桌面壁纸互不干扰。null = 用默认墨色纸面。
+   */
+  coupleWallpaperAssetId: string | null;
   updatedAt: string;
 };
 
@@ -195,6 +200,7 @@ export const DEFAULT_THEME_PROFILE: ThemeProfile = {
   coupleEnabled: false,
   coupleCharacterId: null,
   coupleSince: null,
+  coupleWallpaperAssetId: null,
   updatedAt: new Date().toISOString()
 };
 
@@ -380,6 +386,8 @@ export function normalizeThemeProfile(raw: unknown): ThemeProfile {
     ? source.coupleCharacterId as string : null;
   base.coupleSince = typeof source.coupleSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.coupleSince as string)
     ? source.coupleSince as string : null;
+  base.coupleWallpaperAssetId = typeof source.coupleWallpaperAssetId === "string" && (source.coupleWallpaperAssetId as string).trim()
+    ? source.coupleWallpaperAssetId as string : null;
 
   // ── Migrate enableGlobalShadows → cssOverrides["--desktop-global-shadow"] ──
   if (!base.cssOverrides["--desktop-global-shadow"]) {
