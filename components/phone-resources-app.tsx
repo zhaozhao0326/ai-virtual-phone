@@ -31,7 +31,7 @@ const RESOURCE_MENU: Omit<FeaturedCardItem, "onClick">[] = [
     },
 ];
 
-export function PhoneResourcesApp({ onClose, onNotice, initialPage, initialCharacterId }: { onClose: () => void; onNotice?: (msg: string) => void; initialPage?: ResourceSubPage; initialCharacterId?: string }) {
+export function PhoneResourcesApp({ onClose, onNotice, initialPage, initialCharacterId, exitDirectly }: { onClose: () => void; onNotice?: (msg: string) => void; initialPage?: ResourceSubPage; initialCharacterId?: string; exitDirectly?: boolean }) {
     // 情侣空间专一入口：预设绑定角色则直达其记忆详情；普通入口保持原有选人流程。
     const [currentPage, setCurrentPage] = useState<ResourceSubPage>(initialCharacterId ? "memory" : (initialPage ?? "main"));
     const [memoryView, setMemoryView] = useState<MemoryView>(initialCharacterId ? "detail" : "list");
@@ -47,6 +47,11 @@ export function PhoneResourcesApp({ onClose, onNotice, initialPage, initialChara
     }, [initialPage]);
 
     const handleBack = () => {
+        // 专属空间里返回 = 一步退回空间主页，不再 memory 详情→列表→主页 层层退
+        if (exitDirectly) {
+            onClose();
+            return;
+        }
         if (currentPage === "memory") {
             if (memoryView === "settings") {
                 setMemoryView(prevMemoryView);

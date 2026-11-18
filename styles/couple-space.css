@@ -81,18 +81,21 @@
 
 /* 心跳印记开关（隐蔽精致） */
 .cs-heartbeat {
-  position: absolute; top: 20px; right: 16px; z-index: 12;
-  width: 34px; height: 34px; border-radius: 50%;
+  position: absolute; top: 14px; right: 10px; z-index: 30;
+  /* 热区 46px：手指好点；动画放在内部图形上，外层永远不动（之前点不准就是因为按钮自己跟着缩放飘） */
+  width: 46px; height: 46px; padding: 0; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--cs-rose);
-  background: rgba(46,58,56,.5);
+  background: rgba(46,58,56,.82);
   border: 1px solid rgba(201,162,95,.35);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  box-shadow: 0 2px 12px rgba(0,0,0,.25);
-  animation: cs-heartbeat 2.6s ease-in-out infinite;
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  cursor: pointer;
 }
-.cs-heartbeat:active { transform: scale(.9); }
+.cs-heartbeat-in { display: flex; align-items: center; justify-content: center; }
+.cs-heartbeat-in > svg { animation: cs-heartbeat 2.6s ease-in-out infinite; transform-origin: center; }
+.cs-heartbeat:active { background: rgba(201,162,95,.28); }
 @keyframes cs-heartbeat {
   0%, 100% { transform: scale(1); }
   14% { transform: scale(1.16); }
@@ -225,9 +228,12 @@
   z-index: 5;
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
-.cs-nav button { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--cs-gold-soft); background: none; border: none; font-size: 10px; opacity: .55; }
+.cs-nav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--cs-gold-soft); background: none; border: none; font-size: 10px; opacity: .55; min-width: 50px; height: 48px; padding: 0 3px; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .cs-nav button:active { opacity: 1; transform: scale(.94); }
 .cs-nav button:nth-child(1) { opacity: 1; }
+/* 「菜单」是主页第二个显式入口：常亮 + 金色，一眼能找到，不必去右上角摸小圆点 */
+.cs-nav .cs-nav-menu { opacity: 1; color: var(--cs-gold); }
+.cs-nav .cs-nav-menu svg { opacity: .95; }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .cs-nav { background: rgba(40,50,48,.94); }
@@ -611,3 +617,23 @@
 @media (prefers-reduced-motion: reduce) {
   .cll-mask, .cll-paper { animation: none }
 }
+
+/* ═══════════════════════════════════════════
+   v1.7.158 朋友们：TA 所在的群聊列表（多群时挑选）
+   ═══════════════════════════════════════════ */
+.cs-group-card { max-width: 320px; }
+.cs-group-list {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 4px 12px 14px; max-height: 46vh; overflow-y: auto;
+}
+.cs-group-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; padding: 11px 13px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(220,226,214,.14);
+  background: rgba(255,255,255,.05);
+  color: #eceee6; font-size: 13px; text-align: left; font-family: inherit;
+  -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.cs-group-item:active { background: rgba(201,162,95,.18); border-color: rgba(201,162,95,.5); }
+.cs-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-group-count { flex-shrink: 0; font-size: 11px; color: rgba(230,232,225,.55); }

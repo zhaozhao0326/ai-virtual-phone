@@ -106,6 +106,8 @@ type PhoneCharacterAppProps = {
   onNotice: (text: string) => void;
   /** 情侣空间专一入口：直接打开绑定角色的档案详情，跳过选人列表 */
   initialCharacterId?: string;
+  /** 情侣空间专一入口：详情返回键直接退回空间主页，不再先回角色大厅 */
+  exitDirectly?: boolean;
 };
 
 type IntlWithTimeZoneList = typeof Intl & {
@@ -162,7 +164,7 @@ function getCharacterTimeZoneOptions(currentTimeZone = ""): string[] {
   return options;
 }
 
-export function PhoneCharacterApp({ onClose, onNotice, initialCharacterId }: PhoneCharacterAppProps) {
+export function PhoneCharacterApp({ onClose, onNotice, initialCharacterId, exitDirectly }: PhoneCharacterAppProps) {
   const [view, setView] = useState<{ type: ViewType; id: string | null; isEditing?: boolean }>(() => {
     // 情侣空间直达：绑定角色存在则直接进详情；否则保持列表。
     if (initialCharacterId && loadCharacters().some(c => c.id === initialCharacterId)) {
@@ -247,6 +249,11 @@ export function PhoneCharacterApp({ onClose, onNotice, initialCharacterId }: Pho
 
   // Handle back from detail
   function handleBackFromDetail() {
+    // 专属空间：一步退回空间主页（不再先回角色列表）
+    if (exitDirectly) {
+      onClose();
+      return;
+    }
     setView({ type: "list", id: null, isEditing: false });
   }
 

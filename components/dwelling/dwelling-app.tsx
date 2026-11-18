@@ -26,6 +26,10 @@ type DwellingAppProps = {
     onClose: () => void;
     visible?: boolean;
     onIdle?: () => void;
+    /** 情侣空间专一入口：预设要直达的角色 id，跳过选人 */
+    initialCharacterId?: string | null;
+    /** 情侣空间专一入口：返回键直接退回空间主页（栖所本就是单层，保留占位以统一传参） */
+    exitDirectly?: boolean;
 };
 
 type CharState = {
@@ -78,7 +82,7 @@ function charChipEn(name: string): string {
     return en;
 }
 
-export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
+export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: DwellingAppProps) {
     const [characters, setCharacters] = useState<Character[]>([]);
     const [activeCharId, setActiveCharId] = useState<string | null>(null);
     const [activeRoomIdx, setActiveRoomIdx] = useState(0);
@@ -127,7 +131,9 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
     useEffect(() => {
         const chars = loadCharacters();
         setCharacters(chars);
-        if (chars.length === 1) setActiveCharId(chars[0].id);
+        // 情侣空间专一入口：直达绑定角色的栖所，不走"只有一个人时自动选"的兜底
+        if (initialCharacterId && chars.some(c => c.id === initialCharacterId)) setActiveCharId(initialCharacterId);
+        else if (chars.length === 1) setActiveCharId(chars[0].id);
         // Pre-load all characters' cached layouts + item HTML so ✓ shows immediately
         (async () => {
             for (const c of chars) {
@@ -162,6 +168,14 @@ export function DwellingApp({ onClose, visible, onIdle }: DwellingAppProps) {
         })();
         return () => { cancelled = true; };
     }, [activeCharId]);
+
+    // 栖所是保活挂载的：从情侣空间再次进来时，若当前角色不是绑定角色，校正过来（专一）
+    useEffect(() => {
+        if (!visible || !initialCharacterId) return;
+        if (activeCharIdRef.current === initialCharacterId) return;
+        if (!characters.some(c => c.id === initialCharacterId)) return;
+        setActiveCharId(initialCharacterId);
+    }, [visible, initialCharacterId, characters]);
 
     const doGenerate = useCallback(async (charId: string, mode: DwellingRefreshMode = "full") => {
         const cs = getCharState(charId);

@@ -95,6 +95,8 @@ type CheckPhoneAppProps = {
   onClose: () => void;
   /** 情侣空间专一入口：预设要直达的角色 id，跳过选人列表 */
   initialCharacterId?: string;
+  /** 情侣空间专一入口：返回键直接退回专属空间主页，不再逐层往回退。 */
+  exitDirectly?: boolean;
 };
 
 type ManifestState = {
@@ -284,7 +286,7 @@ function getAppIconClass(appId: CheckPhoneAppId, isDock = false) {
   return baseClass;
 }
 
-export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProps) {
+export function CheckPhoneApp({ onClose, initialCharacterId, exitDirectly }: CheckPhoneAppProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [activeCharId, setActiveCharId] = useState<string | null>(initialCharacterId ?? null);
   // 角色表是异步加载的：专一直达时首帧 characters 还是空数组，
@@ -542,6 +544,11 @@ export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProp
   }
 
   const handleBack = () => {
+    // 专属空间里返回 = 一步退回空间主页，不再先回角色大厅
+    if (exitDirectly) {
+      onClose();
+      return;
+    }
     if (activeCharId) {
       setActiveCharId(null);
       setSelectedAppId(null);

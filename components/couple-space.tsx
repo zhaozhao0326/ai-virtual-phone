@@ -37,6 +37,8 @@ import {
   X,
   Compass,
   Mail,
+  Menu,
+  Users,
   Wrench,
   Play,
   Pause,
@@ -73,6 +75,8 @@ type CoupleSpaceProps = {
   onOpenTheme: () => void;
   onOpenCharacter: () => void;
   onOpenApp: (id: string) => void;
+  /** 直达某个聊天会话（用于「朋友们」进入绑定角色所在的群聊） */
+  onOpenSession: (sessionId: string) => void;
 };
 
 const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
@@ -305,8 +309,11 @@ export function CoupleSpace({
   onOpenTheme,
   onOpenCharacter,
   onOpenApp,
+  onOpenSession,
 }: CoupleSpaceProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // 「朋友们」：TA 所在的群聊（0 提示 / 1 直达 / 多个弹列表）
+  const [groupPicker, setGroupPicker] = useState<Array<{ id: string; name: string; count: number }> | null>(null);
   const [clock, setClock] = useState(() => new Date());
   const [entered, setEntered] = useState(false);
   const [reduced, setReduced] = useState(false);
@@ -437,6 +444,28 @@ export function CoupleSpace({
     else onOpenApp(appId);
   }, [onOpenChat, onOpenCharacter, onOpenTheme, onOpenApp, characterId]);
 
+  /**
+   * 「朋友们」：只列 TA 真正在场的群聊（participantIds 含绑定角色，已解散的排除）。
+   * 0 个 → 一句话提示；1 个 → 一步直达该群；多个 → 弹轻量列表让用户挑。
+   */
+  const openFriends = useCallback(() => {
+    setDrawerOpen(false);
+    if (!characterId) return;
+    const groups = loadChatSessions()
+      .filter((s) => s.isGroup && !s.dissolved && (s.participantIds || []).includes(characterId))
+      .map((s) => ({ id: s.id, name: s.groupName || "未命名群", count: (s.participantIds || []).length }));
+    if (groups.length === 0) {
+      setNewlyHint(`${name} 还没在任何一个群里`);
+      window.setTimeout(() => setNewlyHint(null), 3200);
+      return;
+    }
+    if (groups.length === 1) {
+      onOpenSession(groups[0].id);
+      return;
+    }
+    setGroupPicker(groups);
+  }, [characterId, name, onOpenSession]);
+
   // 手动保存（机制 B）
   const handleSaveField = useCallback((field: EditField, value: string) => {
     if (!characterId) return;
@@ -463,9 +492,9 @@ export function CoupleSpace({
       <div className="cs-glow cs-glow-b" aria-hidden />
       <DustCanvas reduced={reduced} />
 
-      {/* 隐蔽心跳入口：打开抽屉 */}
-      <button className="cs-heartbeat" type="button" onClick={() => setDrawerOpen(true)} aria-label="打开专属空间">
-        <Heart size={16} fill="currentColor" />
+      {/* 右上角心跳入口：热区放大到 46px，动画只作用于内部图形，避免点击跟着缩放飘 */}
+      <button className="cs-heartbeat" type="button" onClick={() => setDrawerOpen(true)} aria-label="打开菜单">
+        <span className="cs-heartbeat-in"><Heart size={18} fill="currentColor" /></span>
       </button>
 
       {/* 顶部：时间 / 日期 / 天气（状态文本动态） */}
@@ -597,10 +626,10 @@ export function CoupleSpace({
         />
       )}
 
-      {/* 底部四 tab：全部映射真实动作，无空壳 */}
+      {/* 底部五 tab：全部映射真实动作，无空壳；「菜单」是主页第二个显式入口（不再只靠右上角小圆钮） */}
       <nav className="cs-nav" aria-label="专属空间导航">
-        <button type="button" onClick={() => setDrawerOpen((v) => !v)} className={drawerOpen ? "cs-nav-active" : ""}>
-          <Home size={19} /><span>手机</span>
+        <button type="button" onClick={() => setDrawerOpen(true)} className={`cs-nav-menu ${drawerOpen ? "cs-nav-active" : ""}`}>
+          <Menu size={19} /><span>菜单</span>
         </button>
         <button type="button" onClick={onOpenChat}>
           <MessageCircle size={19} /><span>聊天</span>
@@ -608,10 +637,38 @@ export function CoupleSpace({
         <button type="button" onClick={() => openAppById("dwelling")}>
           <Sparkles size={19} /><span>栖所</span>
         </button>
+        <button type="button" onClick={openFriends}>
+          <Users size={19} /><span>朋友</span>
+        </button>
         <button type="button" onClick={onOpenCharacter}>
           <Smile size={19} /><span>档案</span>
         </button>
       </nav>
+
+      {/* 朋友们：TA 在多个群时，这里挑一个直达（只列 TA 真正在场的群） */}
+      {groupPicker && (
+        <div className="cs-edit-mask" onClick={() => setGroupPicker(null)}>
+          <div className="cs-edit-card cs-group-card" onClick={(e) => e.stopPropagation()}>
+            <div className="cs-edit-head">
+              <span>{name} 在的群</span>
+              <button type="button" onClick={() => setGroupPicker(null)} aria-label="关闭"><X size={16} /></button>
+            </div>
+            <div className="cs-group-list">
+              {groupPicker.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  className="cs-group-item"
+                  onClick={() => { setGroupPicker(null); onOpenSession(g.id); }}
+                >
+                  <span className="cs-group-name">{g.name}</span>
+                  <span className="cs-group-count">{g.count} 人</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 侧滑抽屉：数据驱动的菜单 */}
       {drawerOpen && (

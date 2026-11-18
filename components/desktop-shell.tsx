@@ -1174,6 +1174,12 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     }
     openApp(appId as DesktopIconId);
   }, [draftTheme.coupleCharacterId]);
+
+  // 「朋友们」：直达 TA 所在的某个群聊（群 id 由情侣空间算好传进来）
+  const openCoupleGroupChat = useCallback((sessionId: string) => {
+    setChatInitSessionId(sessionId);
+    setActiveApp("chat");
+  }, []);
   useEffect(() => {
     activeAppRef.current = activeApp;
     // 回到桌面时清除情侣空间直达标记，避免污染普通桌面入口的下一次打开
@@ -4051,6 +4057,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
           initialCharacterId={coupleLaunchCharId ?? undefined}
+          exitDirectly={Boolean(coupleLaunchCharId)}
         />
       );
     }
@@ -4080,6 +4087,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           onNotice={setNotice}
           initialPage={resourcesInitialPage}
           initialCharacterId={coupleLaunchCharId ?? undefined}
+          exitDirectly={Boolean(coupleLaunchCharId)}
         />
       );
     }
@@ -4135,7 +4143,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     }
 
     if (activeApp === "checkphone") {
-      return <CheckPhoneApp onClose={() => setActiveApp(null)} initialCharacterId={coupleLaunchCharId ?? undefined} />;
+      return <CheckPhoneApp onClose={() => setActiveApp(null)} initialCharacterId={coupleLaunchCharId ?? undefined} exitDirectly={Boolean(coupleLaunchCharId)} />;
     }
 
     if (activeApp === "shopping") {
@@ -4234,6 +4242,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                     openApp("characters");
                   }}
                   onOpenApp={openCoupleApp}
+                  onOpenSession={openCoupleGroupChat}
                 />
               ) : null}
 
@@ -4788,6 +4797,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                         <DwellingApp
                           onClose={() => setActiveApp(null)}
                           visible={activeApp === "dwelling"}
+                          initialCharacterId={coupleLaunchCharId}
+                          exitDirectly={Boolean(coupleLaunchCharId)}
                           onIdle={() => { if (activeApp !== "dwelling") setDwellingMounted(false); }}
                         />
                       </section>
