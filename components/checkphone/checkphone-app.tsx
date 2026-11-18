@@ -93,6 +93,8 @@ import { DEFAULT_CHECKPHONE_BILINGUAL_PROMPT } from "@/lib/bilingual-prompt-defa
 
 type CheckPhoneAppProps = {
   onClose: () => void;
+  /** 情侣空间专一入口：预设要直达的角色 id，跳过选人列表 */
+  initialCharacterId?: string;
 };
 
 type ManifestState = {
@@ -282,9 +284,9 @@ function getAppIconClass(appId: CheckPhoneAppId, isDock = false) {
   return baseClass;
 }
 
-export function CheckPhoneApp({ onClose }: CheckPhoneAppProps) {
+export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [activeCharId, setActiveCharId] = useState<string | null>(null);
+  const [activeCharId, setActiveCharId] = useState<string | null>(initialCharacterId ?? null);
   const [states, setStates] = useState<Record<string, ManifestState>>({});
   const [manifestsCacheMap, setManifestsCacheMap] = useState<Record<string, CheckPhoneManifest>>({});
   

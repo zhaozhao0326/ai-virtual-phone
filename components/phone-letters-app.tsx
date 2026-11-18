@@ -6,7 +6,7 @@
 // （日记生成已停用：原版已有日记功能，此处不再自动生成）
 
 import { useCallback, useEffect, useState } from "react";
-import { loadAllLetters, markLetterRead, deleteLetter, type LetterEntry } from "@/lib/letter-storage";
+import { loadAllLetters, loadLetters, markLetterRead, deleteLetter, type LetterEntry } from "@/lib/letter-storage";
 import { requestLetter, getLetterCooldownRemaining } from "@/lib/letter-service";
 import { loadCharacters } from "@/lib/character-storage";
 import { isDreamEnabled, setDreamEnabled, getDreamWhitelist, setDreamWhitelist } from "@/lib/dream-service";
@@ -22,7 +22,9 @@ function typeOf(l: LetterEntry): NonNullable<LetterEntry["type"]> {
     return l.type || "letter";
 }
 
-export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
+export function PhoneLettersApp({ onClose, initialCharacterId }: { onClose: () => void; initialCharacterId?: string }) {
+    // 情侣空间专一入口：只聚合绑定角色的信件；普通入口为 null，保持全局聚合。
+    const onlyCharId = initialCharacterId || null;
     const [tab, setTab] = useState<TabId>("inbox");
     const [entries, setEntries] = useState<LetterEntry[]>([]);
     const [openId, setOpenId] = useState<string | null>(null);
@@ -38,8 +40,9 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
     }, [tab]);
 
     const refresh = useCallback(() => {
-        loadAllLetters().then(setEntries).catch(() => setEntries([]));
-    }, []);
+        const loader = onlyCharId ? loadLetters(onlyCharId) : loadAllLetters();
+        loader.then(setEntries).catch(() => setEntries([]));
+    }, [onlyCharId]);
 
     useEffect(() => {
         refresh();
@@ -56,8 +59,8 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
         return () => clearInterval(timer);
     }, [refresh]);
 
-    const chars = loadCharacters()
-        .filter(c => c.id)
+    const allChars = loadCharacters().filter(c => c.id);
+    const chars = (onlyCharId ? allChars.filter(c => c.id === onlyCharId) : allChars)
         .map(c => ({ id: c.id, name: c.name || "未命名" }));
 
     const filtered = entries.filter(l => typeOf(l) === (tab === "inbox" ? "letter" : tab));
@@ -105,12 +108,12 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
 
     return (
         <div className="phone-app-pane flex flex-col h-full bg-[var(--c-page-bg,#faf9f5)]">
-            {/* 顶栏 */}
+            {/* 顶栏：返回分级——正在读信时先收起详情，再按一次才退出（修退出 bug） */}
             <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-                <button onClick={() => onClose()} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
+                <button onClick={() => { if (openId) setOpenId(null); else onClose(); }} className="flex items-center justify-center w-8 h-8 rounded-full hover:opacity-70" aria-label="返回">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M15 19 8 12l7-7" /></svg>
                 </button>
-                <div className="flex-1 text-center ts-14 font-semibold">信箱</div>
+                <div className="flex-1 text-center ts-14 font-semibold">{onlyCharId && chars[0] ? `${chars[0].name} 的信` : "信箱"}</div>
                 <div className="w-8" />
             </div>
 
@@ -199,7 +202,17 @@ export function PhoneLettersApp({ onClose }: { onClose: () => void }) {
                         {tab === "inbox" ? (
                             <>
                                 <span>信箱还空着</span>
-                                <span className="ts-11">回到聊天，点角色档案里的「请 TA 写封信」，TA 会基于对你的了解写信投递</span>
+                                {onlyCharId && chars[0] ? (
+                                    <button
+                                        className="ts-11 px-3 py-1.5 rounded-lg border border-dashed border-[color-mix(in_srgb,var(--c-card-border)_80%,transparent)] opacity-80 disabled:opacity-40"
+                                        disabled={busyCharId === chars[0].id || !!cooldowns[chars[0].id]}
+                                        onClick={() => handleRequestLetter(chars[0].id, chars[0].name)}
+                                    >
+                                        {busyCharId === chars[0].id ? "写信中…" : cooldowns[chars[0].id] ? `稍后再写（${Math.ceil(cooldowns[chars[0].id] / 1000)}s）` : `请 ${chars[0].name} 写封信`}
+                                    </button>
+                                ) : (
+                                    <span className="ts-11">回到聊天，点角色档案里的「请 TA 写封信」，TA 会基于对你的了解写信投递</span>
+                                )}
                             </>
                         ) : (
                             <span>还没有梦境。开启上方开关并选中角色后，夜深时 TA 会做梦。</span>

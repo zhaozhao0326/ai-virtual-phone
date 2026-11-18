@@ -31,12 +31,16 @@ const RESOURCE_MENU: Omit<FeaturedCardItem, "onClick">[] = [
     },
 ];
 
-export function PhoneResourcesApp({ onClose, onNotice, initialPage }: { onClose: () => void; onNotice?: (msg: string) => void; initialPage?: ResourceSubPage }) {
-    const [currentPage, setCurrentPage] = useState<ResourceSubPage>(initialPage ?? "main");
-    const [memoryView, setMemoryView] = useState<MemoryView>("list");
+export function PhoneResourcesApp({ onClose, onNotice, initialPage, initialCharacterId }: { onClose: () => void; onNotice?: (msg: string) => void; initialPage?: ResourceSubPage; initialCharacterId?: string }) {
+    // 情侣空间专一入口：预设绑定角色则直达其记忆详情；普通入口保持原有选人流程。
+    const [currentPage, setCurrentPage] = useState<ResourceSubPage>(initialCharacterId ? "memory" : (initialPage ?? "main"));
+    const [memoryView, setMemoryView] = useState<MemoryView>(initialCharacterId ? "detail" : "list");
     const [prevMemoryView, setPrevMemoryView] = useState<MemoryView>("list");
-    const [memoryCharId, setMemoryCharId] = useState<string>("");
-    const [memoryCharName, setMemoryCharName] = useState<string>("");
+    const [memoryCharId, setMemoryCharId] = useState<string>(initialCharacterId ?? "");
+    const [memoryCharName, setMemoryCharName] = useState<string>(() => {
+        if (!initialCharacterId) return "";
+        try { return loadCharacters().find(c => c.id === initialCharacterId)?.name ?? ""; } catch { return ""; }
+    });
 
     useEffect(() => {
         if (initialPage) setCurrentPage(initialPage);

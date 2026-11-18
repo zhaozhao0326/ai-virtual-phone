@@ -1093,6 +1093,9 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   const backgroundRunSeqRef = useRef(0);
   const pendingCustomAppBackgroundToolsRef = useRef<Map<string, PendingCustomAppBackgroundTool>>(new Map());
   const [resourcesInitialPage, setResourcesInitialPage] = useState<ResourceSubPage>("main");
+  // 情侣空间「专一一人」：从专属空间打开的 App 记住绑定角色 id，让查手机/档案/信箱/记忆库直达这一个人。
+  // 仅在情侣空间入口写入；普通桌面入口保持 null，行为不变。
+  const [coupleLaunchCharId, setCoupleLaunchCharId] = useState<string | null>(null);
   const [dwellingMounted, setDwellingMounted] = useState(false);
   const [xiaohongshuMounted, setXiaohongshuMounted] = useState(false);
   const [xiaohongshuBusy, setXiaohongshuBusy] = useState(false);
@@ -1158,8 +1161,24 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     }
     setActiveApp("chat");
   }, [draftTheme.coupleCharacterId]);
+
+  // 从情侣空间打开任意 App：带上绑定角色，让子组件直达这个人（查手机/信箱/记忆库/档案）。
+  // 聊天与档案有更精确的直达实现，这里主要服务于 onOpenApp 分支的 App。
+  const openCoupleApp = useCallback((appId: string) => {
+    setCoupleLaunchCharId(draftTheme.coupleCharacterId || null);
+    // 记忆库直达绑定角色：借 resourcesInitialPage + 事件里的 characterId 通道
+    if (appId === "resources") {
+      window.dispatchEvent(new CustomEvent("open-app", {
+        detail: { appId: "resources", resourcePage: "memory", characterId: draftTheme.coupleCharacterId || undefined },
+      }));
+      return;
+    }
+    openApp(appId as DesktopIconId);
+  }, [draftTheme.coupleCharacterId]);
   useEffect(() => {
     activeAppRef.current = activeApp;
+    // 回到桌面时清除情侣空间直达标记，避免污染普通桌面入口的下一次打开
+    if (activeApp === null) setCoupleLaunchCharId(null);
   }, [activeApp]);
   // Listen for theme CSS updates from 小卷
   useEffect(() => {
@@ -4032,6 +4051,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
         <PhoneCharacterApp
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
+          initialCharacterId={coupleLaunchCharId ?? undefined}
         />
       );
     }
@@ -4040,6 +4060,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       return (
         <PhoneLettersApp
           onClose={() => setActiveApp(null)}
+          initialCharacterId={coupleLaunchCharId ?? undefined}
         />
       );
     }
@@ -4059,6 +4080,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
           onClose={() => setActiveApp(null)}
           onNotice={setNotice}
           initialPage={resourcesInitialPage}
+          initialCharacterId={coupleLaunchCharId ?? undefined}
         />
       );
     }
@@ -4114,7 +4136,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     }
 
     if (activeApp === "checkphone") {
-      return <CheckPhoneApp onClose={() => setActiveApp(null)} />;
+      return <CheckPhoneApp onClose={() => setActiveApp(null)} initialCharacterId={coupleLaunchCharId ?? undefined} />;
     }
 
     if (activeApp === "shopping") {
@@ -4208,8 +4230,11 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                   character={coupleCharacter}
                   onOpenChat={openCoupleChat}
                   onOpenTheme={() => openApp("theme")}
-                  onOpenCharacter={() => openApp("characters")}
-                  onOpenApp={(id) => openApp(id as DesktopIconId)}
+                  onOpenCharacter={() => {
+                    setCoupleLaunchCharId(draftTheme.coupleCharacterId || null);
+                    openApp("characters");
+                  }}
+                  onOpenApp={openCoupleApp}
                 />
               ) : null}
 

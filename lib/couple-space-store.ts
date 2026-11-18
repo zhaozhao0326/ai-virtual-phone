@@ -104,6 +104,8 @@ export function parseSpaceMarkers(text: string): {
   mood?: string;
   thought?: string;
   weather?: string;
+  /** 角色想往小世界添置的一件小物：icon|label */
+  item?: { icon: string; label: string };
   cleanText: string;
   hasMarker: boolean;
 } {
@@ -111,6 +113,7 @@ export function parseSpaceMarkers(text: string): {
   let mood: string | undefined;
   let thought: string | undefined;
   let weather: string | undefined;
+  let item: { icon: string; label: string } | undefined;
   const grab = (key: string): string | undefined => {
     // 宽松匹配：<!--SET_SPACE_MOOD:xxx--> / <!-- SET_SPACE_MOOD ： xxx -->
     const re = new RegExp(`<!--\\s*SET_SPACE_${key}\\s*[:：]\\s*([\\s\\S]*?)\\s*-->`, "i");
@@ -122,12 +125,23 @@ export function parseSpaceMarkers(text: string): {
   mood = grab("MOOD");
   thought = grab("THOUGHT");
   weather = grab("WEATHER");
+  // 道具标记：<!--SET_SPACE_ITEM: 🍵|傍晚一起喝的茶-->，icon|label 用竖线分隔
+  const itemRe = /<!--\s*SET_SPACE_ITEM\s*[:：]\s*([\s\S]*?)\s*-->/i;
+  const itemMatch = text.match(itemRe);
+  if (itemMatch) {
+    const raw = cleanFreeText(itemMatch[1]);
+    const sep = raw.indexOf("|");
+    const icon = (sep > 0 ? raw.slice(0, sep) : "✧").trim().slice(0, 4);
+    const label = (sep > 0 ? raw.slice(sep + 1) : raw).trim().slice(0, 24);
+    if (label) item = { icon: icon || "✧", label };
+  }
   return {
     mood,
     thought,
     weather,
+    item,
     cleanText: cleanFreeText(text),
-    hasMarker: Boolean(mood || thought || weather),
+    hasMarker: Boolean(mood || thought || weather || item),
   };
 }
 
@@ -206,6 +220,33 @@ export function applyChatSpaceMarkers(
     // 扫描失败不影响当前状态
   }
   return { status, applied };
+}
+
+/**
+ * 扫描该角色聊天里的「添置道具」隐藏标记，逐件解锁到小世界。
+ * - 与心情的去重逻辑独立：每件道具都要过一遍 unlockItem（内部按 id 幂等去重，不会重复添加）；
+ * - 零 token、纯本地；返回本次真正新解锁的道具，供 UI 弹提示。
+ */
+export function applyChatSpaceItems(
+  characterId: string,
+  scan: () => Array<{ content: string }>,
+): SpaceItem[] {
+  if (!characterId || typeof window === "undefined") return [];
+  const before = loadSpaceItems(characterId);
+  const beforeIds = new Set(before.map(i => i.id));
+  try {
+    for (const msg of scan()) {
+      if (!msg.content || !msg.content.includes("SET_SPACE_ITEM")) continue;
+      const parsed = parseSpaceMarkers(msg.content);
+      if (parsed.item) {
+        unlockItem(characterId, parsed.item.icon, parsed.item.label);
+      }
+    }
+  } catch {
+    // 扫描失败保持原样
+  }
+  const after = loadSpaceItems(characterId);
+  return after.filter(i => !beforeIds.has(i.id));
 }
 
 /* ─────────────────────────────────────────────

@@ -104,6 +104,8 @@ type PinchState = { dist: number; zoom: number; midX: number; midY: number };
 type PhoneCharacterAppProps = {
   onClose: () => void;
   onNotice: (text: string) => void;
+  /** 情侣空间专一入口：直接打开绑定角色的档案详情，跳过选人列表 */
+  initialCharacterId?: string;
 };
 
 type IntlWithTimeZoneList = typeof Intl & {
@@ -160,8 +162,14 @@ function getCharacterTimeZoneOptions(currentTimeZone = ""): string[] {
   return options;
 }
 
-export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps) {
-  const [view, setView] = useState<{ type: ViewType; id: string | null; isEditing?: boolean }>({ type: "list", id: null, isEditing: false });
+export function PhoneCharacterApp({ onClose, onNotice, initialCharacterId }: PhoneCharacterAppProps) {
+  const [view, setView] = useState<{ type: ViewType; id: string | null; isEditing?: boolean }>(() => {
+    // 情侣空间直达：绑定角色存在则直接进详情；否则保持列表。
+    if (initialCharacterId && loadCharacters().some(c => c.id === initialCharacterId)) {
+      return { type: "detail", id: initialCharacterId, isEditing: false };
+    }
+    return { type: "list", id: null, isEditing: false };
+  });
   const [characters, setCharacters] = useState<Character[]>(() => loadCharacters());
   const [bgItems, setBgItems] = useState<CanvasBgItem[]>(() => loadBackgroundItems());
   const [transition, setTransition] = useState<TransitionState | null>(null);

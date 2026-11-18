@@ -36,6 +36,8 @@ import {
   PenLine,
   X,
   Compass,
+  Mail,
+  Wrench,
   Play,
   Pause,
   Disc3,
@@ -50,6 +52,7 @@ import {
   loadSpaceStatus,
   saveSpaceStatus,
   applyChatSpaceMarkers,
+  applyChatSpaceItems,
   loadSpaceItems,
   migrateDecorToItems,
   type SpaceStatus,
@@ -102,9 +105,9 @@ const MENU_GROUPS: MenuGroup[] = [
     label: "同住的世界",
     entries: [
       { appId: "dwelling", title: "栖所", en: "DWELLING", icon: Home, tone: "ink" },
-      { appId: "letters", title: "情书", en: "LETTERS", icon: Compass, tone: "rose" },
+      { appId: "letters", title: "情书", en: "LETTERS", icon: Mail, tone: "rose" },
       { appId: "resources", title: "认知档案", en: "MEMORY", icon: Brain, tone: "warm" },
-      { appId: "qa", title: "小酒吧", en: "TAVERN", icon: Sun, tone: "ink" },
+      { appId: "qa", title: "小工坊", en: "WORKSHOP", icon: Wrench, tone: "ink" },
     ],
   },
 ];
@@ -363,9 +366,24 @@ export function CoupleSpace({
     const decorDefs = COUPLE_DECORS.filter((d) => state.unlocked.includes(d.id)).map((d) => ({
       id: d.id, icon: d.icon, title: d.title, accent: d.accent,
     }));
-    setItems(migrateDecorToItems(characterId, decorDefs));
-    if (newlyUnlocked.length > 0) {
-      setNewlyHint(`${name} 悄悄添置了「${newlyUnlocked[0].title}」`);
+    migrateDecorToItems(characterId, decorDefs);
+
+    // 角色主动添置：扫描聊天里的 SET_SPACE_ITEM 隐藏标记（零 token），解锁到小世界
+    const chatMessages: Array<{ content: string; createdAt: string }> = [];
+    const sessions = loadChatSessions().filter((s) => !s.isGroup && s.contactId === characterId);
+    for (const s of sessions) {
+      for (const m of loadChatMessages(s.id, 300)) {
+        if (m.role === "assistant" && m.content && m.content.includes("SET_SPACE_ITEM")) {
+          chatMessages.push({ content: m.content, createdAt: m.createdAt });
+        }
+      }
+    }
+    const addedByChat = applyChatSpaceItems(characterId, () => chatMessages);
+
+    setItems(loadSpaceItems(characterId));
+    const freshLabel = addedByChat[0]?.label || newlyUnlocked[0]?.title;
+    if (freshLabel) {
+      setNewlyHint(`${name} 悄悄添置了「${freshLabel}」`);
       const tm = window.setTimeout(() => setNewlyHint(null), 4200);
       return () => window.clearTimeout(tm);
     }
@@ -490,7 +508,6 @@ export function CoupleSpace({
               <div className="cs-polaroid-cap">{name}</div>
             </div>
             {signature && <div className="cs-mini-note">{signature}</div>}
-            <div className="cs-magnifier" aria-hidden><span /></div>
           </div>
 
           <div className="cs-col">
