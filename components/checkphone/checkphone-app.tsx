@@ -287,6 +287,9 @@ function getAppIconClass(appId: CheckPhoneAppId, isDock = false) {
 export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [activeCharId, setActiveCharId] = useState<string | null>(initialCharacterId ?? null);
+  // 角色表是异步加载的：专一直达时首帧 characters 还是空数组，
+  // 若直接渲染会闪一下选人大厅（No target records found）。用就绪标志挡住这一帧。
+  const [charsReady, setCharsReady] = useState(false);
   const [states, setStates] = useState<Record<string, ManifestState>>({});
   const [manifestsCacheMap, setManifestsCacheMap] = useState<Record<string, CheckPhoneManifest>>({});
   
@@ -359,6 +362,7 @@ export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProp
   useEffect(() => {
     const all = loadCharacters();
     setCharacters(all);
+    setCharsReady(true);
     setCheckPhoneSettings(loadCheckPhoneSettings());
 
     (async () => {
@@ -571,6 +575,20 @@ export function CheckPhoneApp({ onClose, initialCharacterId }: CheckPhoneAppProp
   const topApps = sanitizeCheckPhoneAppIds(manifest?.topAppIds);
   const dockApps = sanitizeCheckPhoneAppIds(manifest?.dockAppIds);
   const selectedAppSpec = selectedAppId && isCheckPhoneAppId(selectedAppId) ? CHECKPHONE_APP_SPECS[selectedAppId] : null;
+
+  // 专一直达：已指定角色但角色表还没加载完 → 等待态，绝不闪回选人大厅。
+  // 加载完成后若该角色确实不存在，activeCharacter 仍为 null，会自然落回列表（兜底，不永久卡住）。
+  if (activeCharId && !activeCharacter && !charsReady) {
+    return (
+      <PageShell title="Access Control" onBack={handleBack} className="cp-page-override cp-roster-page">
+        <div className="cp-app-wrapper">
+          <div className="cp-roster-view">
+            <div className="cp-roster-empty">正在打开…</div>
+          </div>
+        </div>
+      </PageShell>
+    );
+  }
 
   // STAGE 2: PURE FULLSCREEN IMMERSIVE SIMULATOR
   if (activeCharacter) {

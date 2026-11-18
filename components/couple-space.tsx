@@ -63,6 +63,8 @@ import {
   scanAndUnlockDecor,
 } from "@/lib/couple-decor-storage";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
+import { CoupleLoveLetter } from "./couple-love-letter";
+import { loadLoveLettersFor, applyChatLoveLetters, type LoveLetter } from "@/lib/love-letters-store";
 
 type CoupleSpaceProps = {
   profile: ThemeProfile;
@@ -312,6 +314,9 @@ export function CoupleSpace({
   const [status, setStatus] = useState<SpaceStatus>(() => loadSpaceStatus(character?.id || ""));
   const [items, setItems] = useState<SpaceItem[]>(() => loadSpaceItems(character?.id || ""));
   const [editField, setEditField] = useState<EditField | null>(null);
+  // 私藏短笺（只读信笺浮层）
+  const [letterOpen, setLetterOpen] = useState(false);
+  const [letters, setLetters] = useState<LoveLetter[]>(() => loadLoveLettersFor(character?.id || ""));
 
   // 黑胶真实播放器
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -368,17 +373,20 @@ export function CoupleSpace({
     }));
     migrateDecorToItems(characterId, decorDefs);
 
-    // 角色主动添置：扫描聊天里的 SET_SPACE_ITEM 隐藏标记（零 token），解锁到小世界
+    // 角色主动写：一次收集单聊里的角色回复，同时喂给「小世界添置」与「私藏短笺」两个钩子。
+    // 两个消费端内部各自按标记名过滤，这里不做内容判断，避免漏扫。零 token。
     const chatMessages: Array<{ content: string; createdAt: string }> = [];
     const sessions = loadChatSessions().filter((s) => !s.isGroup && s.contactId === characterId);
     for (const s of sessions) {
       for (const m of loadChatMessages(s.id, 300)) {
-        if (m.role === "assistant" && m.content && m.content.includes("SET_SPACE_ITEM")) {
+        if (m.role === "assistant" && m.content) {
           chatMessages.push({ content: m.content, createdAt: m.createdAt });
         }
       }
     }
     const addedByChat = applyChatSpaceItems(characterId, () => chatMessages);
+    applyChatLoveLetters(characterId, () => chatMessages);
+    setLetters(loadLoveLettersFor(characterId));
 
     setItems(loadSpaceItems(characterId));
     const freshLabel = addedByChat[0]?.label || newlyUnlocked[0]?.title;
@@ -421,8 +429,13 @@ export function CoupleSpace({
     if (appId === "chat") onOpenChat();
     else if (appId === "characters") onOpenCharacter();
     else if (appId === "theme" || appId === "settings") onOpenTheme();
+    // 情书：专属空间里不再进那个多角色聚合信箱，改为打开只属于 TA 的私藏短笺浮层
+    else if (appId === "letters") {
+      setLetters(loadLoveLettersFor(characterId));
+      setLetterOpen(true);
+    }
     else onOpenApp(appId);
-  }, [onOpenChat, onOpenCharacter, onOpenTheme, onOpenApp]);
+  }, [onOpenChat, onOpenCharacter, onOpenTheme, onOpenApp, characterId]);
 
   // 手动保存（机制 B）
   const handleSaveField = useCallback((field: EditField, value: string) => {
@@ -574,6 +587,15 @@ export function CoupleSpace({
       </div>
 
       {newlyHint && <div className="cs-unlock-toast"><Sparkles size={14} /> {newlyHint}</div>}
+
+      {/* 私藏短笺：只读宣纸信笺，点遮罩 / 按 Esc / 点合上 都能退 */}
+      {letterOpen && (
+        <CoupleLoveLetter
+          characterName={name}
+          letters={letters}
+          onClose={() => setLetterOpen(false)}
+        />
+      )}
 
       {/* 底部四 tab：全部映射真实动作，无空壳 */}
       <nav className="cs-nav" aria-label="专属空间导航">

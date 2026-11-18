@@ -1166,11 +1166,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // 聊天与档案有更精确的直达实现，这里主要服务于 onOpenApp 分支的 App。
   const openCoupleApp = useCallback((appId: string) => {
     setCoupleLaunchCharId(draftTheme.coupleCharacterId || null);
-    // 记忆库直达绑定角色：借 resourcesInitialPage + 事件里的 characterId 通道
+    // 认知档案：直接落到记忆库子页（openApp 会把 resources 重置回 main，所以要绕开它自己设）
     if (appId === "resources") {
-      window.dispatchEvent(new CustomEvent("open-app", {
-        detail: { appId: "resources", resourcePage: "memory", characterId: draftTheme.coupleCharacterId || undefined },
-      }));
+      setResourcesInitialPage("memory");
+      setActiveApp("resources" as DesktopIconId);
       return;
     }
     openApp(appId as DesktopIconId);

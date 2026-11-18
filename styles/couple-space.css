@@ -455,3 +455,159 @@
   font-size: 10px; color: rgba(230,232,225,.6); text-align: center; line-height: 1.6;
 }
 .cs-world-empty-icon { font-size: 20px; color: rgba(201,162,95,.55); }
+
+/* ═══════════════════════════════════════════
+   v1.7.157 私藏短笺：文人折纸信笺浮层
+   泛黄宣纸质感 + 一道暗红折痕 + 楷体手写
+   ═══════════════════════════════════════════ */
+
+.cll-mask {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  padding: 22px 18px;
+  background: rgba(18, 20, 18, .52);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  animation: cll-fade .2s ease-out;
+}
+@keyframes cll-fade { from { opacity: 0 } to { opacity: 1 } }
+
+/* 纸面：米白偏暖 + 多层渐变做纸纤维与斑驳做旧 */
+.cll-paper {
+  position: relative;
+  width: 100%; max-width: 356px;
+  max-height: 78vh;
+  display: flex; flex-direction: column;
+  border-radius: 3px;
+  overflow: hidden;
+  color: #3a3226;
+  background-color: #f2ead8;
+  background-image:
+    /* 边缘做旧：四角略深 */
+    radial-gradient(120% 90% at 50% -10%, rgba(255, 252, 242, .95) 0%, rgba(255, 252, 242, 0) 55%),
+    radial-gradient(90% 70% at 100% 100%, rgba(150, 120, 80, .13) 0%, rgba(150, 120, 80, 0) 60%),
+    radial-gradient(80% 60% at 0% 90%, rgba(150, 120, 80, .10) 0%, rgba(150, 120, 80, 0) 55%),
+    /* 纸纤维：极细横纹 */
+    repeating-linear-gradient(90deg, rgba(120, 100, 70, .035) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(0deg, rgba(120, 100, 70, .022) 0 1px, transparent 1px 4px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .7) inset,
+    0 18px 48px rgba(0, 0, 0, .42),
+    0 2px 6px rgba(0, 0, 0, .2);
+  animation: cll-rise .26s cubic-bezier(.2, .8, .3, 1);
+}
+@keyframes cll-rise {
+  from { opacity: 0; transform: translateY(14px) scale(.985) }
+  to   { opacity: 1; transform: translateY(0) scale(1) }
+}
+
+/* 暗红折痕：横 + 竖各一道，很淡，像真的折过再展开 */
+.cll-fold {
+  position: absolute; left: 0; right: 0; top: 42%; height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    rgba(130, 40, 38, 0) 0%,
+    rgba(130, 40, 38, .17) 18%,
+    rgba(130, 40, 38, .22) 50%,
+    rgba(130, 40, 38, .17) 82%,
+    rgba(130, 40, 38, 0) 100%);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .75);
+}
+.cll-fold-v {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  pointer-events: none;
+  background: linear-gradient(180deg,
+    rgba(130, 40, 38, 0) 0%,
+    rgba(130, 40, 38, .12) 30%,
+    rgba(130, 40, 38, .15) 70%,
+    rgba(130, 40, 38, 0) 100%);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, .6);
+}
+
+.cll-head {
+  position: relative; z-index: 1;
+  padding: 20px 22px 10px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.cll-title {
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", "Songti SC", serif;
+  font-size: 17px; letter-spacing: 4px; font-weight: 700;
+  color: #4a3a26;
+}
+.cll-sub {
+  margin-top: 4px;
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  font-size: 11px; letter-spacing: 1.5px;
+  color: rgba(74, 58, 38, .48);
+}
+
+.cll-body {
+  position: relative; z-index: 1;
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  padding: 6px 22px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 100, 70, .25) transparent;
+}
+.cll-body::-webkit-scrollbar { width: 3px }
+.cll-body::-webkit-scrollbar-thumb { background: rgba(120, 100, 70, .22); border-radius: 3px }
+
+.cll-note { padding: 10px 0 12px }
+.cll-text {
+  margin: 0;
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", "Songti SC", serif;
+  font-size: 15px; line-height: 2; letter-spacing: .6px;
+  color: #3a3226;
+  white-space: pre-wrap; word-break: break-word;
+}
+.cll-meta {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin-top: 8px;
+}
+.cll-time {
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  font-size: 10px; letter-spacing: .5px;
+  color: rgba(74, 58, 38, .38);
+}
+.cll-sign {
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  font-size: 11px; letter-spacing: 1px;
+  color: rgba(130, 70, 50, .62);
+}
+.cll-divider {
+  margin-top: 10px; height: 1px;
+  background: linear-gradient(90deg, rgba(120, 100, 70, .16), rgba(120, 100, 70, 0));
+}
+
+.cll-empty {
+  padding: 26px 4px 30px; text-align: center;
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  color: rgba(74, 58, 38, .6);
+}
+.cll-empty-mark { font-size: 20px; color: rgba(130, 40, 38, .3); margin-bottom: 8px }
+.cll-empty p { margin: 0; font-size: 13px; line-height: 1.9 }
+.cll-empty-hint { margin-top: 6px !important; font-size: 11px !important; opacity: .72 }
+
+.cll-foot {
+  position: relative; z-index: 1;
+  display: flex; justify-content: flex-end;
+  padding: 10px 18px 16px;
+  flex-shrink: 0;
+}
+.cll-close {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 16px; border-radius: 2px; cursor: pointer;
+  border: 1px solid rgba(120, 100, 70, .3);
+  background: rgba(255, 252, 242, .5);
+  font-family: "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif;
+  font-size: 12px; letter-spacing: 2px;
+  color: rgba(74, 58, 38, .78);
+  transition: background .16s, border-color .16s;
+}
+.cll-close:hover { background: rgba(255, 252, 242, .85); border-color: rgba(120, 100, 70, .5) }
+.cll-close:active { transform: scale(.97) }
+
+@media (prefers-reduced-motion: reduce) {
+  .cll-mask, .cll-paper { animation: none }
+}

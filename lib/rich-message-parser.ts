@@ -774,6 +774,8 @@ export function parseAIResponse(
     //     绝不能裸露在聊天气泡里。这里从显示文本中剥离（存储层 content/rawResponseText 仍保留，
     //     供 couple-space-store 扫描写入 space_status）。剥离后再走下面的富媒体解析。
     rawText = rawText.replace(/<!--\s*SET_SPACE_(?:MOOD|THOUGHT|WEATHER|ITEM)\s*[:：][\s\S]*?-->/gi, "");
+    // 私藏短笺标记（v1.7.157）：同样只入本地 love_letters、绝不在气泡里显示
+    rawText = rawText.replace(/<!--\s*WRITE_LETTER\s*[:：][\s\S]*?-->/gi, "");
     // 0. 硬隔离兜底：默认剥离模型自发配图标签，避免退化成「每句话配一张图」。
     //    聊天主流程会在「用户要照片」或「上一条非图片」时传 allowImageTags=true 放行。
     rawText = stripModelInitiatedImageTags(rawText, opts?.allowImageTags ?? false);

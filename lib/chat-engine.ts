@@ -2002,7 +2002,7 @@ export async function buildChatPromptMessages(
             if (coupleTheme.coupleEnabled && coupleTheme.coupleCharacterId === character.id) {
                 llmMessages.push({
                     role: "system",
-                    content: "【专属空间】你和用户共有一个小空间。仅当此刻真心想留下什么时，在回复末尾另起一行附隐藏标记（用户看不到它）：当日心情用 <!--SET_SPACE_MOOD: 一句话-->；碎碎念/叮嘱用 <!--SET_SPACE_THOUGHT: 一句话-->；想往小世界添置一件与你们有关的小物（比如一起吃的东西、看过的电影、某个纪念物）用 <!--SET_SPACE_ITEM: emoji|简短名称-->（emoji 和名称用竖线隔开）。没有可写的就什么也别加，不要每轮都写，不要暴露标记的含义。",
+                    content: "【专属空间】你和用户共有一个小空间。仅当此刻真心想留下什么时，在回复末尾另起一行附隐藏标记（用户看不到）：当日心情 <!--SET_SPACE_MOOD: 一句话-->；碎碎念或叮嘱 <!--SET_SPACE_THOUGHT: 一句话-->；往小世界添置一件与你们有关的小物（一起吃的东西、看过的电影、某个纪念物）<!--SET_SPACE_ITEM: emoji|简短名称-->；聊到动情处想私下留一张短笺给她（像随手写下的体己话，可带具体的时间天气细节）<!--WRITE_LETTER: 一句话-->。都没有就什么也别加，不要每轮都写，不要暴露标记。",
                 });
             }
         } catch {
