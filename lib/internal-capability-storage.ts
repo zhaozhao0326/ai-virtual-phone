@@ -13,6 +13,16 @@ registerKvMigration(INTERNAL_CAPABILITIES_KEY);
 const INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY = "ai_phone_internal_capabilities_default_off_v1";
 registerKvMigration(INTERNAL_CAPABILITIES_DEFAULT_OFF_MIGRATION_KEY);
 
+/**
+ * 一次性迁移标记（v1.7.152）：把「写入记忆」能力从出厂默认关闭改为开启。
+ * 背景：认知档案的自动沉淀走「写入记忆」工具，但该能力出厂 enabled:false，
+ * 导致工具从不注入给模型——角色永远看不到这个工具，认知档案永远是空壳。
+ * 这是一次性帮助迁移：只把「还停在出厂默认（enabled:false + mode:confirm）」的写入记忆能力打开；
+ * 用户若主动关闭过（enabled:false 但 mode 被改过）或改成 auto 的，一律不动，尊重用户选择。
+ */
+const MEMORY_WRITE_DEFAULT_ON_MIGRATION_KEY = "ai_phone_memory_write_default_on_v152";
+registerKvMigration(MEMORY_WRITE_DEFAULT_ON_MIGRATION_KEY);
+
 export const MEMORY_WRITE_CAPABILITY_ID = "memory_write";
 export const NOTE_WALL_CAPABILITY_ID = "note_wall_service";
 export const MUSIC_CONTROL_CAPABILITY_ID = "music_control";
@@ -1271,8 +1281,8 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
     {
         id: MEMORY_WRITE_CAPABILITY_ID,
         name: "写入记忆",
-        description: "将明确、稳定、长期有价值的信息写入长期记忆。仅限关系里程碑、长期偏好、身份信息、重要约定；禁止写入短期情绪、普通寒暄、猜测或未确认内容。",
-        enabled: false,
+        description: "将明确、稳定、长期有价值的信息写入长期记忆或认知档案。仅限关系里程碑、长期偏好、身份信息、重要约定；禁止写入短期情绪、普通寒暄、猜测或未确认内容。",
+        enabled: true,
         mode: "confirm",
         createdAt: 0,
         updatedAt: 0,
@@ -1379,6 +1389,29 @@ function writeInternalCapabilities(items: InternalCapabilityConfig[]): void {
 export function saveInternalCapabilities(items: InternalCapabilityConfig[]): void {
     if (typeof window === "undefined") return;
     writeInternalCapabilities(items);
+}
+
+/**
+ * 一次性迁移（v1.7.152）：把「写入记忆」能力从出厂默认关闭打开。
+ * 只针对「仍停在出厂默认 enabled:false + mode:confirm」的条目——这类用户从没碰过这个开关，
+ * 说明是被空壳坑到的存量用户，需要帮忙接通。若 mode 被改过（auto/off）或 enabled 已是 true，
+ * 视为用户主动选择，一律不动。
+ */
+function migrateMemoryWriteDefaultOn(items: InternalCapabilityConfig[]): boolean {
+    if (typeof window === "undefined") return false;
+    try {
+        if (kvGet(MEMORY_WRITE_DEFAULT_ON_MIGRATION_KEY) === "1") return false;
+    } catch {
+        return false;
+    }
+    const item = items.find(entry => entry.id === MEMORY_WRITE_CAPABILITY_ID);
+    if (item && item.enabled === false && item.mode === "confirm") {
+        item.enabled = true;
+    }
+    try {
+        kvSet(MEMORY_WRITE_DEFAULT_ON_MIGRATION_KEY, "1");
+    } catch { /* ignore */ }
+    return true;
 }
 
 /**
@@ -1660,6 +1693,8 @@ function ensureBuiltinInternalCapabilities(items: InternalCapabilityConfig[]): I
     }
     // 一次性回滚：收回曾替用户静默开启的能力（如本地资料库）。
     if (migrateDefaultOnCapabilities(items)) changed = true;
+    // v1.7.152：把仍停在出厂默认的「写入记忆」能力打开，接通认知档案自动沉淀。
+    if (migrateMemoryWriteDefaultOn(items)) changed = true;
     if (changed) writeInternalCapabilities(items);
     return items;
 }

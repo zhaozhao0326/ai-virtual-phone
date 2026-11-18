@@ -3141,6 +3141,23 @@ async function executeMemoryWriteTool(
     const importance = clampImportance(args.importance);
     const reason = String(args.reason ?? "").trim() || undefined;
 
+    // 认知档案写入的角色级开关校验前置到 confirm / auto 分流之前：
+    // 关闭的角色从一开始就拦截，不弹确认卡、不写档案（勾选的开关真正管写入）。
+    const autoMemoryCategoryRaw = typeof args.autoMemory === "string" ? args.autoMemory.trim() : "";
+    if (autoMemoryCategoryRaw) {
+        const owner = loadCharacters().find(c => c.id === context.characterId);
+        if (owner && owner.autoMemoryEnabled === false) {
+            return {
+                name: "写入认知档案",
+                success: false,
+                error: "该角色的认知档案开关已关闭",
+                continueConversation: false,
+                persistToHistory: false,
+                userNotice: "该角色未开启认知档案，未写入",
+            };
+        }
+    }
+
     const duplicate = await isDuplicateLongTermMemory(context.characterId, content);
     if (duplicate) {
         return {
@@ -3162,9 +3179,7 @@ async function executeMemoryWriteTool(
         ...(reason ? { reason } : {}),
         // Auto Memory 认知档案写入（可选）：AI 在对话中判断"这对了解我有长期价值"时，
         // 可带 autoMemory 分类写入认知档案（经用户审批，走同一链路）
-        ...(typeof args.autoMemory === "string" && args.autoMemory.trim()
-            ? { autoMemoryCategory: String(args.autoMemory).trim() }
-            : {}),
+        ...(autoMemoryCategoryRaw ? { autoMemoryCategory: autoMemoryCategoryRaw } : {}),
         ...(typeof args.autoMemoryPriority === "string" && ["always", "normal", "low"].includes(args.autoMemoryPriority)
             ? { autoMemoryPriority: String(args.autoMemoryPriority) }
             : {}),
@@ -3286,6 +3301,18 @@ async function persistMemoryWriteRequest(
 ): Promise<ToolResult> {
     // Auto Memory 认知档案写入：带 autoMemoryCategory 时写入该角色的认知档案（auto_memory 表）
     if (request.autoMemoryCategory) {
+        // 角色级认知档案开关：勾选（缺省为开）才允许沉淀；关掉的角色不写，尊重选人意图。
+        const owner = loadCharacters().find(c => c.id === request.characterId);
+        if (owner && owner.autoMemoryEnabled === false) {
+            return {
+                name: "写入认知档案",
+                success: false,
+                error: "该角色的认知档案开关已关闭",
+                continueConversation: false,
+                persistToHistory: false,
+                userNotice: "该角色未开启认知档案，未写入",
+            };
+        }
         const category = AUTO_MEMORY_CATEGORIES.includes(request.autoMemoryCategory as AutoMemoryCategory)
             ? (request.autoMemoryCategory as AutoMemoryCategory)
             : "background";
