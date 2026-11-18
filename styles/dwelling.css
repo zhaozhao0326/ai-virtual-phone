@@ -682,6 +682,20 @@
   line-height: 1.9;
   margin-top: 5px;
 }
+/* 「新」标：最近一次「加入新物件」时新冒出来的东西 */
+.dw-new-tag {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--dw-red);
+  border: 1px solid var(--dw-red-soft);
+  background: rgba(180, 90, 95, .12);
+  padding: 1px 6px;
+  margin-left: 7px;
+  letter-spacing: 1px;
+  vertical-align: 2px;
+  border-radius: 2px;
+}
 .dw2-sgo { color: rgba(255, 255, 255, 0.35); font-size: 13px; margin-top: 3px; flex-shrink: 0; }
 .dw2-sexpand { padding: 14px 0 6px; }
 .dw2-sload {

@@ -3,6 +3,7 @@ import { loadDwellingImageEnabled } from "./dwelling-storage";
 import { loadImageGenerationSettings } from "./settings-storage";
 import type { ImageGenerationSettings } from "./settings-types";
 import { generateImageFromConfiguredApi } from "./image-generation-service";
+import { loadCharacters } from "./character-storage";
 
 // ── Availability ──────────────────────────────
 
@@ -46,14 +47,51 @@ export function getDwellingImageAvailability(): DwellingImageAvailability {
 
 // ── Room image generation ─────────────────────
 
+/**
+ * 房间图提示词版本。
+ * v2：把「空无一人」提到最前并加硬否决；同时剥掉角色名/人物主语，
+ *     修掉旧版房间图里凭空出现「住在房间里的主人」（还不是绑定角色）的问题。
+ * 与当前版本不一致的房间图会在打开房间时自动重画。
+ */
+export const ROOM_IMAGE_PROMPT_VERSION = 2;
+
+/** 硬性禁用项：放在提示词最前，权重最高，避免模型按 imagePrompt 里的人物描述画人 */
+const NO_PEOPLE_RULE =
+    "【硬性要求｜最高优先级】这是一张空无一人的室内空间照片：画面中绝对不能出现任何人物——"
+    + "不出现人脸、人像、全身或半身的人、背影、剪影、镜中人影、手、腿、脚，也不要出现动物、"
+    + "玩偶装的人形和任何可读文字。房间因为没人而显得安静，物品保持被使用过但此刻无人的状态。";
+
+/** 人物类主语：这些词出现在分句里，说明该分句在描述「谁在画面里」，整句丢弃 */
+const PERSON_CLAUSE_RX =
+    /(他|她|男人|女人|男性|女性|少年|少女|青年|主人|住客|身影|背影|人像|人物|一个人|某人|上半身|半身)/;
+
+/**
+ * 把 imagePrompt 里描述人物的分句剥掉。
+ * LLM 生成的构图描述常写成「他靠在沙发上」，模型会照着画出一个人；
+ * 只按分句（，。；、）剔除含人物主语的片段，保留家具方位描述。
+ */
+function stripPersonClauses(text: string, characterName?: string): string {
+    if (!text) return "";
+    const name = (characterName || "").trim();
+    const clauses = text.split(/(?<=[，,。；;])/);
+    const kept = clauses.filter(clause => {
+        if (name && clause.includes(name)) return false;
+        // 「单人沙发」「双人床」这类家具名不算人物描述
+        const probe = clause.replace(/单人|双人|三人|人形摆件|人偶/g, "");
+        return !PERSON_CLAUSE_RX.test(probe);
+    });
+    return kept.join("").trim();
+}
+
 /** 统一风格后缀：保证各房间图色调一致、匹配栖所暗色 UI */
 const DWELLING_IMAGE_STYLE_SUFFIX =
-    "电影感室内空间摄影，广角镜头拍摄整个房间，低照度暗调，光影层次丰富，氛围沉静高级，构图简洁干净，画面中没有任何人物、动物和文字，真实材质细节";
+    "电影感室内空间摄影，广角镜头拍摄整个房间，低照度暗调，光影层次丰富，氛围沉静高级，构图简洁干净，真实材质细节";
 
-function buildRoomImagePrompt(room: DwellingRoom): string {
+function buildRoomImagePrompt(room: DwellingRoom, characterName?: string): string {
     const labels = (room.furniture || []).map(f => f.label).filter(Boolean);
-    const base = room.imagePrompt?.trim()
+    const rawBase = room.imagePrompt?.trim()
         || `${room.name}的室内场景，${labels.join("、")}自然分布在画面中`;
+    const base = stripPersonClauses(rawBase, characterName) || `${room.name}的室内场景`;
     const mustLine = labels.length
         ? `画面中必须同时出现以下家具，缺一不可：${labels.join("、")}；采用能看到整个房间的广角视角，禁止只拍某件家具的局部特写。`
         : "";
@@ -65,9 +103,14 @@ function buildRoomImagePrompt(room: DwellingRoom): string {
         .filter(Boolean)
         .join("；");
     const detailLine = details
-        ? `画面细节参考（从中挑选有画面感的自然呈现，小物件只需模糊暗示，画面中不要出现任何可读的文字、字母或数字）：${details}。`
+        ? `画面细节参考（从中挑选有画面感的自然呈现，小物件只需模糊暗示）：${details}。`
         : "";
-    return `${base}。${mustLine}${detailLine}${DWELLING_IMAGE_STYLE_SUFFIX}`;
+    return `${NO_PEOPLE_RULE}${base}。${mustLine}${detailLine}${DWELLING_IMAGE_STYLE_SUFFIX}`;
+}
+
+/** 供自检/调试查看最终提示词（不含任何网络请求） */
+export function buildDwellingRoomImagePrompt(room: DwellingRoom, characterName?: string): string {
+    return buildRoomImagePrompt(room, characterName);
 }
 
 export type DwellingRoomImageResult = { assetId: string | null; error?: string };
@@ -118,8 +161,11 @@ export async function generateDwellingRoomImage(
         try {
             const availability = getDwellingImageAvailability();
             if (!availability.available) return { assetId: null, error: availability.reason || "生图未开启" };
+            // 角色名传进提示词构造：room.imagePrompt 里若写了「他靠在沙发上」要剥掉，
+            // 否则模型会照着画一个陌生人，且与绑定角色完全不像。
+            const characterName = loadCharacters().find(c => c.id === characterId)?.name;
             const result = await generateImageFromConfiguredApi({
-                description: buildRoomImagePrompt(room),
+                description: buildRoomImagePrompt(room, characterName),
                 signal: controller.signal,
                 // 栖所生图显式钉死：不套 OpenAI 风格预设、尺寸用方图（房间横宽更合适）。
                 // 否则 settings 兜底会带默认 auto，误把聊天侧的电影感/氛围增强渗进栖所图。

@@ -93,6 +93,9 @@ async function buildDwellingMessages(
 
 // ── Valid positions for dedup ─────────────────
 
+/** 单件家具的物品上限：增量累积时的护栏，超过后只保留已有、不再追加（不删除任何旧物） */
+const MAX_ITEMS_PER_FURNITURE = 12;
+
 const ALL_POSITIONS: DwellingPosition[] = [
     "top-left", "top-center", "top-right",
     "center-left", "center", "center-right",
@@ -196,8 +199,63 @@ function extractJSON(text: string): unknown | null {
     return null;
 }
 
-// ── Format existing layout as compact context text ──
+// ── Normalize item HTML ───────────────────────
 
+/**
+ * 把探索结果统一成「带 ```html 围栏」的形态。
+ *
+ * 为什么必须做：StoryHtmlRenderer 只把围栏里的内容当 HTML 页面渲染，
+ * 裸 HTML 会落进 Markdown 分支被原样当代码显示（用户看到一整屏 HTML 源码）。
+ * 预设里虽然要求模型输出围栏，但它并不总是照做，所以这里兜底。
+ */
+export function ensureHtmlFence(raw: string): string {
+    const text = (raw || "").trim();
+    if (!text) return "";
+    if (/```html/i.test(text)) return text;
+    const m = text.match(/<!DOCTYPE\s+html|<html[\s>]/i);
+    if (!m || m.index === undefined) return text;
+    const page = text.slice(m.index).replace(/```+\s*$/, "").trim();
+    return "```html\n" + page + "\n```";
+}
+
+/**
+ * 「加入新物件」的合并规则：旧物品一件都不删，只把新出现的追加进来。
+ *
+ * 为什么要这样：栖所的本意是「这个家随聊天变深，慢慢多出用户的东西」。
+ * 旧实现是整批替换 items，刷新一次用户留下的东西就没了，永远停在初识状态。
+ * 同件家具到上限（MAX_ITEMS_PER_FURNITURE）后只停止追加，不删任何旧物。
+ */
+export function mergeDwellingItems(oldLayout: DwellingLayout, incoming: DwellingLayout): DwellingLayout {
+    const merged = structuredClone(oldLayout);
+    const incomingMap = new Map<string, DwellingFurniture["items"]>();
+    for (const room of incoming.rooms) {
+        for (const f of room.furniture) {
+            incomingMap.set(`${room.id}_${f.id}`, f.items);
+        }
+    }
+    for (const room of merged.rooms) {
+        for (const f of room.furniture) {
+            const next = incomingMap.get(`${room.id}_${f.id}`) || [];
+            const kept: DwellingFurniture["items"] = f.items.map(it => {
+                const rest = { ...it };
+                delete rest.isNew;
+                return rest;
+            });
+            const seen = new Set(kept.map(it => (it.name || "").trim()));
+            for (const it of next) {
+                const name = (it.name || "").trim();
+                if (!name || seen.has(name)) continue;
+                if (kept.length >= MAX_ITEMS_PER_FURNITURE) break;
+                kept.push({ ...it, isNew: true });
+                seen.add(name);
+            }
+            f.items = kept;
+        }
+    }
+    return merged;
+}
+
+// ── Format existing layout as compact context text ──
 export function formatDwellingContext(layout: DwellingLayout, updatedAt: string): string {
     const ts = updatedAt.slice(0, 16).replace("T", " ");
     const lines = [`[房屋布局 ${ts} 更新]`];
@@ -277,22 +335,10 @@ export async function generateDwellingLayout(
             }
         }
 
-        // Items mode: merge new items into old layout structure
+        // Items mode: 增量合并——旧物品全部保留，只把新出现的追加进来
+        // （这个家应该随关系推进慢慢多出「用户的东西」，而不是每次刷新被整批替换）
         if (mode === "items" && oldCached) {
-            const oldLayout = structuredClone(oldCached.layout);
-            const newItemsMap = new Map<string, typeof layout.rooms[0]["furniture"][0]["items"]>();
-            for (const room of layout.rooms) {
-                for (const f of room.furniture) {
-                    newItemsMap.set(`${room.id}_${f.id}`, f.items);
-                }
-            }
-            for (const room of oldLayout.rooms) {
-                for (const f of room.furniture) {
-                    const newItems = newItemsMap.get(`${room.id}_${f.id}`);
-                    if (newItems) f.items = newItems;
-                }
-            }
-            layout = oldLayout;
+            layout = mergeDwellingItems(oldCached.layout, layout);
         }
 
         deduplicatePositions(layout.rooms);

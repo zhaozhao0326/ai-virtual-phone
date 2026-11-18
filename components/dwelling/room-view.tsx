@@ -398,7 +398,7 @@ export function RoomView({
                                         }}>
                                         <span className="dw2-sno">{String(idx + 1).padStart(2, "0")}</span>
                                         <span className="dw2-stx">
-                                            <span className="dw2-sname">{item.name}{html && <em className="dw2-sdone">已探索</em>}</span>
+                                            <span className="dw2-sname">{item.name}{item.isNew && !html && <em className="dw-new-tag">新</em>}{html && <em className="dw2-sdone">已探索</em>}</span>
                                             <span className="dw2-sprev">{item.preview}</span>
                                         </span>
                                         <span className="dw2-sgo">{html ? "›" : isOpen ? "▾" : "›"}</span>
@@ -469,7 +469,7 @@ function ListFurnitureCard({ room, furniture, itemHtmlCache, loadingItemKeys, la
                                 }}>
                                     <span className="dw-item-dot" />
                                     <div className="dw-item-text">
-                                        <span className="dw-item-name">{item.name}</span>
+                                        <span className="dw-item-name">{item.name}{item.isNew && <em className="dw-new-tag">新</em>}</span>
                                         <span className="dw-item-preview">{item.preview}</span>
                                     </div>
                                     <span className="dw-item-go">{html ? "›" : isOpen ? "▾" : "›"}</span>

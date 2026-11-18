@@ -15,9 +15,9 @@ import {
     saveDwellingImageEnabled,
     collectRoomImageRefs,
 } from "@/lib/dwelling-storage";
-import { generateDwellingLayout, generateItemHtml, type DwellingRefreshMode } from "@/lib/dwelling-engine";
+import { generateDwellingLayout, generateItemHtml, ensureHtmlFence, type DwellingRefreshMode } from "@/lib/dwelling-engine";
 import { pinyin } from "pinyin-pro";
-import { getDwellingImageAvailability, generateDwellingRoomImage, cancelDwellingRoomImage } from "@/lib/dwelling-image";
+import { getDwellingImageAvailability, generateDwellingRoomImage, cancelDwellingRoomImage, ROOM_IMAGE_PROMPT_VERSION } from "@/lib/dwelling-image";
 import { deleteMediaRef, loadMediaObjectUrl } from "@/lib/media-cache-storage";
 import { RoomView, type DwellingRoomImageStatus } from "./room-view";
 import { StoryHtmlRenderer } from "@/components/ui/story-html-renderer";
@@ -273,6 +273,7 @@ export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: Dw
         if (assetId) {
             const old = room.imageAssetId;
             room.imageAssetId = assetId;
+            room.imagePromptVersion = ROOM_IMAGE_PROMPT_VERSION;
             if (old && old !== assetId) void deleteMediaRef(old);
             const url = await loadMediaObjectUrl(assetId);
             if (url) roomImageUrls.set(assetId, url);
@@ -291,6 +292,19 @@ export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: Dw
         if (!activeCharId || !csForImage?.layout || !roomForImage) return;
         const cs = csForImage;
         const room = roomForImage;
+
+        // 旧版提示词画的图（会出现「住在房间里的陌生人」）→ 打开房间时静默重画一次。
+        // 先出图再替换：生成失败时旧图仍在，不会白丢一张图。
+        if (room.imageAssetId && room.imagePromptVersion !== ROOM_IMAGE_PROMPT_VERSION) {
+            const canRegen = imageEnabled && imageConfigured
+                && !cs.generatingImageRooms.has(room.id)
+                && !cs.imageErrors[room.id];
+            if (canRegen) {
+                void handleGenerateRoomImage(activeCharId, room.id);
+                return;
+            }
+            // 不能重画时继续往下走：至少把现有那张图显示出来
+        }
 
         if (room.imageAssetId) {
             const ref = room.imageAssetId;
@@ -346,10 +360,12 @@ export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: Dw
 
         cs.loadingItemKeys.delete(key);
         if (html) {
-            cs.itemHtmlCache[key] = html;
-            void saveItemHtml(charId, roomId, item.id, html);
+            // 统一成带围栏的 HTML：模型偶尔不加 ```html，裸 HTML 会被当源码原样显示
+            const normalized = ensureHtmlFence(html);
+            cs.itemHtmlCache[key] = normalized;
+            void saveItemHtml(charId, roomId, item.id, normalized);
             const currentRoom = activeCharIdRef.current === charId ? cs.layout?.rooms[activeRoomIdxRef.current] : null;
-            if (currentRoom?.id === roomId) openItemDetail(room, furniture, item, html);
+            if (currentRoom?.id === roomId) openItemDetail(room, furniture, item, normalized);
         }
         cs.lastItemError = error || null;
         rerender();
@@ -495,7 +511,7 @@ export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: Dw
                         <div className="dwelling-detail-preview">{itemDetail.itemPreview}</div>
                         <div className="dwelling-detail-html">
                             <StoryHtmlRenderer
-                                content={itemDetail.html}
+                                content={ensureHtmlFence(itemDetail.html)}
                                 messageId={`dw-detail-${itemDetail.roomId}-${itemDetail.furnitureId}-${itemDetail.itemId}`}
                                 htmlPageMode="contained"
                             />
@@ -513,8 +529,8 @@ export function DwellingApp({ onClose, visible, onIdle, initialCharacterId }: Dw
                         <div className="dw-confirm-actions-col">
                             <button className="dw-confirm-option" onClick={() => { setShowRefreshConfirm(false); handleRefresh("items"); }}>
                                 <span className="dw-confirm-option-text">
-                                    <strong>刷新物品</strong>
-                                    <small>保留房间和家具，只更新物品</small>
+                                    <strong>加入新物件</strong>
+                                    <small>房间和已有物品都留着，只把这段时间新出现的加进来</small>
                                 </span>
                             </button>
                             <button className="dw-confirm-option" onClick={() => { setShowRefreshConfirm(false); handleRefresh("full"); }}>

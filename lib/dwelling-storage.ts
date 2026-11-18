@@ -11,6 +11,8 @@ export type DwellingFurnitureItem = {
     id: string;
     name: string;
     preview: string;
+    /** 最近一次「刷新物品」时新加入的物件（用于列表打「新」标，下次刷新会清掉旧标记） */
+    isNew?: boolean;
 };
 
 export type DwellingMarker = { x: number; y: number };
@@ -37,6 +39,12 @@ export type DwellingRoom = {
     imagePrompt?: string;
     /** 已生成房间图的媒体引用 */
     imageAssetId?: string;
+    /**
+     * 生成这张房间图时使用的提示词版本。
+     * 与当前版本不一致说明图是旧提示词产出的（例如早期版本会出现人物），
+     * 打开房间时会自动重画，避免用户手动逐间重生成。
+     */
+    imagePromptVersion?: number;
     furniture: DwellingFurniture[];
 };
 
