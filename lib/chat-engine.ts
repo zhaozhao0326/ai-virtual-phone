@@ -35,6 +35,7 @@ import {
     resolveUserIdentity,
 } from "./settings-storage";
 import { assemblePromptPayload, applyOutputRegex, type LLMMessage, type LLMContentPart } from "./llm-prompt-assembler";
+import { readThemeProfile } from "./theme-storage";
 import { estimateMessagesTokens, estimateTokens } from "./token-counter";
 import { MacroEngine, postProcessTrim } from "./macro-engine";
 import { getStatusRegionConfig, resolveStatusRegionSection, resolveStatusRegionExampleLine, resolveStatusRegionComposition, resolveStatusRegionFullExample, appendOfflineStatusRegionInstruction } from "./chat-status-region";
@@ -1989,6 +1990,24 @@ export async function buildChatPromptMessages(
             role: "system",
             content: `【导演执导】你正在被片场导演执导。以下是从你与用户的后台沟通中沉淀下来的执导要求，请在本轮及后续演绎中遵循（除非用户当下的新剧情明显与之冲突）：\n${directiveSession.directorDirective.trim()}`,
         });
+    }
+
+    // 情侣空间·空间装修约定（v1.7.154）：仅当本角色正是被绑定的那一个 TA 且开关开启时注入。
+    // 天然满足「选人」铁律——只作用于 coupleCharacterId 指向的单个角色，关闭开关即完全不注入。
+    // 极简一行、低频触发（只在真有心情/碎碎念想留时），不给每轮聊天都加负担；零额外 LLM 调用。
+    // 标记是隐藏的：显示层（parseAIResponse）会剥掉，用户看不到这行标记。
+    if (!session.isGroup) {
+        try {
+            const coupleTheme = readThemeProfile();
+            if (coupleTheme.coupleEnabled && coupleTheme.coupleCharacterId === character.id) {
+                llmMessages.push({
+                    role: "system",
+                    content: "【专属空间】你和用户共有一个小空间。仅当你此刻真心想留下当日心情或一句叮嘱时，在回复末尾另起一行附一行隐藏标记（用户看不到它）：想写心情用 <!--SET_SPACE_MOOD: 一句话-->，想写碎碎念用 <!--SET_SPACE_THOUGHT: 一句话-->。没有可写的就什么也别加，不要每轮都写，不要暴露标记的含义。",
+                });
+            }
+        } catch {
+            // 读主题失败时静默跳过，不影响正常聊天
+        }
     }
 
     // 总 token 刹车：确保拼装后的 prompt 不超过模型上下文窗口，

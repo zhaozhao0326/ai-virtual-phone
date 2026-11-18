@@ -45,6 +45,7 @@ import type { Character } from "@/lib/character-types";
 import type { ThemeProfile } from "@/lib/theme-types";
 import {
   cleanDisplayText,
+  cleanFreeText,
   defaultStatus,
   loadSpaceStatus,
   saveSpaceStatus,
@@ -124,8 +125,8 @@ function buildClips(status: SpaceStatus, name: string, persona: string | undefin
     "窗边的光，刚好落在你身上。",
     "把细碎的日常，都收进这本册子里。",
   ];
-  const mood = cleanDisplayText(status.mood) || fallbacks[0];
-  const thought = cleanDisplayText(status.thought) || fallbacks[1];
+  const mood = cleanFreeText(status.mood) || fallbacks[0];
+  const thought = cleanFreeText(status.thought) || fallbacks[1];
   // 第三格取人设里的一句（清洗后），没有则用兜底
   let third = fallbacks[2];
   const personaLine = (persona || "")
@@ -227,7 +228,7 @@ function DustCanvas({ reduced }: { reduced: boolean }) {
 
 /** 天气：优先用空间状态里的文本（角色可写/用户可编辑），无则本地时段推算，零联网 */
 function weatherLabel(statusWeather: string): { label: string; night: boolean } {
-  const custom = cleanDisplayText(statusWeather);
+  const custom = cleanFreeText(statusWeather);
   if (custom) return { label: custom, night: false };
   const hour = new Date().getHours();
   const night = hour < 6 || hour >= 19;

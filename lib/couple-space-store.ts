@@ -83,6 +83,22 @@ export function cleanDisplayText(input: string | null | undefined): string {
   return s;
 }
 
+/**
+ * 自由文本清洗（mood/thought/weather）：只去掉代码块、HTML 注释、加粗/行内码符号，
+ * 不跑「裸 yaml 行」规则——那是给角色人设剪报用的，会误伤像「状态:开心」这样的正常句子。
+ */
+export function cleanFreeText(input: string | null | undefined): string {
+  if (!input) return "";
+  let s = String(input);
+  s = s.replace(/<!--[\s\S]*?-->/g, "");
+  s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, "$1");
+  s = s.replace(/~~~[a-zA-Z0-9_-]*\n?([\s\S]*?)~~~/g, "$1");
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  s = s.replace(/`([^`]+)`/g, "$1");
+  s = s.replace(/\n/g, " ").replace(/[ \t]+/g, " ").trim();
+  return s;
+}
+
 /** 从任意文本里解析隐藏装修标记。返回命中项与去掉标记后的干净文本。 */
 export function parseSpaceMarkers(text: string): {
   mood?: string;
@@ -100,7 +116,7 @@ export function parseSpaceMarkers(text: string): {
     const re = new RegExp(`<!--\\s*SET_SPACE_${key}\\s*[:：]\\s*([\\s\\S]*?)\\s*-->`, "i");
     const m = text.match(re);
     if (!m) return undefined;
-    const cleaned = cleanDisplayText(m[1]);
+    const cleaned = cleanFreeText(m[1]);
     return cleaned || undefined;
   };
   mood = grab("MOOD");
@@ -110,7 +126,7 @@ export function parseSpaceMarkers(text: string): {
     mood,
     thought,
     weather,
-    cleanText: cleanDisplayText(text),
+    cleanText: cleanFreeText(text),
     hasMarker: Boolean(mood || thought || weather),
   };
 }
@@ -123,9 +139,9 @@ export function loadSpaceStatus(characterId: string): SpaceStatus {
     const parsed = JSON.parse(raw) as Partial<SpaceStatus>;
     return {
       character_id: characterId,
-      mood: typeof parsed.mood === "string" ? cleanDisplayText(parsed.mood) : "",
-      thought: typeof parsed.thought === "string" ? cleanDisplayText(parsed.thought) : "",
-      weather: typeof parsed.weather === "string" ? cleanDisplayText(parsed.weather) : "",
+      mood: typeof parsed.mood === "string" ? cleanFreeText(parsed.mood) : "",
+      thought: typeof parsed.thought === "string" ? cleanFreeText(parsed.thought) : "",
+      weather: typeof parsed.weather === "string" ? cleanFreeText(parsed.weather) : "",
       audio_src: typeof parsed.audio_src === "string" ? parsed.audio_src : "",
       updated_at: typeof parsed.updated_at === "string" ? parsed.updated_at : "",
       last_applied_marker_at: typeof parsed.last_applied_marker_at === "string" ? parsed.last_applied_marker_at : "",
@@ -141,9 +157,9 @@ export function saveSpaceStatus(characterId: string, patch: Partial<SpaceStatus>
   const next: SpaceStatus = {
     ...prev,
     character_id: characterId,
-    mood: patch.mood !== undefined ? cleanDisplayText(patch.mood) : prev.mood,
-    thought: patch.thought !== undefined ? cleanDisplayText(patch.thought) : prev.thought,
-    weather: patch.weather !== undefined ? cleanDisplayText(patch.weather) : prev.weather,
+    mood: patch.mood !== undefined ? cleanFreeText(patch.mood) : prev.mood,
+    thought: patch.thought !== undefined ? cleanFreeText(patch.thought) : prev.thought,
+    weather: patch.weather !== undefined ? cleanFreeText(patch.weather) : prev.weather,
     audio_src: patch.audio_src !== undefined ? patch.audio_src : prev.audio_src,
     last_applied_marker_at: patch.last_applied_marker_at !== undefined
       ? patch.last_applied_marker_at : prev.last_applied_marker_at,

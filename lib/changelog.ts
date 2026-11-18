@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.154";
+export const APP_VERSION = "1.7.155";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,16 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.155",
+    date: "2026-11-18",
+    title: "情侣空间：TA 会在聊天里主动写心情与碎碎念",
+    highlights: [
+      "绑定的那个 TA 现在会在单聊里主动往小空间留话：真心想记一句时就附带一条隐藏标记（今日心情 / 碎碎念），早报卡片随即更新；没话可说就不写，不啰嗦、不每轮都加，零额外模型调用。",
+      "严格按选人走：约定只在情侣空间开启、且当前角色正是绑定的那一个 TA 时才注入，关闭开关或换成别的角色完全不生效。",
+      "隐藏标记在聊天气泡里彻底剥离，只在本地存储扫描时读取；自由文本清洗不再误伤「状态:开心」这类正常句子。",
+    ],
+  },
   {
     version: "1.7.154",
     date: "2026-11-18",
