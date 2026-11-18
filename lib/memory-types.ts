@@ -31,6 +31,9 @@ export type MemoryEntry = {
     sourceMessageIds?: string[];
     /** 关系图谱维度：该记忆涉及的人物/地点/事物等关系事实（长期记忆抽取，可选） */
     relations?: MemoryRelation[];
+    /** v1.7.151：记忆关键词（本地确定性抽取，零 token）。
+     *  用于记忆库按关键词检索/展示小标签。旧记忆无此字段，正文仍可被搜索，向后兼容。 */
+    keywords?: string[];
     /** 情感坐标（可选，0-1）：valence=情绪效价(0消极~1积极)，arousal=唤醒度(0平静~1强烈)。
      *  高唤醒记忆在召回时权重更高；缺省按中性处理，老记忆无需迁移。 */
     valence?: number;
@@ -81,6 +84,68 @@ export type MemorySearchResult = {
     entry: MemoryEntry;
     score: number;
 };
+
+/**
+ * v1.7.151：本地确定性抽取记忆关键词（零 token，不调用模型）。
+ * 输入一段记忆正文 + 已有的关系实体，产出 3-6 个短关键词：
+ *  1) 关系里的实体名（人物/地点/事物…）优先，它们是最强检索锚点；
+ *  2) 正文里的中文 2-4 字词与拉丁词，按频次与长度打分，取高频且非停用词的项；
+ *  3) 全程本地字符串处理，失败/空输入返回 []，绝不阻断主流程。
+ * 关键词只是「检索提示 + 展示小标签」，不参与向量召回，故不需要 LLM 二次加工。
+ */
+const MEMORY_KEYWORD_STOPWORDS = new Set([
+    "我们", "他们", "她们", "你们", "自己", "这个", "那个", "这些", "那些", "一个", "一种",
+    "因为", "所以", "但是", "然后", "而且", "以及", "还有", "就是", "已经", "还是", "没有",
+    "可以", "应该", "觉得", "知道", "告诉", "现在", "今天", "昨天", "明天", "时候", "之后",
+    "之前", "一直", "非常", "特别", "真的", "其实", "好像", "可能", "这样", "那样", "怎么",
+    "什么", "为什么", "角色", "用户", "记忆", "事件", "内容", "关系", "之间", "进行", "出现",
+    "the", "and", "for", "with", "that", "this", "have", "has", "was", "were", "you", "for",
+]);
+
+export function extractMemoryKeywords(content: string, relations?: MemoryRelation[], limit = 6): string[] {
+    const keywords: string[] = [];
+    const seen = new Set<string>();
+    const push = (raw: string) => {
+        const w = raw.trim().toLowerCase();
+        if (!w || w.length < 2 || w.length > 12) return;
+        if (MEMORY_KEYWORD_STOPWORDS.has(w)) return;
+        if (/^\d+$/.test(w)) return;
+        if (seen.has(w)) return;
+        seen.add(w);
+        keywords.push(w);
+    };
+
+    // 1) 关系实体优先（人物/地点/事物/事件/概念）
+    for (const r of relations ?? []) {
+        if (r?.entity) push(r.entity);
+    }
+
+    // 2) 正文分词：中文 2-4 字滑窗 + 拉丁词，计频后按「频次优先、长词优先」排序
+    const freq = new Map<string, number>();
+    const latin = String(content || "").match(/[a-zA-Z][a-zA-Z0-9_-]{1,11}/g) || [];
+    for (const w of latin) freq.set(w.toLowerCase(), (freq.get(w.toLowerCase()) || 0) + 1);
+    const cjkSegments = String(content || "").match(/[\u4E00-\u9FFF]+/g) || [];
+    for (const seg of cjkSegments) {
+        for (let size = 4; size >= 2; size -= 1) {
+            for (let i = 0; i + size <= seg.length; i += 1) {
+                const w = seg.slice(i, i + size);
+                if (MEMORY_KEYWORD_STOPWORDS.has(w)) continue;
+                freq.set(w, (freq.get(w) || 0) + 1);
+            }
+        }
+    }
+    const scored = Array.from(freq.entries())
+        .filter(([w, n]) => n >= 1 && !MEMORY_KEYWORD_STOPWORDS.has(w))
+        .sort((a, b) => (b[1] - a[1]) || (b[0].length - a[0].length));
+    for (const [w] of scored) {
+        if (keywords.length >= limit) break;
+        // 跳过与已选词互相包含的重复项（如「咖啡」与「咖啡馆」择长保留在前）
+        if (keywords.some((k) => k.includes(w) || w.includes(k))) continue;
+        push(w);
+    }
+
+    return keywords.slice(0, limit);
+}
 
 /**
  * Default summarization prompt template.
@@ -146,9 +211,11 @@ export const DEFAULT_MEMORY_CONFIG: MemoryConfig = {
     maxCoreEntries: 50,
     summarizationEventInterval: 80,
     coreSummarizationInterval: 5,
-    shortTermTokenBudget: 100000,
-    coreMemoryTokenBudget: 100000,
-    longTermTokenBudget: 100000,
+    // v1.7.151：从形同虚设的 10 万收紧到真实护栏。核心记忆每轮注入→最小；
+    // 长期记忆仅在超预算时触发向量召回裁剪→适中；短期时间线给足但设上限。
+    shortTermTokenBudget: 24000,
+    coreMemoryTokenBudget: 6000,
+    longTermTokenBudget: 12000,
     summarizationPrompt: DEFAULT_SUMMARIZATION_PROMPT,
     coreMemoryPrompt: DEFAULT_CORE_MEMORY_PROMPT,
     vnSummaryPrompt: "",

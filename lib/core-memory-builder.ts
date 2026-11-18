@@ -1,5 +1,5 @@
 import type { MemoryEntry } from "./memory-types";
-import { DEFAULT_CORE_MEMORY_PROMPT } from "./memory-types";
+import { DEFAULT_CORE_MEMORY_PROMPT, extractMemoryKeywords } from "./memory-types";
 import {
     loadMemoryConfig,
     loadMemoryEntriesByType,
@@ -122,6 +122,8 @@ export async function runCoreMemoryPipeline(
         sourceApp: dominantSource,
         type: "core",
         content: summary,
+        // v1.7.151：核心记忆同样抽关键词（本地、零 token），供记忆库检索/展示
+        keywords: extractMemoryKeywords(summary),
         importance: 0.95,
         createdAt: now,
         updatedAt: now,
@@ -180,6 +182,8 @@ async function enforceCoreMemoryCap(characterId: string, characterName: string):
         sourceApp: oldest[0].sourceApp,
         type: "core",
         content: result.content.trim(),
+        // v1.7.151：合并后的核心记忆也抽关键词（本地、零 token）
+        keywords: extractMemoryKeywords(result.content.trim()),
         importance: 0.95,
         createdAt: now,
         updatedAt: now,

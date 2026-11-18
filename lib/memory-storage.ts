@@ -220,6 +220,25 @@ export function loadMemoryConfig(): MemoryConfig {
             }
             localStorage.setItem(MIG_FLAG, "1");
         }
+
+        // 一次性迁移（v1.7.151）：三个 token 预算默认值从 100000 收紧。
+        // 老用户已存的配置会把 100000 覆盖回来、让护栏形同虚设；这里只把「恰好等于旧默认
+        // 100000」的字段收敛到新默认，用户曾手动调过的值（非 100000）一律保留不动。
+        const BUDGET_MIG_FLAG = "ai_phone_mem_cfg_v17151_budget_migrated";
+        if (typeof localStorage !== "undefined" && !localStorage.getItem(BUDGET_MIG_FLAG)) {
+            let budgetChanged = false;
+            const keys: (keyof Pick<MemoryConfig, "shortTermTokenBudget" | "coreMemoryTokenBudget" | "longTermTokenBudget">)[] = [
+                "shortTermTokenBudget", "coreMemoryTokenBudget", "longTermTokenBudget",
+            ];
+            for (const k of keys) {
+                if (parsed[k] === 100000) {
+                    (parsed as Record<string, unknown>)[k] = DEFAULT_MEMORY_CONFIG[k];
+                    budgetChanged = true;
+                }
+            }
+            if (budgetChanged) kvSet(CONFIG_KEY, JSON.stringify({ ...DEFAULT_MEMORY_CONFIG, ...parsed }));
+            localStorage.setItem(BUDGET_MIG_FLAG, "1");
+        }
         return { ...DEFAULT_MEMORY_CONFIG, ...parsed };
     } catch {
         return { ...DEFAULT_MEMORY_CONFIG };

@@ -4,7 +4,7 @@
 
 import type { MemoryEntry, MemoryConfig, MemoryRelation, MemoryRelationEntityType } from "./memory-types";
 import type { ApiConfig } from "./settings-types";
-import { DEFAULT_SUMMARIZATION_PROMPT } from "./memory-types";
+import { DEFAULT_SUMMARIZATION_PROMPT, extractMemoryKeywords } from "./memory-types";
 import {
     loadMemoryConfig,
     loadMemoryEntries,
@@ -197,6 +197,8 @@ export async function runSummarizationPipeline(
         type: "long_term",
         content: summary,
         embedding,
+        // v1.7.151：本地抽取关键词（实体优先、正文高频词兜底），零 token，供记忆库检索/展示
+        keywords: extractMemoryKeywords(summary, relations),
         importance: 0.8,
         relations,
         valence: emotionCoords?.valence,

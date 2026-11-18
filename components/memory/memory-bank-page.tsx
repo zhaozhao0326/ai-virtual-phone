@@ -8,7 +8,7 @@ import { Toggle } from "@/components/ui/form";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
 import type { MemoryEntry, MemoryConfig } from "@/lib/memory-types";
-import { DEFAULT_CORE_MEMORY_PROMPT, DEFAULT_SUMMARIZATION_PROMPT } from "@/lib/memory-types";
+import { DEFAULT_CORE_MEMORY_PROMPT, DEFAULT_SUMMARIZATION_PROMPT, extractMemoryKeywords } from "@/lib/memory-types";
 import {
     loadMemoryConfig,
     saveMemoryConfig,
@@ -232,6 +232,8 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
     const [entryMenuId, setEntryMenuId] = useState<string | null>(null);
     const [memoryEditor, setMemoryEditor] = useState<MemoryEditorState | null>(null);
     const [savingMemory, setSavingMemory] = useState(false);
+    // v1.7.151：记忆库搜索——按关键词/正文做本地匹配，零 token、即时过滤
+    const [memorySearch, setMemorySearch] = useState("");
     const [summarizeRangeOpen, setSummarizeRangeOpen] = useState(false);
     const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
 
@@ -571,6 +573,8 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                     ...source,
                     content,
                     embedding,
+                    // v1.7.151：手动编辑正文后同步刷新关键词（本地抽取，零 token）
+                    keywords: contentChanged ? extractMemoryKeywords(content, source.relations) : source.keywords,
                     updatedAt: now,
                     metadata: {
                         ...(source.metadata ?? {}),
@@ -585,6 +589,8 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                     type,
                     content,
                     embedding,
+                    // v1.7.151：手动新增记忆也抽关键词
+                    keywords: extractMemoryKeywords(content),
                     importance: type === "core" ? 0.95 : 0.8,
                     createdAt: now,
                     updatedAt: now,
@@ -611,8 +617,18 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
         }
     };
 
-    const renderMemoryEntries = (type: MemoryEntry["type"], entries: MemoryEntry[], emptyText: string) => {
+    const renderMemoryEntries = (type: MemoryEntry["type"], allEntries: MemoryEntry[], emptyText: string) => {
         const label = type === "core" ? "核心记忆" : "长期记忆";
+        // v1.7.151：按关键词 + 正文本地过滤（大小写不敏感），零 token、即时生效
+        const q = memorySearch.trim().toLowerCase();
+        const entries = q
+            ? allEntries.filter((entry) => {
+                if (entry.content.toLowerCase().includes(q)) return true;
+                if (entry.keywords?.some((kw) => kw.toLowerCase().includes(q))) return true;
+                if (entry.relations?.some((r) => r.entity.toLowerCase().includes(q))) return true;
+                return false;
+            })
+            : allEntries;
         return (
             <>
                 {entries.length > 0 && (
@@ -707,8 +723,28 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
                                         : entry.content
                                 }
                             </div>
+                            {/* v1.7.151：关键词小标签——点一下即填入搜索框，方便按关键词查同类中记忆 */}
+                            {entry.keywords && entry.keywords.length > 0 && (
+                                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                                    {entry.keywords.map((kw) => (
+                                        <button
+                                            key={kw}
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setMemorySearch(kw); }}
+                                            style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, border: "1px solid var(--c-panel-border)", background: "color-mix(in srgb, var(--c-redpacket, #e0454c) 8%, transparent)", color: "var(--text-secondary)" }}
+                                        >
+                                            # {kw}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ))
+                )}
+                {q && entries.length === 0 && (
+                    <p className="ts-12 text-secondary text-center" style={{ padding: "20px 0" }}>
+                        没有匹配「{memorySearch}」的记忆，换个关键词试试
+                    </p>
                 )}
             </>
         );
@@ -721,6 +757,25 @@ export function MemoryBankPage({ view, selectedCharId, onSelectChar, onNotice }:
             <div className="flex flex-col absolute inset-0 overflow-hidden" style={{ padding: "0 16px" }}>
                 {/* Content */}
                 <div className="memory-detail-scroll flex-1 overflow-y-auto flex flex-col gap-2 min-h-0">
+                    {/* v1.7.151：长期/核心记忆搜索栏——按关键词或正文即时过滤，零 token */}
+                    {(activeTab === "core" || activeTab === "long") && (
+                        <div className="mem-search-bar" style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 12, border: "1px solid var(--c-panel-border)", background: "color-mix(in srgb, var(--c-panel, #fff) 60%, transparent)" }}>
+                            <Search size={16} strokeWidth={1.8} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
+                            <input
+                                type="search"
+                                value={memorySearch}
+                                onChange={(e) => setMemorySearch(e.target.value)}
+                                placeholder="搜关键词或内容，如「生日」「咖啡馆」"
+                                aria-label="搜索记忆"
+                                style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", color: "var(--text-primary)", fontSize: 13 }}
+                            />
+                            {memorySearch && (
+                                <button type="button" aria-label="清除搜索" onClick={() => setMemorySearch("")} style={{ color: "var(--text-tertiary)", display: "flex", flexShrink: 0 }}>
+                                    <X size={15} />
+                                </button>
+                            )}
+                        </div>
+                    )}
                     {/* 记忆联动概览：跨 App 共享确认（聊天/剧情/漫卷/酒吧APP 等共享同一份角色记忆） */}
                     {linkageApps.length > 0 && (
                         <div style={{ background: "color-mix(in srgb, var(--c-success, #3fae7a) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--c-success, #3fae7a) 32%, transparent)", borderRadius: 12, padding: "10px 12px", marginBottom: 2 }}>
