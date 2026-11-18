@@ -1873,6 +1873,7 @@ function CharArchiveView({
   const [personality, setPersonality] = useState(char.personality || "");
   const [appearance, setAppearance] = useState(char.appearance || "");
   const [birthday, setBirthday] = useState(char.birthday || "");
+  const [signature, setSignature] = useState(char.signature || "");
   const [appearanceBusy, setAppearanceBusy] = useState(false);
   const [appearanceError, setAppearanceError] = useState("");
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
@@ -2128,6 +2129,7 @@ function CharArchiveView({
         timeZone: normalizedTimeZone,
         tags,
         birthday: birthday.trim() || undefined,
+        signature: signature.trim() || undefined,
         avatar: avatar ?? null,
         relationshipGrowthEnabled: growthEnabled !== false ? undefined : false,
         initialRelationshipStage: initialStage || undefined,
@@ -2465,6 +2467,23 @@ function CharArchiveView({
               <div className="char-archive-cell" style={{ flex: 1.1 }}>
                 <span className="char-archive-label">Update</span>
                 <span className="char-archive-val">{char.updatedAt ? char.updatedAt.slice(0, 10).replace(/-/g, "/") : "N/A"}</span>
+              </div>
+            </div>
+
+            <div className="char-archive-row">
+              <div className="char-archive-cell" style={{ flex: 1 }}>
+                <span className="char-archive-label">Signature · 签名/状态（情侣空间动态读取，留空则隐藏）</span>
+                {isEditing ? (
+                  <input
+                    className="char-archive-input ts-16 w-full text-left bg-[var(--c-input)]/50 border border-dashed border-[#666]"
+                    placeholder="一句签名 / 当前状态"
+                    value={signature}
+                    onChange={(e) => setSignature(e.target.value)}
+                    style={{ padding: "2px 4px" }}
+                  />
+                ) : (
+                  <span className="char-archive-val select-text cursor-text">{signature || "N/A"}</span>
+                )}
               </div>
             </div>
 

@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.153";
+export const APP_VERSION = "1.7.154";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.154",
+    date: "2026-11-18",
+    title: "情侣空间技术返工：全数据驱动，去空壳与死链",
+    highlights: [
+      "侧滑菜单改为配置驱动，每一项只映射到宿主真实存在的 App（聊天/档案/查手机相册/共读/手记/日程/音乐/栖所/情书/认知档案/小酒吧）；移除醒来记录、屏幕时间、街角、小客厅、梗库、表情包、朋友圈等无数据支撑或错配的空壳入口，不再有点了跳错地方或跳空壳的死链。",
+      "角色实体完全解耦：头像/名字/签名/状态/标签全部动态读当前绑定角色；新增角色「签名/状态」字段（角色档案可编辑），关系天数只在设了在一起起始日时才显示，否则自动隐藏。",
+      "早报可写且双向驱动：今日心情/碎碎念/窗外天气统一存 localStorage 的 space_status 结构；点剪报卡片可手动编辑；角色对话里带隐藏装修标记（SET_SPACE_MOOD/THOUGHT/WEATHER）会静默写入；所有文本入库与显示前清洗裸 markdown/yaml/代码块，杜绝标记裸露。",
+      "黑胶唱片接入真实 HTML5 音频：旋转与唱臂严格跟随播放/暂停/结束生命周期，可在「唱片音源」里配置一首歌；无音源时是可点开的配置入口。小世界插槽改为 unlocked_items 数组 + 空状态样式 + unlockItem(icon,label) 通用接口，旧装饰自动迁入。",
+    ],
+  },
   {
     version: "1.7.153",
     date: "2026-11-18",

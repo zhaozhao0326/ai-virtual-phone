@@ -375,3 +375,86 @@
 @media (prefers-reduced-motion: reduce) {
   .cs-entry-heartbeat { animation: none !important; }
 }
+
+/* ═══════════════════════════════════════════
+   v1.7.154 技术返工：可写卡片 / 编辑浮层 / 数据驱动菜单 / 真实唱机
+   ═══════════════════════════════════════════ */
+
+/* 可点击卡片：消除按钮默认外观，保留剪报质感 + 可编辑提示 */
+.cs-clip-editable {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: none; font: inherit;
+}
+.cs-clip-editable:active { transform: scale(.98); }
+.cs-clip-title { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.cs-clip-title svg { opacity: .5; }
+.cs-micro-editable {
+  border: none; background: none; cursor: pointer; width: 100%; text-align: left; padding: 0;
+  font: inherit;
+}
+.cs-micro-editable:active { opacity: .7; }
+
+/* 早报编辑浮层 */
+.cs-edit-mask {
+  position: absolute; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+  background: rgba(12,18,17,.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  animation: cs-fade .18s ease-out; padding: 20px;
+}
+.cs-edit-card {
+  width: 100%; max-width: 340px; border-radius: 18px; overflow: hidden;
+  background: linear-gradient(160deg, #2e3937, #232c2b);
+  border: 1px solid rgba(201,162,95,.35);
+  box-shadow: 0 18px 50px rgba(0,0,0,.5);
+}
+.cs-edit-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 8px; font-size: 14px; font-weight: 700; color: var(--cs-gold-soft, #c9a25f);
+}
+.cs-edit-head button {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(255,255,255,.08); color: rgba(230,232,225,.8);
+}
+.cs-edit-input {
+  display: block; width: calc(100% - 32px); margin: 4px 16px 0; padding: 10px 12px;
+  border-radius: 10px; resize: vertical; min-height: 64px;
+  border: 1px solid rgba(220,226,214,.18); outline: none;
+  background: rgba(255,255,255,.06); color: #eceee6; font-size: 13px; line-height: 1.6;
+  font-family: inherit;
+}
+.cs-edit-input:focus { border-color: rgba(201,162,95,.6); }
+.cs-edit-input::placeholder { color: rgba(230,232,225,.35); }
+.cs-edit-hint { padding: 8px 16px 0; font-size: 10px; color: rgba(230,232,225,.5); line-height: 1.5; }
+.cs-edit-actions { display: flex; gap: 10px; padding: 14px 16px 16px; }
+.cs-edit-actions button {
+  flex: 1; padding: 10px 0; border-radius: 10px; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 600;
+}
+.cs-edit-cancel { background: rgba(255,255,255,.08); color: rgba(230,232,225,.8); }
+.cs-edit-save { background: linear-gradient(120deg, #c9a25f, #a87f43); color: #fff; }
+.cs-edit-actions button:active { transform: scale(.97); }
+
+/* 数据驱动菜单分组 */
+.cs-menu-group { margin-top: 14px; }
+.cs-menu-group-label {
+  font-size: 10px; letter-spacing: 2px; color: rgba(201,162,95,.75);
+  font-weight: 700; padding: 0 4px 8px;
+}
+.cs-sq { position: relative; }
+.cs-sq-warm > svg { color: #d6a878; }
+.cs-sq-rose > svg { color: #dda0a2; }
+.cs-sq-ink > svg { color: #a6c69a; }
+.cs-tonearm { transition: transform .5s ease; }
+.cs-tonearm-on { transform: rotate(2deg); }
+.cs-record-unset { opacity: .82; }
+.cs-record-caption { display: flex; align-items: center; justify-content: center; gap: 4px; }
+.cs-nav-active { opacity: 1 !important; }
+
+/* 小世界空状态（默认的体面占位，非置灰死块） */
+.cs-world-empty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 18px 10px; border-radius: 12px;
+  border: 1px dashed rgba(201,162,95,.3); background: rgba(201,162,95,.04);
+  font-size: 10px; color: rgba(230,232,225,.6); text-align: center; line-height: 1.6;
+}
+.cs-world-empty-icon { font-size: 20px; color: rgba(201,162,95,.55); }

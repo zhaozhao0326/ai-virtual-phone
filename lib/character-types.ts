@@ -13,6 +13,8 @@ export type Character = {
   wechatID?: string;     // 手机号格式的微信号
   birthday?: string;     // 生日 MM-DD（如 "03-15"）；日历在生日当天显示提示
   personality?: string;    // 角色性格
+  signature?: string;    // 个性签名 / 状态文案：情侣空间等通用展示位动态读取，缺省则隐藏
+  status?: string;       // 当前状态短句（可选）：与 signature 二选一用于顶栏状态展示，缺省则隐藏
   /** 允许被自动拉入线下场景：需全局「允许自动加入线下」开关开启，模型才会把该角色临时拉入单人/多人线下（白名单，默认关） */
   allowAutoJoinOffline?: boolean;
   timeZone?: string;       // IANA 时区，例如 America/New_York；空值表示跟随系统时间
