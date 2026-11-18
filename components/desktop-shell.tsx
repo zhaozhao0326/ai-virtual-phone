@@ -9,6 +9,7 @@ import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-servi
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
+import { CoupleSpace } from "@/components/couple-space";
 import { PhoneCharacterApp } from "@/components/phone-character-app";
 import { PhoneLettersApp } from "@/components/phone-letters-app";
 import { PhoneSettingsApp } from "@/components/phone-settings-app";
@@ -1125,6 +1126,38 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   );
   const [savedTheme, setSavedTheme] = useState<ThemeProfile>(() => initialThemeProfile ?? readInitialThemeProfile());
   const [draftTheme, setDraftTheme] = useState<ThemeProfile>(() => initialThemeProfile ?? readInitialThemeProfile());
+
+  // ── 情侣空间（v1.7.153）：绑定角色与回调 ──
+  // 仅桌面态（activeApp 为空）时接管；app 打开时照常显示原生界面。
+  const coupleMode = Boolean(draftTheme.coupleEnabled) && !activeApp;
+  const coupleCharacter = useMemo<import("@/lib/character-types").Character | null>(() => {
+    if (!draftTheme.coupleEnabled || !draftTheme.coupleCharacterId) return null;
+    try {
+      return loadCharacters().find(c => c.id === draftTheme.coupleCharacterId) ?? null;
+    } catch { return null; }
+  }, [draftTheme.coupleEnabled, draftTheme.coupleCharacterId]);
+
+  // 原生桌面上的隐蔽心跳印记：一键进入已绑定的专属空间
+  const enterCoupleMode = useCallback(() => {
+    if (!draftTheme.coupleCharacterId) {
+      openApp("theme");
+      setNotice("先在「主题 → 情侣空间」里选一个 TA，就能进入专属空间啦");
+      return;
+    }
+    void applyTheme({ ...draftTheme, coupleEnabled: true });
+  }, [draftTheme]);
+
+  const openCoupleChat = useCallback(() => {
+    const charId = draftTheme.coupleCharacterId;
+    if (charId) {
+      const session = loadChatSessions().find(s => !s.isGroup && s.contactId === charId);
+      if (session) setChatInitSessionId(session.id);
+      else setChatInitSessionId(null);
+    } else {
+      setChatInitSessionId(null);
+    }
+    setActiveApp("chat");
+  }, [draftTheme.coupleCharacterId]);
   useEffect(() => {
     activeAppRef.current = activeApp;
   }, [activeApp]);
@@ -4147,6 +4180,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
               data-ui="phone-screen"
               data-active-app={activeApp || ""}
               data-app={activeApp || ""}
+              data-couple-mode={coupleMode ? "1" : "0"}
               data-shadows={Number(draftTheme.cssOverrides["--desktop-global-shadow"] ?? (draftTheme.enableGlobalShadows ? "0.5" : "0")) > 0 ? "on" : "off"}
               data-icon-effect={iconEffect}
               data-widget-effect={widgetEffect}
@@ -4166,6 +4200,29 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
               } as React.CSSProperties}
             >
               <div className="phone-wallpaper" style={wallpaperStyle} />
+
+              {/* 情侣空间：开关打开且处于桌面态时，整屏接管原生桌面（v1.7.153） */}
+              {coupleMode ? (
+                <CoupleSpace
+                  profile={draftTheme}
+                  character={coupleCharacter}
+                  onOpenChat={openCoupleChat}
+                  onOpenTheme={() => openApp("theme")}
+                  onOpenCharacter={() => openApp("characters")}
+                  onOpenApp={(id) => openApp(id as DesktopIconId)}
+                />
+              ) : null}
+
+              {/* 原生桌面上的隐蔽心跳印记：一键进入专属空间（已绑定角色时显示） */}
+              {!activeApp && !coupleMode && draftTheme.coupleCharacterId ? (
+                <button
+                  type="button"
+                  className="cs-entry-heartbeat"
+                  onClick={enterCoupleMode}
+                  aria-label="进入专属空间"
+                  title="进入专属空间"
+                >♥</button>
+              ) : null}
 
               <header className="phone-status-bar">
                 <StatusClock />
@@ -4469,6 +4526,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                 style={{
                   touchAction: activeApp ? undefined : editMode ? "none" : "pan-y",
                   ...(!desktopReady && !activeApp ? { visibility: "hidden" } : {}),
+                  ...(coupleMode ? { display: "none" } : {}),
                 }}
                 onPointerDown={handleSwipeStart}
                 onPointerMove={handleSwipeMove}
@@ -4745,7 +4803,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
                 )}
               </div>
 
-              {!activeApp ? (
+              {!activeApp && !coupleMode ? (
                 <footer
                   ref={dockElRef}
                   className={editMode ? "dock edit-mode" : "dock"}

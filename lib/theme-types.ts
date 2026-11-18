@@ -60,6 +60,13 @@ export type ThemeProfile = {
   enableGlobalShadows: boolean;
   enableGlobalBorder: boolean;
   globalBorderColor: string;
+  // ── 情侣空间（v1.7.153）：一个可切换的整套主题，绑定单个角色 C ──
+  // coupleEnabled 打开后，桌面态不再是原生图标网格，而是换成手账拼贴风的
+  // 情侣空间界面。coupleCharacterId 指向绑定的角色；coupleSince 是"在一起"
+  // 起始日（YYYY-MM-DD），用于计算在一起天数。默认全部关闭/空，向后兼容。
+  coupleEnabled: boolean;
+  coupleCharacterId: string | null;
+  coupleSince: string | null;
   updatedAt: string;
 };
 
@@ -185,6 +192,9 @@ export const DEFAULT_THEME_PROFILE: ThemeProfile = {
   enableGlobalShadows: true,
   enableGlobalBorder: false,
   globalBorderColor: "#000000",
+  coupleEnabled: false,
+  coupleCharacterId: null,
+  coupleSince: null,
   updatedAt: new Date().toISOString()
 };
 
@@ -363,6 +373,13 @@ export function normalizeThemeProfile(raw: unknown): ThemeProfile {
   base.enableGlobalShadows = typeof source.enableGlobalShadows === "boolean" ? source.enableGlobalShadows : true;
   base.enableGlobalBorder = typeof source.enableGlobalBorder === "boolean" ? source.enableGlobalBorder : false;
   base.globalBorderColor = typeof source.globalBorderColor === "string" ? source.globalBorderColor as string : "#000000";
+
+  // ── 情侣空间（v1.7.153）──
+  base.coupleEnabled = typeof source.coupleEnabled === "boolean" ? source.coupleEnabled as boolean : false;
+  base.coupleCharacterId = typeof source.coupleCharacterId === "string" && (source.coupleCharacterId as string).trim()
+    ? source.coupleCharacterId as string : null;
+  base.coupleSince = typeof source.coupleSince === "string" && /^\d{4}-\d{2}-\d{2}$/.test(source.coupleSince as string)
+    ? source.coupleSince as string : null;
 
   // ── Migrate enableGlobalShadows → cssOverrides["--desktop-global-shadow"] ──
   if (!base.cssOverrides["--desktop-global-shadow"]) {

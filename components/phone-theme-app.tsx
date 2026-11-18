@@ -6,6 +6,7 @@ import {
   AppWindow,
   Code2,
   Download,
+  Heart,
   LayoutGrid,
   PaintBucket,
   MonitorSmartphone,
@@ -19,6 +20,8 @@ import {
 import CSSSchemeBar from "@/components/ui/css-scheme-picker";
 import { GlassIcon } from "@/components/ui/glass-icon";
 import { normalizeThemeProfile, resolveActiveIconSkins, DEFAULT_THEME_PROFILE, type ThemeProfile } from "@/lib/theme-types";
+import { loadCharacters } from "@/lib/character-storage";
+import type { Character } from "@/lib/character-types";
 import type { DesktopIconId, IconId } from "@/lib/desktop-config";
 import { DOCK_DEFAULT, PAGE_1_DEFAULT, PAGE_2_DEFAULT, PAGE_3_DEFAULT, ICONS } from "@/lib/desktop-config";
 import type { DesktopFolderMap, DesktopIconLayout } from "@/lib/desktop-layout-storage";
@@ -69,7 +72,8 @@ type ThemeSection =
   | "widgets"
   | "case"
   | "text"
-  | "css";
+  | "css"
+  | "couple";
 
 type ThemeMenuItemSection = Exclude<ThemeSection, "menu"> | "transfer" | "reset";
 type WallpaperSliderField = "wallpaperOpacity" | "wallpaperBlur" | "wallpaperScale" | "wallpaperX" | "wallpaperY";
@@ -158,6 +162,10 @@ const MENU_ITEMS: Array<{
   { section: "reset", icon: IconReset, label: "恢复默认", desc: "重置外观", color: BINDING_ACCENTS.regex, glow: `color-mix(in srgb, ${BINDING_ACCENTS.regex} 30%, transparent)`, glass: "theme-reset" },
 ];
 
+function IconCouple() {
+  return <Heart size={22} strokeWidth={1.75} />;
+}
+
 const menuIconStyle = (color?: string): CSSProperties => ({
   "--icon-color": color ?? "var(--c-icon)",
 } as CSSProperties);
@@ -170,9 +178,10 @@ const SECTION_TITLES: Record<Exclude<ThemeSection, "menu">, string> = {
   case: "\u624B\u673A\u58F3",
   text: "\u6587\u5B57",
   css: "CSS \u53D8\u91CF",
+  couple: "\u60C5\u4FA3\u7A7A\u95F4",
 };
 
-const THEME_SECTIONS = new Set<string>(["menu", "palette", "wallpaper", "icons", "widgets", "case", "text", "css"]);
+const THEME_SECTIONS = new Set<string>(["menu", "palette", "wallpaper", "icons", "widgets", "case", "text", "css", "couple"]);
 
 function isThemeSection(value: string): value is ThemeSection {
   return THEME_SECTIONS.has(value);
@@ -290,6 +299,29 @@ export function PhoneThemeApp({
     <PageShell title={title} onBack={handleBack}>
         {section === "menu" ? (
           <div className="page-menu appearance-main-menu">
+            {/* 情侣空间：整套主题开关（v1.7.153）— 置于最顶，醒目入口 */}
+            <div>
+              <button
+                className="cs-feature-card"
+                type="button"
+                onClick={() => setSection("couple")}
+              >
+                <span className="cs-feature-icon"><IconCouple /></span>
+                <span className="cs-feature-body">
+                  <span className="cs-feature-label">情侣空间</span>
+                  <span className="cs-feature-desc">
+                    {draft.coupleEnabled
+                      ? `已开启 · 与 ${(() => {
+                          const c = loadCharacters().find(x => x.id === draft.coupleCharacterId);
+                          return c ? c.name : "未选角色";
+                        })()} 的小世界`
+                      : "换一套手账拼贴风桌面，绑定一个 TA"}
+                  </span>
+                </span>
+                <span className="cs-feature-badge">{draft.coupleEnabled ? "ON" : "NEW"}</span>
+              </button>
+            </div>
+
             {/* Section 1: 外观定制 — 2x2 card grid */}
             <div>
               <h3 className="appearance-menu-section-title">Appearance</h3>
@@ -461,6 +493,8 @@ export function PhoneThemeApp({
           <GlobalCSSPage draft={draft} onDraftChange={onDraftChange} onApply={onApply} onNotice={onNotice} />
         ) : section === "icons" ? (
           <IconSkinPage draft={draft} onDraftChange={onDraftChange} onApply={onApply} onNotice={onNotice} />
+        ) : section === "couple" ? (
+          <CoupleSpacePage draft={draft} onDraftChange={onDraftChange} onApply={onApply} onNotice={onNotice} />
         ) : (
           <div className="flex-1 overflow-y-auto items-start justify-center flex">
             <p className="ts-14 text-[var(--c-icon)]">{"\u300C"}{SECTION_TITLES[section]}{"\u300D\u529F\u80FD\u5F00\u53D1\u4E2D\u2026"}</p>
@@ -771,6 +805,143 @@ function buildColor(hex: string, alpha: number): string {
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** 情侣空间设置页（v1.7.153）：总开关 + 绑定单个角色 + 在一起起始日。 */
+function CoupleSpacePage({
+  draft,
+  onDraftChange,
+  onApply,
+  onNotice,
+}: {
+  draft: ThemeProfile;
+  onDraftChange: (next: ThemeProfile) => void;
+  onApply: (next: ThemeProfile) => Promise<void> | void;
+  onNotice: (text: string) => void;
+}) {
+  const characters: Character[] = useMemo(() => {
+    try { return loadCharacters() || []; } catch { return []; }
+  }, []);
+  const [localSince, setLocalSince] = useState<string>(draft.coupleSince || "");
+
+  const apply = (next: ThemeProfile) => {
+    onDraftChange(next);
+    void onApply(next);
+  };
+
+  const toggleEnabled = () => {
+    if (!draft.coupleEnabled && !draft.coupleCharacterId && characters.length > 0) {
+      // 首次开启：默认选第一个角色，避免开了空空间
+      const next = { ...draft, coupleEnabled: true, coupleCharacterId: characters[0].id };
+      apply(next);
+      onNotice("已开启情侣空间，默认绑定第一位角色，可在下方更换");
+    } else if (!draft.coupleEnabled && characters.length === 0) {
+      onNotice("请先在「角色」里创建至少一个角色，再开启情侣空间");
+    } else {
+      apply({ ...draft, coupleEnabled: !draft.coupleEnabled });
+    }
+  };
+
+  const selectCharacter = (id: string | null) => {
+    apply({ ...draft, coupleCharacterId: id });
+  };
+
+  const commitSince = () => {
+    const value = /^\d{4}-\d{2}-\d{2}$/.test(localSince) ? localSince : null;
+    apply({ ...draft, coupleSince: value });
+    onNotice(value ? "在一起起始日已保存" : "已清空起始日");
+  };
+
+  const boundName = characters.find(c => c.id === draft.coupleCharacterId)?.name;
+
+  return (
+    <div className="page-menu cs-setup">
+      {/* 顶部说明 + 宽开关分行（避免中文竖排/挤按钮） */}
+      <div className="cs-setup-intro">
+        <div className="cs-setup-title">把小手机，变成只属于你们的小世界</div>
+        <div className="cs-setup-sub">
+          开启后，桌面会换成手账拼贴风的情侣空间：早报、照片墙、会转的黑胶，
+          还有只为你和 TA 准备的小抽屉。纯外观切换，不额外消耗 token。
+        </div>
+      </div>
+
+      <div className="menu-group cs-setup-group">
+        <div className="cs-setup-row">
+          <div className="cs-setup-row-text">
+            <span className="cs-setup-row-label">开启情侣空间</span>
+            <span className="cs-setup-row-desc">关闭即回到原生桌面</span>
+          </div>
+          <label className="block w-10 h-[22px] cursor-pointer relative shrink-0">
+            <input
+              type="checkbox"
+              checked={draft.coupleEnabled}
+              onChange={toggleEnabled}
+              className="w-full h-full rounded-[11px] m-0 outline-none"
+              style={{
+                appearance: "none",
+                backgroundColor: draft.coupleEnabled ? "var(--c-success)" : "var(--c-page-body-bg)",
+                transition: "0.2s",
+              }}
+            />
+            <div className="absolute w-[18px] h-[18px] bg-white rounded-full top-[2px] pointer-events-none" style={{
+              left: draft.coupleEnabled ? 20 : 2,
+              transition: "0.2s",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
+            }} />
+          </label>
+        </div>
+      </div>
+
+      {/* 选人：每个角色独立可选，单选（倾向一个 C） */}
+      <div className="cs-setup-section-title">选择要和谁一起住进这里</div>
+      <div className="cs-char-list">
+        {characters.length === 0 && (
+          <div className="cs-char-empty">还没有角色，请先到「角色」创建一个。</div>
+        )}
+        {characters.map((c) => {
+          const on = draft.coupleCharacterId === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`cs-char-item ${on ? "cs-char-on" : ""}`}
+              onClick={() => selectCharacter(on ? null : c.id)}
+            >
+              <span className="cs-char-avatar">
+                {c.avatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.avatar} alt={c.name} />
+                ) : <Heart size={18} />}
+              </span>
+              <span className="cs-char-name">{c.name}</span>
+              <span className="cs-char-check">{on ? "已选择" : "选择"}</span>
+            </button>
+          );
+        })}
+      </div>
+      {boundName && (
+        <div className="cs-setup-bound">当前的小世界主人：<b>{boundName}</b></div>
+      )}
+
+      {/* 在一起起始日 */}
+      <div className="cs-setup-section-title">在一起的日子</div>
+      <div className="menu-group cs-setup-group">
+        <div className="cs-setup-row cs-setup-row-col">
+          <span className="cs-setup-row-label">起始日期</span>
+          <div className="cs-date-row">
+            <input
+              type="date"
+              value={localSince}
+              onChange={(e) => setLocalSince(e.target.value)}
+              className="cs-date-input"
+            />
+            <button type="button" className="cs-date-save" onClick={commitSince}>保存</button>
+          </div>
+          <span className="cs-setup-row-desc">留空则从角色创建时间算起</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PalettePresetPage({
