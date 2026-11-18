@@ -1,6 +1,7 @@
 import { CUSTOM_APP_CREATOR_GUIDE_MD } from "./custom-app-creator-guide";
 import { GAME_CREATOR_GUIDE_MD } from "./game-creator-guide";
 import { CHAT_PLUGIN_FULL_DOC } from "./chat-plugin-docs";
+import { buildPhoneCapabilityPrompt } from "./phone-capability-manifest";
 
 // ── 答疑 App 知识库 ──────────────────────────────────
 // P0：基础知识全量注入 system prompt；专题文档按用户问题关键词按需附加。
@@ -108,5 +109,8 @@ export function buildQaSystemPrompt(latestUserText: string): string {
   for (const topic of topics) {
     sections.push(`## 附：${topic.label}（用户问题涉及该专题）`, topic.content);
   }
+  // 放在最后：产品知识库讲的是「项目理论上有什么」，这段讲的是「用户这台机器上真实有什么」，
+  // 冲突时以后者为准（否则会推荐根本没挂载的功能）。
+  sections.push(buildPhoneCapabilityPrompt());
   return sections.join("\n\n");
 }

@@ -51,6 +51,7 @@ import {
   cleanDisplayText,
   cleanFreeText,
   defaultStatus,
+  COUPLE_SPACE_UPDATED_EVENT,
   loadSpaceStatus,
   saveSpaceStatus,
   applyChatSpaceMarkers,
@@ -64,8 +65,13 @@ import {
   COUPLE_DECORS,
   scanAndUnlockDecor,
 } from "@/lib/couple-decor-storage";
+import {
+  COUPLE_SPACE_MENU,
+  type CoupleSpaceMenuIconKey,
+} from "@/lib/couple-space-menu";
 import { loadChatSessions, loadChatMessages } from "@/lib/chat-storage";
 import { CoupleLoveLetter } from "./couple-love-letter";
+import { CoupleRingPair } from "./couple-ring-pair";
 import { loadLoveLettersFor, applyChatLoveLetters, type LoveLetter } from "@/lib/love-letters-store";
 
 type CoupleSpaceProps = {
@@ -95,34 +101,35 @@ const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 type MenuEntry = { appId: string; title: string; en: string; icon: LucideIcon; tone: string };
 type MenuGroup = { label: string; entries: MenuEntry[] };
 
-const MENU_GROUPS: MenuGroup[] = [
-  {
-    label: "小日子",
-    entries: [
-      { appId: "chat", title: "说说话", en: "CHAT", icon: MessageCircle, tone: "warm" },
-      { appId: "characters", title: "TA 的档案", en: "PROFILE", icon: Smile, tone: "rose" },
-      { appId: "checkphone", title: "照片·查手机", en: "ALBUM", icon: ImageIcon, tone: "warm" },
-    ],
-  },
-  {
-    label: "一起做的事",
-    entries: [
-      { appId: "reading", title: "共读", en: "READING", icon: BookOpen, tone: "ink" },
-      { appId: "diary", title: "手记", en: "DIARY", icon: PenLine, tone: "rose" },
-      { appId: "calendar", title: "日程", en: "CALENDAR", icon: CalendarDays, tone: "ink" },
-      { appId: "music", title: "音乐", en: "MUSIC", icon: Music2, tone: "warm" },
-    ],
-  },
-  {
-    label: "同住的世界",
-    entries: [
-      { appId: "dwelling", title: "栖所", en: "DWELLING", icon: Home, tone: "ink" },
-      { appId: "letters", title: "情书", en: "LETTERS", icon: Mail, tone: "rose" },
-      { appId: "resources", title: "认知档案", en: "MEMORY", icon: Brain, tone: "warm" },
-      { appId: "qa", title: "小工坊", en: "WORKSHOP", icon: Wrench, tone: "ink" },
-    ],
-  },
-];
+/**
+ * 菜单数据的唯一真源在 lib/couple-space-menu.ts（纯数据，图标用 iconKey 表示），
+ * 这样两个助手的能力清单读的是同一份，不会出现「UI 里有、助手指南里没有」的漂移。
+ * 这里只负责把 iconKey 映射成真实 lucide 图标。
+ */
+const MENU_ICONS: Record<CoupleSpaceMenuIconKey, LucideIcon> = {
+  chat: MessageCircle,
+  profile: Smile,
+  album: ImageIcon,
+  reading: BookOpen,
+  diary: PenLine,
+  calendar: CalendarDays,
+  music: Music2,
+  dwelling: Home,
+  letter: Mail,
+  memory: Brain,
+  workshop: Wrench,
+};
+
+const MENU_GROUPS: MenuGroup[] = COUPLE_SPACE_MENU.map((group) => ({
+  label: group.label,
+  entries: group.entries.map((entry) => ({
+    appId: entry.appId,
+    title: entry.title,
+    en: entry.en,
+    tone: entry.tone,
+    icon: MENU_ICONS[entry.iconKey],
+  })),
+}));
 
 /** 关系天数：仅当 coupleSince 存在时计算；无起始日 → 返回 null → 顶栏隐藏，不硬编码兜底 */
 function daysTogether(since: string | null): number | null {
@@ -421,6 +428,21 @@ export function CoupleSpace({
     }
   }, [characterId, name]);
 
+  // 外部改造写入后广播：小工坊 / 小卷 的改造工具直接在组件外落库，
+  // 这里重读一次就能立刻看到变化，不用退出再进。
+  useEffect(() => {
+    if (!characterId) return;
+    const onUpdated = (event: Event) => {
+      const detail = (event as CustomEvent).detail as { characterId?: string } | undefined;
+      if (detail?.characterId && detail.characterId !== characterId) return;
+      setStatus(loadSpaceStatus(characterId));
+      setItems(loadSpaceItems(characterId));
+      setLetters(loadLoveLettersFor(characterId));
+    };
+    window.addEventListener(COUPLE_SPACE_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(COUPLE_SPACE_UPDATED_EVENT, onUpdated);
+  }, [characterId]);
+
   // 音频生命周期：音源变化时 reload；监听 play/pause/ended 驱动真实状态
   useEffect(() => {
     const audio = audioRef.current;
@@ -572,6 +594,13 @@ export function CoupleSpace({
                 )}
               </div>
               <div className="cs-polaroid-cap">{name}</div>
+              <CoupleRingPair
+                name={name}
+                days={days}
+                mood={status.mood}
+                weather={wx.label}
+                signature={signature}
+              />
             </div>
             {signature && <div className="cs-mini-note">{signature}</div>}
           </div>

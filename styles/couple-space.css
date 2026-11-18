@@ -149,8 +149,71 @@
 .cs-clip-torn { clip-path: polygon(0 0, 100% 3%, 98% 100%, 3% 97%); font-style: italic; }
 
 .cs-polaroid {
+  position: relative;
   background: #e4e7de; padding: 7px 7px 22px; border-radius: 2px;
   box-shadow: 2px 7px 18px rgba(0,0,0,.4); transform: rotate(-3deg); cursor: pointer;
+}
+
+/* ── 对戒信物：两枚指环互扣，绝对定位压在拍立得右下角，半遮掩白框与照片边缘 ── */
+.cs-ring {
+  position: absolute;
+  right: -13px;
+  bottom: -17px;
+  width: 49%;
+  max-width: 60px;
+  aspect-ratio: 68 / 35;
+  padding: 0; margin: 0; border: 0; background: none;
+  cursor: pointer;
+  z-index: 15;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transform: translateZ(0);
+  touch-action: manipulation;
+}
+.cs-ring-svg {
+  width: 100%; height: 100%;
+  overflow: visible;
+  display: block;
+  filter: drop-shadow(0 2px 5px rgba(0,0,0,.32));
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+/* 静态无持续动画：只在按下时给一次金属微颤，平时零重绘 */
+.cs-ring:active .cs-ring-svg { transform: scale(.92) rotate(-5deg); }
+
+/* 点击弹出的手写小纸条 */
+.cs-ring-toast {
+  position: absolute;
+  bottom: 118%;
+  right: -10px;
+  min-width: 132px;
+  max-width: 180px;
+  width: max-content;
+  padding: 8px 11px;
+  background: rgba(24,32,30,.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(226,232,240,.22);
+  border-radius: 8px;
+  color: #F1F5F9;
+  font-size: 10.5px;
+  line-height: 1.55;
+  letter-spacing: .3px;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 8px 20px rgba(0,0,0,.45);
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(3deg) translateY(6px) scale(.96);
+  transition: opacity .25s cubic-bezier(.16,1,.3,1), transform .25s cubic-bezier(.16,1,.3,1);
+}
+.cs-ring-toast.is-open {
+  opacity: 1;
+  transform: rotate(3deg) translateY(0) scale(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-ring-svg { transition: none; }
+  .cs-ring-toast { transition: none; }
 }
 .cs-polaroid-photo { width: 100%; aspect-ratio: 1/1.05; background: #bfc6bb; overflow: hidden; }
 .cs-polaroid-photo img { width: 100%; height: 100%; object-fit: cover; display: block; filter: saturate(.82) contrast(1.03); }

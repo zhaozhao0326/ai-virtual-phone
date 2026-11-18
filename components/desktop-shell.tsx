@@ -100,6 +100,7 @@ import {
   writeThemeProfile
 } from "@/lib/theme-storage";
 import { THEME_PACKAGE_INSTALLED_EVENT } from "@/lib/theme-package";
+import { COUPLE_SPACE_UPDATED_EVENT } from "@/lib/couple-space-store";
 import {
   DEFAULT_THEME_PROFILE,
   DEFAULT_FONT_FAMILY,
@@ -1647,6 +1648,24 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     };
     window.addEventListener(THEME_PACKAGE_INSTALLED_EVENT, onThemePackage);
     return () => window.removeEventListener(THEME_PACKAGE_INSTALLED_EVENT, onThemePackage);
+  }, []);
+
+  /**
+   * 情侣空间被外部改造（小工坊 / 小卷 换壁纸）时，壁纸写在 theme profile 里，
+   * 桌面自身的 state 不知道 —— 收到空间广播后同步一次，空间壁纸立即换掉。
+   * 只在壁纸 id 真的变了才 applyTheme，避免心情/小物改动也触发整桌面重渲染。
+   */
+  const coupleWallpaperRef = useRef<string | null>(null);
+  useEffect(() => {
+    const onSpaceUpdated = () => {
+      const profile = readThemeProfile();
+      const nextId = profile.coupleWallpaperAssetId || null;
+      if (nextId === coupleWallpaperRef.current) return;
+      coupleWallpaperRef.current = nextId;
+      void applyThemeRef.current?.(profile);
+    };
+    window.addEventListener(COUPLE_SPACE_UPDATED_EVENT, onSpaceUpdated);
+    return () => window.removeEventListener(COUPLE_SPACE_UPDATED_EVENT, onSpaceUpdated);
   }, []);
 
   useEffect(() => {

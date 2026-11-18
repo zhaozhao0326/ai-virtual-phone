@@ -10,6 +10,9 @@
  * 零 token：解析与扫描全是本地正则，不调用任何大模型。
  */
 
+import { normalizeThemeProfile } from "./theme-types";
+import { readThemeProfile, writeThemeProfile } from "./theme-storage";
+
 /** 规范约定的单角色空间状态结构 */
 export type SpaceStatus = {
   character_id: string;
@@ -33,6 +36,24 @@ export type SpaceItem = {
 
 const STATUS_KEY = (characterId: string) => `space_status_v1_${characterId}`;
 const ITEMS_KEY = (characterId: string) => `couple_space_items_v1_${characterId}`;
+
+/**
+ * 空间内容变更广播。
+ * 为什么需要：内容可能由「空间自己」写（用户手动编辑），也可能由外部写
+ * （小工坊 / 小卷 的改造工具直接落库）。后者的写入发生在组件之外，
+ * 组件不重读就看不到变化 —— 所以写操作统一广播一次，空间与桌面各自刷新。
+ * 零 token、纯本地事件。
+ */
+export const COUPLE_SPACE_UPDATED_EVENT = "couple-space:updated";
+
+function broadcastSpaceUpdated(characterId: string): void {
+  if (typeof window === "undefined" || !characterId) return;
+  try {
+    window.dispatchEvent(new CustomEvent(COUPLE_SPACE_UPDATED_EVENT, { detail: { characterId } }));
+  } catch {
+    // 广播失败不影响已写入的数据
+  }
+}
 
 function emptyStatus(characterId: string): SpaceStatus {
   return {
@@ -176,8 +197,7 @@ export function loadSpaceStatus(characterId: string): SpaceStatus {
 }
 
 /** 合并写入空间状态（只覆盖传入字段） */
-export function saveSpaceStatus(characterId: string, patch: Partial<SpaceStatus>): SpaceStatus {
-  const prev = loadSpaceStatus(characterId);
+export function saveSpaceStatus(characterId: string, patch: Partial<SpaceStatus>): SpaceStatus {  const prev = loadSpaceStatus(characterId);
   const next: SpaceStatus = {
     ...prev,
     character_id: characterId,
@@ -189,11 +209,19 @@ export function saveSpaceStatus(characterId: string, patch: Partial<SpaceStatus>
       ? patch.last_applied_marker_at : prev.last_applied_marker_at,
     updated_at: new Date().toISOString(),
   };
+  // 无实际变化就不落库、不广播：避免「监听 → 重读 → 再写」形成空转循环
+  const changed = next.mood !== prev.mood
+    || next.thought !== prev.thought
+    || next.weather !== prev.weather
+    || next.audio_src !== prev.audio_src
+    || next.last_applied_marker_at !== prev.last_applied_marker_at;
+  if (!changed) return prev;
   try {
     window.localStorage.setItem(STATUS_KEY(characterId), JSON.stringify(next));
   } catch {
     // 存储不可用时静默降级，本次改动仍在返回对象里
   }
+  broadcastSpaceUpdated(characterId);
   return next;
 }
 
@@ -292,6 +320,7 @@ function persistItems(characterId: string, items: SpaceItem[]): void {
   } catch {
     // 静默降级
   }
+  broadcastSpaceUpdated(characterId);
 }
 
 /** 标准追加接口：解锁一枚道具。重复 id 不重复追加，返回最新数组。 */
@@ -328,4 +357,60 @@ export function migrateDecorToItems(
     items = unlockItem(characterId, d.icon, d.title, { id: d.id, accent: d.accent });
   }
   return items;
+}
+
+/* ─────────────────────────────────────────────
+   空间壁纸（复用宿主同一套壁纸资产库）
+   - 只记 theme profile 里的 coupleWallpaperAssetId，与桌面壁纸互不干扰；
+   - 壁纸资产本身由 theme-storage 管理，这里不新建任何存储机制。
+   ───────────────────────────────────────────── */
+
+/** 当前空间壁纸 / 可选壁纸库（供助手查看与选择） */
+export function loadSpaceWallpaper(): { current: string | null; library: string[] } {
+  if (typeof window === "undefined") return { current: null, library: [] };
+  try {
+    const profile = readThemeProfile();
+    return {
+      current: profile.coupleWallpaperAssetId || null,
+      library: Array.isArray(profile.wallpaperLibrary) ? profile.wallpaperLibrary.filter(Boolean) : [],
+    };
+  } catch {
+    return { current: null, library: [] };
+  }
+}
+
+/**
+ * 给空间换壁纸。
+ * @param characterId 空间绑定角色（仅用于广播时定位刷新，壁纸本身是空间级设置）
+ * @param assetId 宿主壁纸库里的资产 id；传 null / "" / "default" 表示恢复默认宣纸底。
+ * @returns 是否成功 + 落地后的 assetId
+ */
+export function setSpaceWallpaper(
+  characterId: string,
+  assetId: string | null,
+): { ok: boolean; assetId: string | null; error?: string } {
+  if (typeof window === "undefined") return { ok: false, assetId: null, error: "当前环境不支持本地存储" };
+  try {
+    const profile = readThemeProfile();
+    const normalizedId = !assetId || assetId === "default" ? null : assetId;
+    if (normalizedId && !profile.wallpaperLibrary.includes(normalizedId)) {
+      return {
+        ok: false,
+        assetId: profile.coupleWallpaperAssetId || null,
+        error: `壁纸库里没有这张图（${normalizedId}）。只能用壁纸库里已有的 assetId，或让用户先在空间里上传一张。`,
+      };
+    }
+    const next = writeThemeProfile(normalizeThemeProfile({
+      ...profile,
+      coupleWallpaperAssetId: normalizedId,
+    }));
+    broadcastSpaceUpdated(characterId);
+    return { ok: true, assetId: next.coupleWallpaperAssetId || null };
+  } catch (error) {
+    return {
+      ok: false,
+      assetId: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

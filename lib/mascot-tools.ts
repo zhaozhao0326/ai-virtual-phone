@@ -14,6 +14,7 @@ import type { LlmToolDefinition } from "./llm-provider-adapter";
 import type { ToolCall, ToolResult } from "./tool-executor";
 import type { MascotPageContext } from "./mascot-context";
 import type { Prompt } from "./settings-types";
+import { runCoupleSpaceAction } from "./couple-workshop";
 import { CHARACTER_CARD_PROMPT, CHARACTER_WORLD_PROMPT, WORLDBOOK_PROMPT, PRESET_PROMPT, GENERAL_PRESET_PROMPT, REGEX_PROMPT, CSS_PROMPT, WIDGET_PROMPT, MIXOLOGY_PROMPT } from "./mascot-prompts";
 import {
     buildCssAssetNineSliceCss,
@@ -887,6 +888,64 @@ const MIX_SAVE_RECIPE_SCHEMA = {
     required: ["name", "slots"],
 };
 
+// ── 情侣空间 ──
+const COUPLE_SPACE_READ_SCHEMA = {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+};
+
+const COUPLE_SPACE_EDIT_SCHEMA = {
+    type: "object",
+    properties: {
+        action: {
+            type: "string",
+            enum: ["mood", "item", "wallpaper", "audio"],
+            description: "mood=写心情/碎碎念/天气；item=往小世界添小物；wallpaper=换壁纸；audio=设黑胶音源",
+        },
+        mood: { type: "string", description: "action=mood：今日心情（≤30 字）" },
+        thought: { type: "string", description: "action=mood：碎碎念（≤60 字）" },
+        weather: { type: "string", description: "action=mood：天气（≤12 字）" },
+        items: {
+            type: "array",
+            description: "action=item：要添置的小物，每项 {icon,label}；一次最多几件，别塞满",
+            items: {
+                type: "object",
+                properties: {
+                    icon: { type: "string", description: "一个 emoji" },
+                    label: { type: "string", description: "小物名字（≤20 字）" },
+                },
+                required: ["label"],
+            },
+        },
+        assetId: { type: "string", description: "action=wallpaper：壁纸库里的 assetId，或 default（恢复默认宣纸底）" },
+        url: { type: "string", description: "action=audio：音频直链（http(s) 或 data:audio），或 clear（清空）" },
+    },
+    required: ["action"],
+    additionalProperties: false,
+};
+
+const COUPLE_SPACE_PROMPT = `=== 情侣空间套件 ===
+
+「情侣空间」是用户桌面被替换成的手账风专属空间，只属于一个绑定角色。
+你能做的是「简单装修」，不是改结构（加菜单、改布局这些是代码的事，别承诺）。
+
+改造范围：
+· 心情 / 碎碎念 / 天气 —— 空间顶部那几行字，是空间的「今天」。
+· 小世界小物 —— 空间里摆的小东西（书、茶、唱片……），最多 12 件，加满会被拒绝。
+· 壁纸 —— 只能用用户壁纸库里已有的 assetId（查看时会列出来）；传 default 恢复默认宣纸底。
+· 黑胶音源 —— 给一个能直接播放的音频直链；传 clear 清空，唱片回到静态装饰。
+
+工作流：
+1. 先「查看情侣空间」拿现状（当前心情、已有小物、可选壁纸 assetId）。
+2. 再「改造情侣空间」，一次只改一类，改动要小、要贴角色。
+3. 改完用一句话告诉用户空间变成了什么样，不要复述参数。
+
+注意：
+· 只在用户明确要你布置、或他问起这个空间时才动手；不要自作主张频繁改。
+· 空间没开启 / 没绑定角色时工具会直接告诉你，别硬试。
+· 文字短一点：心情一句话，碎碎念一句话，天气两个字。`;
+
 export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
     {
         id: "css_pack",
@@ -1027,6 +1086,16 @@ export const MASCOT_TOOL_PACKAGES: MascotToolPackage[] = [
         ],
         usageGuide: MIXOLOGY_PROMPT,
     },
+    {
+        id: "couple_space_pack",
+        label: "情侣空间套件",
+        description: "改造用户的情侣空间（手账风专属空间）：看现状、写心情/碎碎念/天气、往小世界添小物、换壁纸、设黑胶音源。只作用于绑定的那一个角色，改的是本地数据，不动页面结构。",
+        subTools: [
+            { name: "查看情侣空间", description: "读取空间现状：绑定角色、当前心情/碎碎念/天气、已有小物、当前壁纸与可选壁纸 assetId。改造前先看。", parameterSchema: COUPLE_SPACE_READ_SCHEMA },
+            { name: "改造情侣空间", description: "对空间做一次小改造：action=mood 写心情/碎碎念/天气；item 添小物；wallpaper 换壁纸（仅限壁纸库已有 assetId，default=恢复默认）；audio 设黑胶音源（clear=清空）。", parameterSchema: COUPLE_SPACE_EDIT_SCHEMA },
+        ],
+        usageGuide: COUPLE_SPACE_PROMPT,
+    },
 ];
 
 // 导航是独立工具（不在套件里），直接暴露
@@ -1150,6 +1219,8 @@ const MASCOT_NATIVE_TOOL_NAMES: Record<string, string> = {
     "创建材料": "mascot_mix_create_material",
     "更新材料": "mascot_mix_update_material",
     "保存配方": "mascot_mix_save_recipe",
+    "查看情侣空间": "mascot_read_couple_space",
+    "改造情侣空间": "mascot_edit_couple_space",
     "生成九宫格CSS": "mascot_build_nine_slice_css",
     "读取角色": "mascot_read_character",
     "创建角色": "mascot_create_character",
@@ -1201,6 +1272,7 @@ const MASCOT_NATIVE_LOADER_NAMES: Record<string, string> = {
     status_bar_pack: "mascot_load_status_bar_pack",
     widget_pack: "mascot_load_widget_pack",
     mixology_pack: "mascot_load_mixology_pack",
+    couple_space_pack: "mascot_load_couple_space_pack",
 };
 
 export function getMascotNativeToolName(displayName: string): string {
@@ -1278,6 +1350,13 @@ export type MascotToolContext = {
     /** 同一条用户消息触发的整轮任务共享，用于保证每个角色只备份一次。 */
     characterBackupIds?: Set<string>;
 };
+
+/** 情侣空间改造结果 → 标准 ToolResult（与小工坊共用同一份实现） */
+function coupleSpaceToolResult(name: string, result: { ok: boolean; text: string }): ToolResult {
+    return result.ok
+        ? { name, success: true, data: result.text }
+        : { name, success: false, error: result.text };
+}
 
 /** 执行小卷工具调用 */
 export async function executeMascotToolCall(call: ToolCall, ctx: MascotToolContext): Promise<ToolResult> {
@@ -1365,6 +1444,18 @@ export async function executeMascotToolCall(call: ToolCall, ctx: MascotToolConte
                     default: return mix.mixToolSaveRecipe(call.args);
                 }
             }
+
+            // ─── 情侣空间 ───
+            case "查看情侣空间":
+                return coupleSpaceToolResult(call.name, runCoupleSpaceAction("read", call.args));
+            case "改造情侣空间":
+                return coupleSpaceToolResult(
+                    call.name,
+                    runCoupleSpaceAction(
+                        typeof call.args?.action === "string" ? call.args.action : "read",
+                        call.args ?? {},
+                    ),
+                );
 
             // ─── 导航 ───
             case "导航": return await handleNavigate(call.args);

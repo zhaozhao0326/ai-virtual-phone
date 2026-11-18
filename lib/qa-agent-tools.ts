@@ -46,6 +46,7 @@ import {
     type QaCreatedContent,
 } from "./qa-content-tools";
 import { searchQaFaq, readQaFaqPage } from "./qa-faq";
+import { runCoupleSpaceAction, isCoupleSpaceEnabled } from "./couple-workshop";
 import { kvGet, kvSet } from "./kv-db";
 import { getQaPageChars } from "./qa-prefs";
 
@@ -1089,8 +1090,61 @@ const listTool: QaTool = {
     },
 };
 
-const readTool: QaTool = {
-    name: "读取",
+/**
+ * 空间改造：让工坊能对「情侣空间」做简单装修。
+ * 只有用户开了情侣空间且绑定了角色时才有落点；只改绑定的那一个角色，
+ * 改动范围限定在数据层可承载的内容（心情/碎碎念/天气、小世界小物、壁纸、黑胶音源），
+ * 不改页面结构。真正的读写在小卷共用的 lib/couple-workshop.ts 里，两边同一份实现。
+ */
+const coupleSpaceTool: QaTool = {
+    name: "空间改造",
+    nativeName: "couple_space_workshop",
+    parameters: {
+        type: "object",
+        properties: {
+            action: {
+                type: "string",
+                enum: ["read", "mood", "item", "wallpaper", "audio"],
+                description: "read=看空间现状；mood=写心情/碎碎念/天气；item=往小世界添小物；wallpaper=换壁纸；audio=设黑胶音源",
+            },
+            mood: { type: "string", description: "action=mood：今日心情（≤30 字）" },
+            thought: { type: "string", description: "action=mood：碎碎念（≤60 字）" },
+            weather: { type: "string", description: "action=mood：天气（≤12 字，如「晴」「有雨」）" },
+            items: {
+                type: "array",
+                description: "action=item：要添置的小物，每项 {icon,label}",
+                items: {
+                    type: "object",
+                    properties: {
+                        icon: { type: "string", description: "一个 emoji" },
+                        label: { type: "string", description: "小物名字（≤20 字）" },
+                    },
+                    required: ["label"],
+                },
+            },
+            assetId: { type: "string", description: "action=wallpaper：壁纸库里的 assetId；传 default 恢复默认宣纸底" },
+            url: { type: "string", description: "action=audio：音频直链（http(s) 或 data:audio）；传 clear 清空" },
+        },
+        required: ["action"],
+    },
+    description:
+        "改造情侣空间（用户已开启专属空间时）：看现状 / 写心情碎碎念天气 / 往小世界添小物 / 换壁纸 / 设黑胶音源。只作用于绑定的那一个角色的空间，改的是本地数据，不碰页面结构。改之前先用 action=read 看现状，尤其换壁纸只能用壁纸库里已有的 assetId。",
+    schemaLines: [
+        "  参数：",
+        "    · action (必填) — read / mood / item / wallpaper / audio",
+        "    · mood / thought / weather — action=mood 时写的内容（心情≤30 字、碎碎念≤60 字、天气≤12 字）",
+        "    · items — action=item：[{\"icon\":\"🍵\",\"label\":\"傍晚一起喝的茶\"}]",
+        "    · assetId — action=wallpaper：壁纸库里的 id，或 default（恢复默认宣纸底）",
+        "    · url — action=audio：音频直链，或 clear（清空）",
+        '  调用：[执行动作:空间改造({"action":"read"})] 或 [执行动作:空间改造({"action":"mood","mood":"今天有点想你"})]',
+    ],
+    async run(args) {
+        const action = typeof args.action === "string" ? args.action : "read";
+        return runCoupleSpaceAction(action, args).text;
+    },
+};
+
+const readTool: QaTool = {    name: "读取",
     nativeName: "read_item",
     parameters: {
         type: "object",
@@ -1402,6 +1456,9 @@ export function getQaTools(): QaTool[] {
     if (config) tools.push(...UNIFIED_GITHUB_READ_TOOLS);
     if (config?.token) tools.push(...UNIFIED_GITHUB_WRITE_TOOLS);
     if (isWorkshopComputerEnabled()) tools.push(...QA_COMPUTER_TOOLS);
+    // 空间改造只在用户真的开了情侣空间时才暴露：没开的话这个工具没有落点，
+    // 常驻在提示词里纯属白烧 token。
+    if (isCoupleSpaceEnabled()) tools.push(coupleSpaceTool);
     return tools;
 }
 
@@ -1409,6 +1466,7 @@ export function getQaTools(): QaTool[] {
 // Set 去重（部分工具两边都在）
 export const QA_TOOLS: QaTool[] = [...new Set([
     ...UNIFIED_BASE_TOOLS,
+    coupleSpaceTool,
     ...UNIFIED_GITHUB_READ_TOOLS,
     ...UNIFIED_GITHUB_WRITE_TOOLS,
     ...QA_COMPUTER_TOOLS,

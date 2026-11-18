@@ -5,6 +5,7 @@ import { resolveAuxiliaryApiConfig } from "./settings-storage";
 import { getMascotPersonaPrompt } from "./mascot-settings";
 import type { MascotPageContext } from "./mascot-context";
 import { generateMemoryPrompt } from "./mascot-memory";
+import { buildPhoneCapabilityPrompt } from "./phone-capability-manifest";
 import {
     buildMascotToolsListPrompt,
     buildMascotPackageSchemaPrompt,
@@ -551,6 +552,7 @@ async function callMascotText(
         getMascotPersonaPrompt(),
         await generateMemoryPrompt(),
         `当前页面：${context.label}（${context.mode}）`,
+        buildPhoneCapabilityPrompt(),
         buildMascotToolsListPrompt(),
     ].filter(Boolean).join("\n\n");
 
@@ -629,6 +631,7 @@ async function callMascotNative(
         getMascotPersonaPrompt(),
         await generateMemoryPrompt(),
         `当前页面：${context.label}（${context.mode}）`,
+        buildPhoneCapabilityPrompt(),
         "你有工具可调。每个套件需要先展开才能看到详细动作；导航工具直接可用。同时最多展开 2 个套件。",
         "重要：调用工具时，回复文本里**不要复述**工具参数的内容（比如不要把 persona 完整文本再写一遍）。回复文本只用一两句话简短说明你在做什么即可，详细内容通过工具参数传递。",
     ].filter(Boolean).join("\n\n");
