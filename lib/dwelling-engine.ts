@@ -212,10 +212,31 @@ export function ensureHtmlFence(raw: string): string {
     const text = (raw || "").trim();
     if (!text) return "";
     if (/```html/i.test(text)) return text;
+    // 完整页面：有 <!DOCTYPE html> / <html> 外壳。切出页面主体（剥掉围栏外的寒暄）再包 ```html。
     const m = text.match(/<!DOCTYPE\s+html|<html[\s>]/i);
-    if (!m || m.index === undefined) return text;
-    const page = text.slice(m.index).replace(/```+\s*$/, "").trim();
-    return "```html\n" + page + "\n```";
+    if (m && m.index !== undefined) {
+        const page = text.slice(m.index).replace(/```+\s*$/, "").trim();
+        return "```html\n" + page + "\n```";
+    }
+    // v1.7.162：片段级 HTML 兜底。模型经常不写 <html> 外壳，直接输出 <style>/<div> 开头的
+    // 片段——之前只认完整页面，这类内容照样落进 Markdown 分支露源码。
+    // 先剥掉可能存在的普通围栏再判断，命中「看起来就是 HTML」就强制包成 ```html。
+    const stripped = text
+        .replace(/^```+\w*\s*\n?/, "")
+        .replace(/```\s*$/, "")
+        .trim();
+    const looksLikeHtml =
+        /^<(!doctype|style|script|div|section|article|main|body|head|p|h[1-6]|span|table|ul|ol|center|figure|header|footer|nav|form|img|button)\b/i.test(stripped) ||
+        /<\/(div|body|html|section|style|article|main)>/i.test(stripped);
+    if (looksLikeHtml) {
+        return "```html\n" + stripped + "\n```";
+    }
+    // 带普通 ``` 围栏但语言标签不是 html，而内容本身像 HTML（剥围栏后被上面的正则漏掉的情况极少，
+    // 这里只处理「内容确实含标签」的残留），强制改写为 ```html。
+    if (/^```\w+\s*\n/.test(text) && /<[a-z][^>]*>/i.test(stripped)) {
+        return "```html\n" + stripped + "\n```";
+    }
+    return text;
 }
 
 /**

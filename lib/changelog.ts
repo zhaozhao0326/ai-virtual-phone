@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.161";
+export const APP_VERSION = "1.7.162";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,15 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.162",
+    date: "2026-11-19",
+    title: "栖所探索补漏：片段式页面也纳入修复，露源码彻底收口",
+    highlights: [
+      "上一版只修了一半：归一化只认带 <!DOCTYPE html>/<html> 外壳的完整页面，而模型经常直接输出 <style>/<div> 开头的片段——这类内容照样落进源码显示。现在片段式 HTML 也一律包进 ```html 围栏再渲染；已经存进手机里的旧探索记录同样自动修正，不用重探索。",
+      "同时保护纯文本：模型偶尔只回一句话（比如物品的口述介绍）时，绝不会被误判成 HTML 包起来，显示不受影响。",
+    ],
+  },
   {
     version: "1.7.161",
     date: "2026-11-19",
