@@ -6,7 +6,7 @@
 // 头部追加一条记录。设置页「系统更新」与小卷「查询系统更新」工具共用这份数据，
 // 这样你无论从哪都能确认「我的小手机是不是更新了、更新了什么」。
 
-export const APP_VERSION = "1.7.164";
+export const APP_VERSION = "1.7.165";
 
 export interface ChangelogEntry {
   version: string;       // 例如 "1.0.0"
@@ -16,6 +16,17 @@ export interface ChangelogEntry {
 }
 
 export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "1.7.165",
+    date: "2026-11-19",
+    title: "推特界面重做 + 塔罗首页不再空壳 + 跳过登录门",
+    highlights: [
+      "推特：关注区从一大片角色名单改成一条可左右滑动的横滑轨（只显示已关注的），选人改到浮层里——带搜索、逐人勾选，不再一进 App 就刷屏。",
+      "塔罗：首页不再是空白一句话——现在有牌背视觉、五个牌阵的快捷入口（点哪个直接开始问），有历史时在下方列出最近的占卜。",
+      "推特 / 塔罗：顶栏增加顶部安全区间距，返回键放大到标准点击尺寸——之前部分手机上返回箭头被系统状态栏盖住，看起来像点不动。",
+      "自部署模式默认开启（NEXT_PUBLIC_SELF_HOSTED_MODE=true）：自建部署不再弹账号/密码/激活码登录页，打开直接进手机。",
+    ],
+  },
   {
     version: "1.7.164",
     date: "2026-11-19",

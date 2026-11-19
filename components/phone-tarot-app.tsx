@@ -261,29 +261,52 @@ export default function PhoneTarotApp({ onClose, initialCharacterId }: {
 
             {stage === "home" && (
                 <div className="tarot-body">
-                    {history.length === 0 ? (
-                        <div className="tarot-empty">
-                            和{character?.name || "TA"}一起安静地抽一组牌。<br />塔罗不是预言，是一面照见当下的镜子。
+                    <div className="tarot-hero">
+                        <div className="tarot-hero-cards" aria-hidden="true">
+                            <span className="tarot-cardback" />
+                            <span className="tarot-cardback" />
+                            <span className="tarot-cardback" />
                         </div>
-                    ) : (
-                        <div className="tarot-history">
-                            {history.map(s => {
-                                const hs = SPREADS.find(x => x.id === s.spreadId);
-                                return (
-                                    <div key={s.id} className="tarot-history-item" onClick={() => openHistory(s)}>
-                                        <div className="tarot-history-q">{s.question}</div>
-                                        <div className="tarot-history-meta">
-                                            {hs?.zh ?? s.spreadId} · {new Date(s.createdAt).toLocaleDateString()}
-                                            {s.reading.status === "succeeded" && " · 已解读"}
-                                            {s.companion.status === "succeeded" && " · TA 说过"}
+                        <div className="tarot-hero-title">和{character?.name || "TA"}抽一组牌</div>
+                        <div className="tarot-hero-sub">塔罗不是预言，是一面照见当下的镜子。</div>
+                    </div>
+
+                    <div className="tarot-section-title">选个牌阵，直接开始</div>
+                    <div className="tarot-spread-list">
+                        {SPREADS.map(s => (
+                            <button key={s.id} className="tarot-spread-card"
+                                onClick={() => { setQuestion(""); setSpreadId(s.id); setError(null); setStage("question"); }}>
+                                <span className="tarot-spread-card-head">
+                                    <span className="tarot-spread-card-name">{s.zh}</span>
+                                    <span className="tarot-spread-card-count">{s.count} 张</span>
+                                </span>
+                                <span className="tarot-spread-card-desc">{s.bestFor}</span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {history.length > 0 && (
+                        <>
+                            <div className="tarot-section-title">最近的占卜</div>
+                            <div className="tarot-history">
+                                {history.map(s => {
+                                    const hs = SPREADS.find(x => x.id === s.spreadId);
+                                    return (
+                                        <div key={s.id} className="tarot-history-item" onClick={() => openHistory(s)}>
+                                            <div className="tarot-history-q">{s.question}</div>
+                                            <div className="tarot-history-meta">
+                                                {hs?.zh ?? s.spreadId} · {new Date(s.createdAt).toLocaleDateString()}
+                                                {s.reading.status === "succeeded" && " · 已解读"}
+                                                {s.companion.status === "succeeded" && " · TA 说过"}
+                                            </div>
+                                            <button className="tarot-history-del" onClick={e => { e.stopPropagation(); removeHistory(s.id); }}>
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
-                                        <button className="tarot-history-del" onClick={e => { e.stopPropagation(); removeHistory(s.id); }}>
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
                     )}
                 </div>
             )}

@@ -52,6 +52,8 @@ export default function PhoneTwitterApp({ onClose, initialCharacterId }: {
     const [error, setError] = useState<string | null>(null);
     const [commentPostId, setCommentPostId] = useState<string | null>(null);
     const [myCommentDraft, setMyCommentDraft] = useState("");
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const [pickerQuery, setPickerQuery] = useState("");
 
     const refresh = useCallback(() => {
         setPosts(loadXPosts());
@@ -154,17 +156,26 @@ export default function PhoneTwitterApp({ onClose, initialCharacterId }: {
 
             {tab === "feed" && (
                 <div className="x-body">
-                    <div className="x-follow-bar">
+                    <div className="x-rail-wrap">
                         {characters.length === 0 && <div className="x-empty">还没有角色，先去「档案」建一个吧。</div>}
-                        {characters.map(c => (
-                            <button key={c.id} className={`x-chip ${following.includes(c.id) ? "on" : ""}`}
-                                onClick={() => setFollowing(toggleXFollowing(c.id))}>
-                                {c.avatar
-                                    ? <img src={c.avatar} alt="" className="x-chip-avatar" />
-                                    : <span className="x-chip-avatar x-chip-letter">{c.name.slice(0, 1)}</span>}
-                                {c.name}
-                            </button>
-                        ))}
+                        {characters.length > 0 && following.length === 0 && (
+                            <div className="x-rail-hint">还没关注任何人——点右边「＋ 选人」挑几个。</div>
+                        )}
+                        <div className="x-rail">
+                            {followedChars.map(c => (
+                                <button key={c.id} className="x-chip on" onClick={() => setFollowing(toggleXFollowing(c.id))}>
+                                    {c.avatar
+                                        ? <img src={c.avatar} alt="" className="x-chip-avatar" />
+                                        : <span className="x-chip-avatar x-chip-letter">{c.name.slice(0, 1)}</span>}
+                                    <span className="x-chip-name">{c.name}</span>
+                                </button>
+                            ))}
+                            {characters.length > 0 && (
+                                <button className="x-chip x-chip-add" onClick={() => { setPickerQuery(""); setPickerOpen(true); }}>
+                                    ＋ 选人
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <button className="x-refresh" onClick={handleRefreshFeed} disabled={busy === "feed"}>
                         {busy === "feed" ? (busyCharId ? `${charById(busyCharId)?.name ?? ""} 正在发推…` : "生成中…") : "刷新推荐流（每次最多 3 人发推）"}
@@ -240,6 +251,33 @@ export default function PhoneTwitterApp({ onClose, initialCharacterId }: {
                             </div>
                         </article>
                     ))}
+                </div>
+            )}
+
+            {pickerOpen && (
+                <div className="x-sheet-mask" onClick={() => setPickerOpen(false)}>
+                    <div className="x-sheet" onClick={e => e.stopPropagation()}>
+                        <div className="x-sheet-head">
+                            <span>选择关注（{following.length} 人）</span>
+                            <button onClick={() => setPickerOpen(false)}><XIcon size={16} /></button>
+                        </div>
+                        <input className="x-search" value={pickerQuery} onChange={e => setPickerQuery(e.target.value)}
+                            placeholder="搜索名字" />
+                        <div className="x-picker-list">
+                            {characters
+                                .filter(c => !pickerQuery.trim() || c.name.includes(pickerQuery.trim()))
+                                .map(c => (
+                                    <button key={c.id} className={`x-picker-row${following.includes(c.id) ? " on" : ""}`}
+                                        onClick={() => setFollowing(toggleXFollowing(c.id))}>
+                                        {c.avatar
+                                            ? <img src={c.avatar} alt="" className="x-chip-avatar" />
+                                            : <span className="x-chip-avatar x-chip-letter">{c.name.slice(0, 1)}</span>}
+                                        <span className="x-picker-name">{c.name}</span>
+                                        <span className="x-picker-mark">{following.includes(c.id) ? "已关注" : "＋"}</span>
+                                    </button>
+                                ))}
+                        </div>
+                    </div>
                 </div>
             )}
 

@@ -8,15 +8,20 @@
     background: #0a0f14;
     color: #e7edf3;
     overflow: hidden;
+    z-index: 30;
 }
 
 .x-topbar {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px 12px;
+    /* 顶部安全区：刘海/状态栏下留出可点区域，否则返回键会被系统状态栏吃掉点击 */
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;
+    min-height: 48px;
     border-bottom: 1px solid #1d2732;
     flex-shrink: 0;
+    position: relative;
+    z-index: 2;
 }
 
 .x-back {
@@ -24,9 +29,16 @@
     border: none;
     color: #e7edf3;
     padding: 4px;
+    margin-left: -4px;
     cursor: pointer;
     display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 18px;
 }
+.x-back:active { background: #1d2732; }
 
 .x-title { font-weight: 700; font-size: 16px; }
 
@@ -68,12 +80,70 @@
     gap: 10px;
 }
 
-.x-follow-bar {
+/* 关注区：单行横滑轨（折叠），不再铺成一大片名单 */
+.x-rail-wrap { display: flex; flex-direction: column; gap: 6px; }
+
+.x-rail-hint { font-size: 12px; color: #5f7183; padding: 0 2px; }
+
+.x-rail {
     display: flex;
-    flex-wrap: wrap;
     gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
 }
+.x-rail::-webkit-scrollbar { display: none; }
+
+.x-rail .x-chip { flex: 0 0 auto; scroll-snap-align: start; max-width: 132px; }
+
+.x-chip-name {
+    max-width: 78px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.x-chip-add {
+    color: #7fb2ea;
+    border-style: dashed;
+    padding: 5px 12px;
+}
+
+/* 选人浮层 */
+.x-search {
+    background: #0a0f14;
+    border: 1px solid #243140;
+    border-radius: 10px;
+    color: #e7edf3;
+    padding: 8px 12px;
+    font-size: 13px;
+}
+
+.x-picker-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 46vh; }
+
+.x-picker-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    border-radius: 10px;
+    padding: 7px 6px;
+    color: #c6d3e0;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+}
+
+.x-picker-row.on { background: #12233b; color: #e7edf3; }
+
+.x-picker-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.x-picker-mark { font-size: 11px; color: #7b8b9c; }
+.x-picker-row.on .x-picker-mark { color: #4d94f0; }
 
 .x-chip {
     display: inline-flex;
