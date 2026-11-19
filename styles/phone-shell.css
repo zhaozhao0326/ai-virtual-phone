@@ -182,6 +182,16 @@
   color: var(--status-bar-color);
   font-family: inherit;
   transition: color 0.3s ease;
+  /* 关键：状态栏只是画时间/信号，没有任何点击功能，但它 absolute + z-index:10 覆盖在
+     .phone-workspace（z-index:2）之上并吞掉点击——所有 App 顶栏（返回键、Tab 切换）
+     只要落在这 36px 区间就变成"假按钮"。这里彻底放行指针，让点击穿透到 App。
+     修复历史问题：信箱返回不了、塔罗/推特返回键与右上 Tab 点不动。 */
+  pointer-events: none;
+}
+
+/* 状态栏内部若将来需要可点元素，单独显式开启即可（当前没有）。 */
+.phone-status-bar > * {
+  pointer-events: none;
 }
 
 .status-island {
