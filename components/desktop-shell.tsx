@@ -41,6 +41,7 @@ import { CheckPhoneApp } from "@/components/checkphone/checkphone-app";
 import { ShoppingApp } from "@/components/shopping/shopping-app";
 import { GameHubApp } from "@/components/game/game-hub-app";
 import { MixologyApp } from "@/components/mixology/mixology-app";
+import PhoneTarotApp from "@/components/phone-tarot-app";
 import InterviewMagazineApp from "@/components/interview/interview-magazine-app";
 import { CoCreateApp } from "@/components/cocreate/cocreate-app";
 import { AppMarketApp } from "@/components/app-market/app-market-app";
@@ -4176,6 +4177,10 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
 
     if (activeApp === "mixology") {
       return <MixologyApp onClose={() => setActiveApp(null)} />;
+    }
+
+    if (activeApp === "tarot") {
+      return <PhoneTarotApp onClose={() => setActiveApp(null)} initialCharacterId={coupleLaunchCharId ?? undefined} />;
     }
 
     if (activeApp === "appmarket") {

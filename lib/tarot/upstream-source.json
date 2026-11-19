@@ -1,0 +1,60 @@
+{
+  "reviewedOn": "2026-09-11",
+  "connector": {
+    "repository": "https://github.com/moonlin1213/cove-tarot-companion",
+    "commit": "b26d64b3ab0292195aa96fc47e0e8c9382f06963",
+    "license": "ISC"
+  },
+  "engine": {
+    "repository": "https://github.com/moonlin1213/tarot-ritual",
+    "commit": "04c6ee2c112e2da9a22bf0b5b4ec80d61ef401d5",
+    "license": "ISC"
+  },
+  "files": [
+    {
+      "source": "tarot-ritual/public/data/cards.js",
+      "destination": "upstream/tarot/cards.js",
+      "upstreamSha256": "4a226f88a64ae41f0be9522ee771124ca1d7108abdb30e0f1a64c92e40b63035"
+    },
+    {
+      "source": "tarot-ritual/public/data/spreads.js",
+      "destination": "upstream/tarot/spreads.js",
+      "upstreamSha256": "14f0d9c248e862f073f577e29139581f4cceca25d7f1344f354a6acd06f2ac78"
+    },
+    {
+      "source": "tarot-ritual/public/js/reading.js",
+      "destination": "upstream/tarot/reading.js",
+      "upstreamSha256": "e4449be0664a00c0b27b6b477879a5a34c326585aee4936bca4ffb5d612570ef"
+    },
+    {
+      "source": "tarot-ritual/public/js/art/cardface.js",
+      "destination": "upstream/tarot/cardface.js",
+      "upstreamSha256": "471206c5f905918adecff8d630e9008fc85f1779f1643852fd0e026d5b5fd0c0"
+    },
+    {
+      "source": "tarot-ritual/LICENSE",
+      "destination": "upstream/tarot/LICENSE",
+      "upstreamSha256": "898f344017a43ccfc0c23d97bd3f29c4f3a7e8465f7e6e84ea0326fba848adc8"
+    },
+    {
+      "source": "cove-tarot-companion/src/result.mjs",
+      "destination": "upstream/companion/result.js",
+      "upstreamSha256": "479f6b0b81c8133526a88203b10661ac7f19ced7723d2a896b26f61f985f9d12"
+    },
+    {
+      "source": "cove-tarot-companion/LICENSE",
+      "destination": "upstream/companion/LICENSE",
+      "upstreamSha256": "bb83228734cb2c60bbee78c4fdb6e20d65c4eb949517876209c94f55b505f4b4"
+    }
+  ],
+  "modifications": [
+    "cardface.js adds releaseFaceCache and resets globalAlpha before rounded clipping; other imported sources unchanged."
+  ],
+  "notBundled": [
+    "Desktop CLI and account import",
+    "Third-party or private deck images",
+    "Three.js",
+    "Fonts",
+    "Node engine dependencies"
+  ]
+}
