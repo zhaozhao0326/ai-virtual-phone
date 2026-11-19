@@ -31,6 +31,7 @@ export type IconId =
   | "qa"
   | "mixology"
   | "tarot"
+  | "twitter"
   | "letters";
 
 // 桌面文件夹：以 folder: 前缀的 id 伪装成图标占一个格子参与拖拽/换页，
@@ -71,7 +72,7 @@ export const PAGE_2_DEFAULT: IconId[] = [
 ];
 
 // 第三页默认图标：右半边 2×2 排布（左半边留给日历组件），位置见 createDefaultDesktopIconLayout
-export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "tarot"];
+export const PAGE_3_DEFAULT: IconId[] = ["worldbuilder", "qa", "resource_hub", "realitybridge", "mixology", "tarot", "twitter"];
 
 export const DOCK_DEFAULT: IconId[] = ["settings", "theme", "resources", "characters"];
 
@@ -128,5 +129,6 @@ export const ICONS: Record<IconId, IconMeta> = {
   qa: { id: "qa", label: "工坊", tone: "var(--c-icon-qa, #4a505c99)", placeholder: false },
   mixology: { id: "mixology", label: "独家特调", tone: "var(--c-icon-violet)", placeholder: false },
   tarot: { id: "tarot", label: "塔罗", tone: "var(--c-icon-tarot, #7c5cbf)", placeholder: false },
+  twitter: { id: "twitter", label: "推特", tone: "var(--c-icon-twitter, #1d9bf0)", placeholder: false },
   letters: { id: "letters", label: "信箱", tone: "var(--c-icon-violet)", placeholder: false },
 };
